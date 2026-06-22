@@ -1,4 +1,4 @@
-import type { EmbeddingProvider } from './types.js';
+import type { EmbeddingProvider } from './types';
 
 const DIMS = 64;
 

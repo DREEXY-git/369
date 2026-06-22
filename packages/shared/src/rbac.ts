@@ -1,4 +1,4 @@
-import type { Action, RoleKey } from './types.js';
+import type { Action, RoleKey } from './types';
 
 /**
  * 権限は "<resource>:<action>" 形式の文字列。

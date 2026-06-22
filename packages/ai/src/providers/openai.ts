@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatOptions, LLMProvider, LLMResponse } from './types.js';
+import type { ChatMessage, ChatOptions, LLMProvider, LLMResponse } from './types';
 
 /** OpenAI 互換 Chat Completions Provider（SDK 非依存・fetch 実装）。 */
 export class OpenAICompatibleProvider implements LLMProvider {

@@ -1,4 +1,4 @@
-import type { EmailProvider, SendEmailParams, SendResult } from './types.js';
+import type { EmailProvider, SendEmailParams, SendResult } from './types';
 
 /**
  * LogEmailProvider — 既定。ネットワーク送信を一切行わず、送信内容をログとして残すのみ。

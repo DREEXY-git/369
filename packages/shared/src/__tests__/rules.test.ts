@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { maskEmail, maskPhone, maskName, maskText } from '../masking.js';
-import { computeQuoteTotals, isOverdue, forecastCashflow, detectProfitLeaks } from '../finance.js';
-import { hasReservationConflict, suggestDynamicPrice } from '../inventory.js';
-import { computeLeadScore } from '../leads.js';
-import { chunkText, cosineSimilarity } from '../knowledge.js';
-import { detectAnomalies } from '../anomaly.js';
-import { requiresApproval } from '../approval.js';
-import { isSuppressed, detectUnsubscribeRequest } from '../suppression.js';
-import { classifyBusinessRelevance } from '../relevance.js';
+import { maskEmail, maskPhone, maskName, maskText } from '../masking';
+import { computeQuoteTotals, isOverdue, forecastCashflow, detectProfitLeaks } from '../finance';
+import { hasReservationConflict, suggestDynamicPrice } from '../inventory';
+import { computeLeadScore } from '../leads';
+import { chunkText, cosineSimilarity } from '../knowledge';
+import { detectAnomalies } from '../anomaly';
+import { requiresApproval } from '../approval';
+import { isSuppressed, detectUnsubscribeRequest } from '../suppression';
+import { classifyBusinessRelevance } from '../relevance';
 
 describe('マスキング', () => {
   it('メール/電話/氏名をマスキング', () => {

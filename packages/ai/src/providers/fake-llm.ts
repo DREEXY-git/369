@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatOptions, LLMProvider, LLMResponse } from './types.js';
+import type { ChatMessage, ChatOptions, LLMProvider, LLMResponse } from './types';
 
 /**
  * APIキー不要のデモ用 LLM。

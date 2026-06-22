@@ -3,7 +3,7 @@ import type {
   TranscriptionProvider,
   TranscriptionResult,
   TranscriptionSegment,
-} from './types.js';
+} from './types';
 
 /**
  * APIキー不要の文字起こし。

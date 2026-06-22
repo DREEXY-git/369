@@ -1,4 +1,4 @@
-import type { MapsProvider, MapsSearchParams, PlaceResult } from './types.js';
+import type { MapsProvider, MapsSearchParams, PlaceResult } from './types';
 
 /**
  * GooglePlacesProvider — 公式 Places API (New) Text Search を利用。

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { DemoMapProvider } from '../maps/demo.js';
-import { isUrlAllowed, scanHtml } from '../web/fetcher.js';
-import { getMapsProvider } from '../maps/index.js';
+import { DemoMapProvider } from '../maps/demo';
+import { isUrlAllowed, scanHtml } from '../web/fetcher';
+import { getMapsProvider } from '../maps/index';
 
 describe('DemoMapProvider', () => {
   it('札幌市の美容室デモリードを生成する', async () => {

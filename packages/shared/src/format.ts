@@ -1,4 +1,4 @@
-import type { AlertSeverity } from './types.js';
+import type { AlertSeverity } from './types';
 
 export function formatJpy(value: number | string | null | undefined): string {
   const n = typeof value === 'string' ? Number(value) : (value ?? 0);

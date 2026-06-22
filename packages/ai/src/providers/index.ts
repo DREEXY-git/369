@@ -1,11 +1,11 @@
-import { AnthropicCompatibleProvider } from './anthropic.js';
-import { ExternalEmbeddingProvider, FakeEmbeddingProvider } from './embeddings.js';
-import { FakeLLMProvider } from './fake-llm.js';
-import { OpenAICompatibleProvider } from './openai.js';
-import { FakeTranscriptionProvider } from './transcription.js';
-import type { EmbeddingProvider, LLMProvider, TranscriptionProvider } from './types.js';
+import { AnthropicCompatibleProvider } from './anthropic';
+import { ExternalEmbeddingProvider, FakeEmbeddingProvider } from './embeddings';
+import { FakeLLMProvider } from './fake-llm';
+import { OpenAICompatibleProvider } from './openai';
+import { FakeTranscriptionProvider } from './transcription';
+import type { EmbeddingProvider, LLMProvider, TranscriptionProvider } from './types';
 
-export * from './types.js';
+export * from './types';
 export {
   FakeLLMProvider,
   OpenAICompatibleProvider,

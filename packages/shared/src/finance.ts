@@ -1,4 +1,4 @@
-import type { AlertSeverity } from './types.js';
+import type { AlertSeverity } from './types';
 
 export interface QuoteTotals {
   discountedSubtotal: number;

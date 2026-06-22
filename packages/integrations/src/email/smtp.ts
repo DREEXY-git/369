@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer';
-import type { EmailProvider, SendEmailParams, SendResult } from './types.js';
+import type { EmailProvider, SendEmailParams, SendResult } from './types';
 
 /**
  * SmtpEmailProvider — 開発は Mailhog/Mailpit(localhost:1025)、本番は SMTP に差し替え。

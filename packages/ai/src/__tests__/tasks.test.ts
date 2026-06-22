@@ -7,8 +7,8 @@ import {
   summarizeMeeting,
   classifyRelevance,
   fakeOutreachDraft,
-} from '../tasks.js';
-import { FakeEmbeddingProvider } from '../providers/index.js';
+} from '../tasks';
+import { FakeEmbeddingProvider } from '../providers/index';
 import { cosineSimilarity } from '@hokko/shared';
 
 describe('FakeLLM AIタスク', () => {

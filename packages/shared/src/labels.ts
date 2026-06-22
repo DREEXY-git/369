@@ -1,4 +1,4 @@
-import type { ConfidentialityLabel, RoleKey } from './types.js';
+import type { ConfidentialityLabel, RoleKey } from './types';
 
 // 機密ラベルごとの閲覧許可ロール。OWNER は常に許可。
 const LABEL_ALLOWED_ROLES: Record<ConfidentialityLabel, RoleKey[]> = {

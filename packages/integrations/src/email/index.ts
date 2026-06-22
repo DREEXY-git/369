@@ -1,8 +1,8 @@
-import { LogEmailProvider } from './log.js';
-import { SmtpEmailProvider } from './smtp.js';
-import type { EmailProvider } from './types.js';
+import { LogEmailProvider } from './log';
+import { SmtpEmailProvider } from './smtp';
+import type { EmailProvider } from './types';
 
-export * from './types.js';
+export * from './types';
 export { LogEmailProvider, SmtpEmailProvider };
 
 /**

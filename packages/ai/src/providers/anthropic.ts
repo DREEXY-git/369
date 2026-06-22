@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatOptions, LLMProvider, LLMResponse } from './types.js';
+import type { ChatMessage, ChatOptions, LLMProvider, LLMResponse } from './types';
 
 /** Anthropic Messages API 互換 Provider（SDK 非依存・fetch 実装）。 */
 export class AnthropicCompatibleProvider implements LLMProvider {

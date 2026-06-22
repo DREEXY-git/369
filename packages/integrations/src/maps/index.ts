@@ -1,8 +1,8 @@
-import { DemoMapProvider } from './demo.js';
-import { GooglePlacesProvider } from './google.js';
-import type { MapsProvider } from './types.js';
+import { DemoMapProvider } from './demo';
+import { GooglePlacesProvider } from './google';
+import type { MapsProvider } from './types';
 
-export * from './types.js';
+export * from './types';
 export { DemoMapProvider, GooglePlacesProvider };
 
 /**

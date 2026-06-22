@@ -5,8 +5,8 @@ import {
   permissionsForRoles,
   ROLE_PERMISSIONS,
   isAiRole,
-} from '../rbac.js';
-import { canAccessLabel } from '../labels.js';
+} from '../rbac';
+import { canAccessLabel } from '../labels';
 
 describe('RBAC 権限判定', () => {
   it('OWNER は全権限を持つ', () => {

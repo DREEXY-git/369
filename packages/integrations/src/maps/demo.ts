@@ -3,7 +3,7 @@ import type {
   MapsSearchParams,
   PlaceResult,
   PlaceReviewData,
-} from './types.js';
+} from './types';
 
 // 決定論的擬似乱数（同じ条件なら同じデモリードを再現）。
 function hash(str: string): number {

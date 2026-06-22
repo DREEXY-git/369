@@ -5,8 +5,8 @@ import {
   suggestDynamicPrice,
   type PricingFactors,
 } from '@hokko/shared';
-import type { LLMProvider } from './providers/types.js';
-import { getLLMProvider } from './providers/index.js';
+import type { LLMProvider } from './providers/types';
+import { getLLMProvider } from './providers/index';
 import {
   ContractRiskSchema,
   CustomerInsightSchema,
@@ -28,7 +28,7 @@ import {
   type ReplyClassificationResult,
   type ReviewAnalysisResult,
   type WebsiteAnalysisResult,
-} from './schemas.js';
+} from './schemas';
 
 export interface LlmContext {
   llm?: LLMProvider;
@@ -358,7 +358,7 @@ export function fakeMeetingMinutes(input: {
 
   const decisions = lines.filter((l) => DECISION_HINTS.some((h) => l.includes(h))).slice(0, 6);
   const actionLines = lines.filter((l) => ACTION_HINTS.some((h) => l.includes(h))).slice(0, 8);
-  const actionItems = actionLines.map((l, i) => ({
+  const actionItems = actionLines.map((l) => ({
     title: l.slice(0, 60),
     assigneeName: '',
     dueInDays: 7,

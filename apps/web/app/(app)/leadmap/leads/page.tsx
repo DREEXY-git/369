@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, Table, Th, Td, Badge, EmptyState, Select, Input, Button } from '@/components/ui';
@@ -38,9 +38,16 @@ export default async function LeadsPage({
         title="リード一覧"
         description={`営業先 ${total} 件。優先度が高い順に表示しています。`}
         action={
-          <Link href="/leadmap/map">
-            <Button variant="outline">地図で見る</Button>
-          </Link>
+          <div className="flex gap-2">
+            {hasPermission(user, 'leadmap', 'export') ? (
+              <a href={`/api/leadmap/export${sp.campaign ? `?campaign=${sp.campaign}` : ''}`}>
+                <Button variant="outline">CSVエクスポート</Button>
+              </a>
+            ) : null}
+            <Link href="/leadmap/map">
+              <Button variant="outline">地図で見る</Button>
+            </Link>
+          </div>
         }
       />
 

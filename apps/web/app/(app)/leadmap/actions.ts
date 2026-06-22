@@ -190,3 +190,83 @@ export async function updateLeadStageAction(formData: FormData) {
   revalidatePath('/leadmap/pipeline');
   revalidatePath(`/leadmap/leads/${leadId}`);
 }
+
+/** キャンペーン内の未分析リードを一括でAI分析（LeadMapの半自動化の中核）。 */
+export async function bulkAnalyzeCampaignAction(formData: FormData) {
+  const user = await requireUser();
+  const campaignId = String(formData.get('campaignId') ?? '');
+  if (!hasPermission(user, 'leadmap', 'ai_read')) redirect(`/leadmap/campaigns/${campaignId}?denied=1`);
+
+  const campaign = await prisma.leadSearchCampaign.findFirst({
+    where: { id: campaignId, tenantId: user.tenantId },
+    include: { leads: { where: { insights: { none: {} } }, select: { id: true }, take: 50 } },
+  });
+  if (!campaign) redirect('/leadmap/campaigns');
+
+  let analyzed = 0;
+  for (const lead of campaign.leads) {
+    try {
+      await analyzeLead(user.tenantId, lead.id, campaign.forSalesType);
+      analyzed++;
+    } catch {
+      /* 個別失敗はスキップして継続 */
+    }
+  }
+  await writeAudit({
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    actorType: 'ai_agent',
+    action: 'ai_run',
+    entityType: 'LeadSearchCampaign',
+    entityId: campaignId,
+    summary: `一括AI分析: ${analyzed}件のリードを分析`,
+  });
+  revalidatePath(`/leadmap/campaigns/${campaignId}`);
+  revalidatePath('/leadmap/leads');
+  redirect(`/leadmap/campaigns/${campaignId}?analyzed=${analyzed}`);
+}
+
+/** キャンペーン内の分析済みリードに営業メール下書きを一括生成（必ず下書き）。 */
+export async function bulkGenerateOutreachAction(formData: FormData) {
+  const user = await requireUser();
+  const campaignId = String(formData.get('campaignId') ?? '');
+  if (!hasPermission(user, 'leadmap', 'create')) redirect(`/leadmap/campaigns/${campaignId}?denied=1`);
+
+  const campaign = await prisma.leadSearchCampaign.findFirst({
+    where: { id: campaignId, tenantId: user.tenantId },
+    include: {
+      leads: {
+        where: { insights: { some: {} }, outreachDrafts: { none: {} } },
+        select: { id: true },
+        take: 50,
+      },
+    },
+  });
+  if (!campaign) redirect('/leadmap/campaigns');
+
+  let generated = 0;
+  for (const lead of campaign.leads) {
+    try {
+      await generateOutreachForLead(user.tenantId, lead.id, {
+        salesType: campaign.forSalesType,
+        senderCompany: 'dreexy',
+        senderName: user.name,
+        createdById: user.userId,
+      });
+      generated++;
+    } catch {
+      /* スキップして継続 */
+    }
+  }
+  await writeAudit({
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    actorType: 'ai_agent',
+    action: 'ai_run',
+    entityType: 'LeadSearchCampaign',
+    entityId: campaignId,
+    summary: `一括営業メール生成: ${generated}件の下書きを作成（送信は人間承認後）`,
+  });
+  revalidatePath(`/leadmap/campaigns/${campaignId}`);
+  redirect(`/leadmap/campaigns/${campaignId}?generated=${generated}`);
+}

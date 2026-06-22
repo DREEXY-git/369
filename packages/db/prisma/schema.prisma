@@ -1,0 +1,2551 @@
+// =============================================================================
+// 369 統合AI経営OS + LeadMap AI — Prisma schema
+//
+// 設計方針:
+//  - マルチテナント: 原則すべてのモデルが tenantId スカラを持ち @@index([tenantId])。
+//    （Tenant への明示リレーションは肥大化を避けるため張らず、アプリ層で分離を強制）
+//  - リレーションは「親→子を include で辿る階層」にのみ張る。
+//  - 監査ログ/権限/機密ラベルは共通基盤として最初から組み込む。
+//  - ベクトルは Float[] で保持（pgvector へ移行可能。MVPは JS でコサイン類似度）。
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================ Enums ==========================================
+
+enum RoleKey {
+  OWNER
+  EXECUTIVE
+  ADMIN
+  DEPARTMENT_MANAGER
+  STAFF
+  READ_ONLY
+  EXTERNAL_EXPERT
+  EXTERNAL_PARTNER
+  AI_AGENT
+  AI_ASSISTANT
+}
+
+enum ConfidentialityLabel {
+  NORMAL
+  INTERNAL
+  CONFIDENTIAL
+  STRICT_SECRET
+  HR_CONFIDENTIAL
+  LEGAL_CONFIDENTIAL
+  FINANCIAL_CONFIDENTIAL
+  CUSTOMER_CONFIDENTIAL
+  DINING_RECORD
+  EXECUTIVE_ONLY
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum DealStage {
+  CONTACT
+  HEARING
+  PROPOSAL
+  QUOTE
+  NEGOTIATION
+  INTERNAL_REVIEW
+  CONTRACT
+  DELIVERY
+  INVOICE
+  FOLLOW_UP
+  LOST
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  VOID
+}
+
+enum LeadStage {
+  NEW
+  ANALYZED
+  DRAFTED
+  PENDING_APPROVAL
+  READY
+  SENT
+  OPENED
+  CLICKED
+  REPLIED
+  APPOINTMENT
+  NEGOTIATING
+  QUOTED
+  WON
+  LOST
+  UNSUBSCRIBED
+  EXCLUDED
+}
+
+enum DataSource {
+  DEMO
+  GOOGLE_PLACES
+  USER_UPLOAD
+  OPENSTREETMAP
+  MANUAL
+}
+
+enum OutreachStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  SENT
+  FAILED
+}
+
+enum AlertSeverity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  NEEDS_APPROVAL
+}
+
+// ============================ 共通基盤 ========================================
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  plan      String   @default("mvp")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id           String    @id @default(cuid())
+  tenantId     String
+  email        String
+  passwordHash String
+  name         String
+  isAiAgent    Boolean   @default(false)
+  isActive     Boolean   @default(true)
+  departmentId String?
+  avatarColor  String    @default("#6366f1")
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  userRoles       UserRole[]
+  employeeProfile EmployeeProfile?
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  tenantId    String
+  key         RoleKey
+  name        String
+  description String   @default("")
+  isSystem    Boolean  @default(true)
+  permissions String[] // 権限キーの集合（例: "customer:read", "outreach:send"）
+  createdAt   DateTime @default(now())
+
+  userRoles UserRole[]
+
+  @@unique([tenantId, key])
+  @@index([tenantId])
+}
+
+model Permission {
+  id          String @id @default(cuid())
+  key         String @unique
+  category    String
+  description String
+}
+
+model UserRole {
+  id       String   @id @default(cuid())
+  tenantId String
+  userId   String
+  roleId   String
+  assignedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@index([tenantId])
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  managerId String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model EmployeeProfile {
+  id           String   @id @default(cuid())
+  tenantId     String
+  userId       String   @unique
+  employeeCode String
+  title        String?
+  hiredAt      DateTime?
+  employment   String   @default("正社員")
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model FileObject {
+  id           String   @id @default(cuid())
+  tenantId     String
+  key          String // S3 オブジェクトキー（private by default）
+  filename     String
+  mimeType     String
+  sizeBytes    Int      @default(0)
+  label        ConfidentialityLabel @default(INTERNAL)
+  uploadedById String?
+  entityType   String?
+  entityId     String?
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model Tag {
+  id       String @id @default(cuid())
+  tenantId String
+  name     String
+  color    String @default("#64748b")
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model Comment {
+  id         String   @id @default(cuid())
+  tenantId   String
+  entityType String
+  entityId   String
+  authorId   String?
+  body       String
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, entityType, entityId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  title     String
+  body      String   @default("")
+  severity  AlertSeverity @default(INFO)
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, userId])
+}
+
+model ApprovalRequest {
+  id          String         @id @default(cuid())
+  tenantId    String
+  type        String // 例: "outreach_send", "quote_issue", "contract_sign"
+  title       String
+  summary     String         @default("")
+  entityType  String
+  entityId    String
+  requestedById String?
+  assigneeRole RoleKey?
+  riskLevel   AlertSeverity  @default(MEDIUM)
+  payload     Json?
+  status      ApprovalStatus @default(PENDING)
+  decidedById String?
+  decidedAt   DateTime?
+  decisionNote String?
+  createdAt   DateTime       @default(now())
+
+  @@index([tenantId, status])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  tenantId    String
+  actorId     String?
+  actorType   String   @default("user") // user | ai_agent | system
+  action      String // create | update | delete | approve | export | login | ai_run ...
+  entityType  String
+  entityId    String?
+  summary     String   @default("")
+  metadata    Json?
+  ip          String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entityType, entityId])
+}
+
+model DataAccessLog {
+  id         String   @id @default(cuid())
+  tenantId   String
+  actorId    String?
+  actorType  String   @default("user")
+  entityType String
+  entityId   String?
+  label      ConfidentialityLabel @default(NORMAL)
+  purpose    String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
+model ApiKey {
+  id         String   @id @default(cuid())
+  tenantId   String
+  name       String
+  provider   String
+  hashedKey  String
+  lastUsedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model IntegrationConnection {
+  id         String   @id @default(cuid())
+  tenantId   String
+  provider   String // gmail | outlook | line | slack | accounting | ...
+  status     String   @default("disconnected")
+  isMock     Boolean  @default(true)
+  config     Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  syncLogs IntegrationSyncLog[]
+
+  @@index([tenantId])
+}
+
+model IntegrationSyncLog {
+  id           String   @id @default(cuid())
+  tenantId     String
+  connectionId String
+  status       String
+  itemsSynced  Int      @default(0)
+  message      String   @default("")
+  createdAt    DateTime @default(now())
+
+  connection IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  tenantId  String
+  key       String
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, key])
+  @@index([tenantId])
+}
+
+// ============================ セキュリティ ====================================
+
+model AccessPolicy {
+  id          String   @id @default(cuid())
+  tenantId    String
+  roleKey     RoleKey
+  resource    String
+  actions     String[] // read create update delete approve export ai_read external_send
+  maxLabel    ConfidentialityLabel @default(INTERNAL)
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model DataMaskingRule {
+  id        String   @id @default(cuid())
+  tenantId  String
+  field     String // name | email | phone | address | health | family
+  strategy  String   @default("partial") // partial | full | hash
+  enabled   Boolean  @default(true)
+
+  @@index([tenantId])
+}
+
+model ConsentRecord {
+  id         String   @id @default(cuid())
+  tenantId   String
+  subject    String // メール/電話など
+  channel    String // email | line | sms
+  consent    Boolean  @default(false)
+  source     String   @default("manual")
+  note       String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, subject])
+}
+
+model SuppressionList {
+  id        String   @id @default(cuid())
+  tenantId  String
+  channel   String   @default("email")
+  value     String // 配信停止対象（メール/ドメイン/電話）
+  reason    String   @default("")
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, channel, value])
+  @@index([tenantId])
+}
+
+model RetentionPolicy {
+  id        String @id @default(cuid())
+  tenantId  String
+  entity    String
+  days      Int
+  enabled   Boolean @default(true)
+
+  @@index([tenantId])
+}
+
+model ExportJob {
+  id         String   @id @default(cuid())
+  tenantId   String
+  requestedById String?
+  scope      String // customers | leads | audit | knowledge ...
+  format     String   @default("csv")
+  status     String   @default("queued")
+  fileKey    String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model DeleteRequest {
+  id         String   @id @default(cuid())
+  tenantId   String
+  subject    String
+  scope      String
+  status     ApprovalStatus @default(PENDING)
+  requestedById String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+// ============================ CRM ============================================
+
+model Customer {
+  id           String   @id @default(cuid())
+  tenantId     String
+  name         String
+  industry     String?
+  rank         String   @default("B") // A/B/C/D
+  ownerId      String?
+  phone        String?
+  email        String?
+  address      String?
+  website      String?
+  status       String   @default("active")
+  label        ConfidentialityLabel @default(CUSTOMER_CONFIDENTIAL)
+  satisfaction Int?     // 0-100
+  churnRisk    Int?     // 0-100
+  nextContactAt DateTime?
+  lastContactAt DateTime?
+  notes        String   @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  contacts       Contact[]
+  deals          Deal[]
+  timelineEvents CustomerTimelineEvent[]
+  insights       CustomerInsight[]
+  interactions   CustomerInteraction[]
+  complaints     CustomerComplaint[]
+  invoices       Invoice[]
+
+  @@index([tenantId])
+  @@index([tenantId, name])
+}
+
+model Contact {
+  id         String   @id @default(cuid())
+  tenantId   String
+  customerId String
+  name       String
+  title      String?
+  email      String?
+  phone      String?
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model CustomerTimelineEvent {
+  id         String   @id @default(cuid())
+  tenantId   String
+  customerId String
+  type       String // email | line | call | meeting | deal | quote | invoice | complaint | ai | task
+  title      String
+  body       String   @default("")
+  actorId    String?
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, customerId, occurredAt])
+}
+
+model CustomerInteraction {
+  id         String   @id @default(cuid())
+  tenantId   String
+  customerId String
+  channel    String
+  direction  String   @default("outbound")
+  summary    String
+  occurredAt DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, customerId])
+}
+
+model CustomerInsight {
+  id           String   @id @default(cuid())
+  tenantId     String
+  customerId   String
+  needs        String   @default("")
+  concerns     String   @default("")
+  priceReaction String  @default("")
+  nextProposal String   @default("")
+  churnRisk    Int      @default(0)
+  confidence   Float    @default(0.6)
+  ngWords      String[]
+  citations    Json?
+  generatedBy  String   @default("FakeLLM")
+  createdAt    DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, customerId])
+}
+
+model CustomerComplaint {
+  id         String   @id @default(cuid())
+  tenantId   String
+  customerId String
+  title      String
+  severity   AlertSeverity @default(MEDIUM)
+  status     String   @default("open")
+  body       String   @default("")
+  createdAt  DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, customerId])
+}
+
+model CustomerRankHistory {
+  id         String   @id @default(cuid())
+  tenantId   String
+  customerId String
+  fromRank   String
+  toRank     String
+  reason     String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, customerId])
+}
+
+// ============================ 案件・営業 ======================================
+
+model Deal {
+  id           String    @id @default(cuid())
+  tenantId     String
+  customerId   String
+  title        String
+  ownerId      String?
+  stage        DealStage @default(CONTACT)
+  amount       Decimal   @default(0) @db.Decimal(14, 2)
+  cost         Decimal   @default(0) @db.Decimal(14, 2)
+  probability  Int       @default(30) // 0-100
+  expectedCloseAt DateTime?
+  nextAction   String    @default("")
+  nextActionAt DateTime?
+  competitor   String?
+  lostReason   String?
+  source       String    @default("manual") // manual | leadmap
+  leadId       String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  stageHistory DealStageHistory[]
+  activities   SalesActivity[]
+  quotes       Quote[]
+  proposals    Proposal[]
+
+  @@index([tenantId, stage])
+  @@index([tenantId, customerId])
+}
+
+model DealStageHistory {
+  id        String    @id @default(cuid())
+  tenantId  String
+  dealId    String
+  fromStage DealStage?
+  toStage   DealStage
+  note      String    @default("")
+  changedById String?
+  createdAt DateTime  @default(now())
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, dealId])
+}
+
+model SalesActivity {
+  id         String   @id @default(cuid())
+  tenantId   String
+  dealId     String?
+  customerId String?
+  type       String // call | visit | email | demo | followup
+  summary    String
+  ownerId    String?
+  occurredAt DateTime @default(now())
+
+  deal Deal? @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+}
+
+model SalesPipelineStage {
+  id       String @id @default(cuid())
+  tenantId String
+  key      String
+  name     String
+  order    Int
+
+  @@index([tenantId])
+}
+
+model Proposal {
+  id        String   @id @default(cuid())
+  tenantId  String
+  dealId    String
+  title     String
+  body      String   @default("")
+  status    String   @default("draft")
+  createdAt DateTime @default(now())
+
+  deal  Deal           @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  files ProposalFile[]
+
+  @@index([tenantId])
+}
+
+model ProposalFile {
+  id         String @id @default(cuid())
+  tenantId   String
+  proposalId String
+  fileKey    String
+  filename   String
+
+  proposal Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model SalesReport {
+  id        String   @id @default(cuid())
+  tenantId  String
+  period    String
+  summary   String
+  metrics   Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+// ============================ 見積・契約・請求 ================================
+
+model Quote {
+  id          String   @id @default(cuid())
+  tenantId    String
+  dealId      String?
+  customerId  String?
+  number      String
+  title       String
+  status      String   @default("draft") // draft | pending_approval | approved | sent | accepted | rejected
+  subtotal    Decimal  @default(0) @db.Decimal(14, 2)
+  cost        Decimal  @default(0) @db.Decimal(14, 2)
+  discountRate Decimal @default(0) @db.Decimal(5, 2)
+  taxRate     Decimal  @default(10) @db.Decimal(5, 2)
+  total       Decimal  @default(0) @db.Decimal(14, 2)
+  grossMargin Decimal  @default(0) @db.Decimal(14, 2)
+  grossMarginRate Decimal @default(0) @db.Decimal(5, 2)
+  validUntil  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  deal      Deal?           @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  lineItems QuoteLineItem[]
+
+  @@index([tenantId])
+}
+
+model QuoteLineItem {
+  id        String  @id @default(cuid())
+  tenantId  String
+  quoteId   String
+  name      String
+  quantity  Decimal @default(1) @db.Decimal(12, 2)
+  unitPrice Decimal @default(0) @db.Decimal(14, 2)
+  unitCost  Decimal @default(0) @db.Decimal(14, 2)
+  amount    Decimal @default(0) @db.Decimal(14, 2)
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model Contract {
+  id          String   @id @default(cuid())
+  tenantId    String
+  customerId  String?
+  dealId      String?
+  number      String
+  title       String
+  status      String   @default("draft") // draft | active | expiring | ended | terminated
+  startDate   DateTime?
+  endDate     DateTime?
+  renewalDate DateTime?
+  autoRenew   Boolean  @default(false)
+  value       Decimal  @default(0) @db.Decimal(14, 2)
+  fileKey     String?
+  label       ConfidentialityLabel @default(LEGAL_CONFIDENTIAL)
+  createdAt   DateTime @default(now())
+
+  clauses ContractClause[]
+  risks   ContractRisk[]
+
+  @@index([tenantId])
+}
+
+model ContractClause {
+  id         String @id @default(cuid())
+  tenantId   String
+  contractId String
+  heading    String
+  body       String
+  important  Boolean @default(false)
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model ContractRisk {
+  id          String        @id @default(cuid())
+  tenantId    String
+  contractId  String
+  description String
+  severity    AlertSeverity @default(MEDIUM)
+  recommendation String     @default("")
+  expertNeeded Boolean      @default(false)
+  createdAt   DateTime      @default(now())
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model Invoice {
+  id         String        @id @default(cuid())
+  tenantId   String
+  customerId String?
+  dealId     String?
+  number     String
+  status     InvoiceStatus @default(DRAFT)
+  issueDate  DateTime?
+  dueDate    DateTime?
+  subtotal   Decimal       @default(0) @db.Decimal(14, 2)
+  taxAmount  Decimal       @default(0) @db.Decimal(14, 2)
+  total      Decimal       @default(0) @db.Decimal(14, 2)
+  paidAmount Decimal       @default(0) @db.Decimal(14, 2)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  customer   Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  lineItems  InvoiceLineItem[]
+  payments   Payment[]
+  receivable Receivable?
+
+  @@index([tenantId, status])
+}
+
+model InvoiceLineItem {
+  id        String  @id @default(cuid())
+  tenantId  String
+  invoiceId String
+  name      String
+  quantity  Decimal @default(1) @db.Decimal(12, 2)
+  unitPrice Decimal @default(0) @db.Decimal(14, 2)
+  amount    Decimal @default(0) @db.Decimal(14, 2)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model Payment {
+  id        String   @id @default(cuid())
+  tenantId  String
+  invoiceId String
+  amount    Decimal  @db.Decimal(14, 2)
+  method    String   @default("bank")
+  paidAt    DateTime @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model Receivable {
+  id         String   @id @default(cuid())
+  tenantId   String
+  invoiceId  String   @unique
+  amount     Decimal  @db.Decimal(14, 2)
+  dueDate    DateTime?
+  status     String   @default("open") // open | overdue | collected
+  riskScore  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  invoice    Invoice              @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  reminders  CollectionReminder[]
+
+  @@index([tenantId, status])
+}
+
+model CollectionReminder {
+  id           String   @id @default(cuid())
+  tenantId     String
+  receivableId String
+  draftMessage String
+  status       String   @default("draft")
+  createdAt    DateTime @default(now())
+
+  receivable Receivable @relation(fields: [receivableId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+// ============================ 会計・財務 ======================================
+
+model Account {
+  id       String @id @default(cuid())
+  tenantId String
+  code     String
+  name     String
+  type     String // asset | liability | equity | revenue | expense
+
+  lines JournalEntryLine[]
+
+  @@index([tenantId])
+}
+
+model JournalEntry {
+  id        String   @id @default(cuid())
+  tenantId  String
+  date      DateTime
+  memo      String   @default("")
+  source    String   @default("manual")
+  createdAt DateTime @default(now())
+
+  lines JournalEntryLine[]
+
+  @@index([tenantId, date])
+}
+
+model JournalEntryLine {
+  id        String  @id @default(cuid())
+  tenantId  String
+  entryId   String
+  accountId String
+  debit     Decimal @default(0) @db.Decimal(14, 2)
+  credit    Decimal @default(0) @db.Decimal(14, 2)
+
+  entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model Expense {
+  id        String   @id @default(cuid())
+  tenantId  String
+  category  String
+  vendor    String?
+  amount    Decimal  @db.Decimal(14, 2)
+  date      DateTime
+  anomaly   Boolean  @default(false)
+  memo      String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, date])
+}
+
+model CashAccount {
+  id       String  @id @default(cuid())
+  tenantId String
+  name     String
+  balance  Decimal @default(0) @db.Decimal(16, 2)
+
+  @@index([tenantId])
+}
+
+model CashflowForecast {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  baseDate  DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  lines CashflowForecastLine[]
+
+  @@index([tenantId])
+}
+
+model CashflowForecastLine {
+  id         String   @id @default(cuid())
+  tenantId   String
+  forecastId String
+  date       DateTime
+  inflow     Decimal  @default(0) @db.Decimal(16, 2)
+  outflow    Decimal  @default(0) @db.Decimal(16, 2)
+  balance    Decimal  @default(0) @db.Decimal(16, 2)
+  note       String   @default("")
+
+  forecast CashflowForecast @relation(fields: [forecastId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model Loan {
+  id           String   @id @default(cuid())
+  tenantId     String
+  lender       String
+  principal    Decimal  @db.Decimal(16, 2)
+  balance      Decimal  @db.Decimal(16, 2)
+  interestRate Decimal  @default(0) @db.Decimal(5, 2)
+  startDate    DateTime?
+
+  repayments LoanRepayment[]
+
+  @@index([tenantId])
+}
+
+model LoanRepayment {
+  id       String   @id @default(cuid())
+  tenantId String
+  loanId   String
+  dueDate  DateTime
+  amount   Decimal  @db.Decimal(14, 2)
+  paid     Boolean  @default(false)
+
+  loan Loan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model FinancialAlert {
+  id          String        @id @default(cuid())
+  tenantId    String
+  code        String // CASH_SHORTAGE | OVERDUE | MARGIN_DROP ...
+  title       String
+  severity    AlertSeverity @default(MEDIUM)
+  detail      String        @default("")
+  recommendation String     @default("")
+  resolved    Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+
+  @@index([tenantId, resolved])
+}
+
+model ProfitLeakFinding {
+  id          String        @id @default(cuid())
+  tenantId    String
+  type        String // discount | unbilled | low_margin | idle_asset | ...
+  title       String
+  impactJpy   Decimal       @default(0) @db.Decimal(14, 2)
+  severity    AlertSeverity @default(MEDIUM)
+  detail      String        @default("")
+  recommendation String     @default("")
+  entityType  String?
+  entityId    String?
+  resolved    Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+
+  @@index([tenantId, resolved])
+}
+
+// ============================ 人事・労務・採用 ================================
+
+model EmploymentContract {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  type      String   @default("正社員")
+  startDate DateTime?
+  endDate   DateTime?
+  renewalDate DateTime?
+  label     ConfidentialityLabel @default(HR_CONFIDENTIAL)
+
+  @@index([tenantId])
+}
+
+model AttendanceRecord {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  date      DateTime
+  clockIn   DateTime?
+  clockOut  DateTime?
+  workMinutes Int    @default(0)
+  overtimeMinutes Int @default(0)
+
+  @@index([tenantId, userId, date])
+}
+
+model Shift {
+  id       String   @id @default(cuid())
+  tenantId String
+  userId   String
+  start    DateTime
+  end      DateTime
+  role     String   @default("")
+
+  @@index([tenantId])
+}
+
+model LeaveRequest {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  type      String   @default("有給")
+  startDate DateTime
+  endDate   DateTime
+  status    ApprovalStatus @default(PENDING)
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model OvertimeRecord {
+  id       String   @id @default(cuid())
+  tenantId String
+  userId   String
+  month    String
+  minutes  Int      @default(0)
+
+  @@index([tenantId])
+}
+
+model PayrollCost {
+  id       String   @id @default(cuid())
+  tenantId String
+  userId   String?
+  month    String
+  amount   Decimal  @db.Decimal(14, 2)
+  label    ConfidentialityLabel @default(HR_CONFIDENTIAL)
+
+  @@index([tenantId])
+}
+
+model HRRiskFinding {
+  id          String        @id @default(cuid())
+  tenantId    String
+  userId      String?
+  type        String // overwork | turnover | contract_renewal
+  title       String
+  severity    AlertSeverity @default(MEDIUM)
+  detail      String        @default("")
+  label       ConfidentialityLabel @default(HR_CONFIDENTIAL)
+  createdAt   DateTime      @default(now())
+
+  @@index([tenantId])
+}
+
+model JobPosting {
+  id        String   @id @default(cuid())
+  tenantId  String
+  title     String
+  channel   String   @default("自社サイト")
+  status    String   @default("open")
+  costToDate Decimal @default(0) @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
+
+  candidates Candidate[]
+
+  @@index([tenantId])
+}
+
+model Candidate {
+  id         String   @id @default(cuid())
+  tenantId   String
+  jobId      String?
+  name       String
+  stage      String   @default("応募") // 応募 | 書類 | 面接 | 内定 | 入社 | 辞退
+  source     String   @default("")
+  declineRisk Int     @default(0)
+  label      ConfidentialityLabel @default(HR_CONFIDENTIAL)
+  createdAt  DateTime @default(now())
+
+  job        JobPosting? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  interviews Interview[]
+
+  @@index([tenantId])
+}
+
+model Interview {
+  id          String   @id @default(cuid())
+  tenantId    String
+  candidateId String
+  scheduledAt DateTime?
+  interviewer String?
+  transcript  String   @default("")
+  feedback    String   @default("")
+  createdAt   DateTime @default(now())
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model TrainingContent {
+  id       String @id @default(cuid())
+  tenantId String
+  title    String
+  type     String @default("manual")
+  url      String?
+
+  progress TrainingProgress[]
+
+  @@index([tenantId])
+}
+
+model TrainingProgress {
+  id         String  @id @default(cuid())
+  tenantId   String
+  contentId  String
+  userId     String
+  percent    Int     @default(0)
+
+  content TrainingContent @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model Skill {
+  id       String @id @default(cuid())
+  tenantId String
+  name     String
+
+  @@index([tenantId])
+}
+
+model EmployeeSkill {
+  id       String @id @default(cuid())
+  tenantId String
+  userId   String
+  skillId  String
+  level    Int    @default(1)
+
+  @@index([tenantId])
+}
+
+model OneOnOneRecord {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  managerId String?
+  notes     String   @default("")
+  topics    String[]
+  label     ConfidentialityLabel @default(HR_CONFIDENTIAL)
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+// ============================ 在庫・商品・リース ==============================
+
+model ProductCategory {
+  id       String @id @default(cuid())
+  tenantId String
+  name     String
+
+  assets ProductAsset[]
+
+  @@index([tenantId])
+}
+
+model StockLocation {
+  id       String @id @default(cuid())
+  tenantId String
+  name     String
+
+  @@index([tenantId])
+}
+
+model ProductAsset {
+  id            String   @id @default(cuid())
+  tenantId      String
+  code          String
+  name          String
+  categoryId    String?
+  locationId    String?
+  quantity      Int      @default(1)
+  condition     String   @default("good") // good | repair | broken | retired
+  status        String   @default("available") // available | reserved | out | maintenance
+  acquisitionCost Decimal @default(0) @db.Decimal(14, 2)
+  cumulativeRevenue Decimal @default(0) @db.Decimal(14, 2)
+  cumulativeGross Decimal @default(0) @db.Decimal(14, 2)
+  utilizationRate Decimal @default(0) @db.Decimal(5, 2)
+  rentalPrice   Decimal  @default(0) @db.Decimal(12, 2)
+  usageCount    Int      @default(0)
+  lastUsedAt    DateTime?
+  nextUseAt     DateTime?
+  photoKey      String?
+  createdAt     DateTime @default(now())
+
+  category ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  maintenanceRecords AssetMaintenanceRecord[]
+  reservationLines   LeaseReservationLine[]
+  profitabilitySnapshots AssetProfitabilitySnapshot[]
+  pricingSuggestions DynamicPricingSuggestion[]
+
+  @@index([tenantId, status])
+}
+
+model AssetMaintenanceRecord {
+  id        String   @id @default(cuid())
+  tenantId  String
+  assetId   String
+  type      String // repair | inspection
+  cost      Decimal  @default(0) @db.Decimal(12, 2)
+  note      String   @default("")
+  date      DateTime @default(now())
+
+  asset ProductAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model LeaseReservation {
+  id          String   @id @default(cuid())
+  tenantId    String
+  customerId  String?
+  dealId      String?
+  eventName   String
+  venue       String?
+  status      String   @default("reserved")
+  startAt     DateTime
+  endAt       DateTime
+  deliveryAt  DateTime?
+  setupAt     DateTime?
+  returnAt    DateTime?
+  deliveryStaff String?
+  setupStaff  String?
+  returnStaff String?
+  note        String   @default("")
+  createdAt   DateTime @default(now())
+
+  lines LeaseReservationLine[]
+
+  @@index([tenantId, startAt])
+}
+
+model LeaseReservationLine {
+  id            String @id @default(cuid())
+  tenantId      String
+  reservationId String
+  assetId       String
+  quantity      Int    @default(1)
+
+  reservation LeaseReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  asset       ProductAsset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([assetId])
+}
+
+model DamageLossRecord {
+  id        String   @id @default(cuid())
+  tenantId  String
+  assetId   String?
+  type      String // damage | loss
+  cost      Decimal  @default(0) @db.Decimal(12, 2)
+  note      String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model AssetProfitabilitySnapshot {
+  id        String   @id @default(cuid())
+  tenantId  String
+  assetId   String
+  period    String
+  revenue   Decimal  @default(0) @db.Decimal(14, 2)
+  gross     Decimal  @default(0) @db.Decimal(14, 2)
+  utilization Decimal @default(0) @db.Decimal(5, 2)
+  recovered Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  asset ProductAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model DynamicPricingSuggestion {
+  id          String   @id @default(cuid())
+  tenantId    String
+  assetId     String
+  basePrice   Decimal  @db.Decimal(12, 2)
+  suggestedPrice Decimal @db.Decimal(12, 2)
+  changeRate  Decimal  @default(0) @db.Decimal(5, 2)
+  reason      String   @default("")
+  factors     Json?
+  createdAt   DateTime @default(now())
+
+  asset ProductAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+// ============================ マーケティング ==================================
+
+model MarketingCampaign {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  channel   String // seo | sns | ads | meo | line | mail
+  status    String   @default("active")
+  budget    Decimal  @default(0) @db.Decimal(14, 2)
+  spent     Decimal  @default(0) @db.Decimal(14, 2)
+  createdAt DateTime @default(now())
+
+  metrics CampaignMetric[]
+
+  @@index([tenantId])
+}
+
+model CampaignMetric {
+  id         String   @id @default(cuid())
+  tenantId   String
+  campaignId String
+  date       DateTime
+  impressions Int     @default(0)
+  clicks     Int      @default(0)
+  conversions Int     @default(0)
+  cost       Decimal  @default(0) @db.Decimal(12, 2)
+
+  campaign MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model ContentAsset {
+  id        String   @id @default(cuid())
+  tenantId  String
+  type      String // article | lp | sns | ad | mail
+  title     String
+  body      String   @default("")
+  status    String   @default("draft")
+  generatedByAi Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model Inquiry {
+  id        String   @id @default(cuid())
+  tenantId  String
+  source    String
+  name      String
+  contact   String?
+  message   String   @default("")
+  status    String   @default("new")
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model MarketingSuggestion {
+  id        String   @id @default(cuid())
+  tenantId  String
+  title     String
+  detail    String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+// ============================ 会議・録音・議事録 ==============================
+
+model Meeting {
+  id        String   @id @default(cuid())
+  tenantId  String
+  title     String
+  type      String   @default("social") // social=商談, internal, interview, oneonone, event, complaint
+  customerId String?
+  dealId    String?
+  occurredAt DateTime @default(now())
+  organizerId String?
+  status    String   @default("captured") // captured | processing | summarized
+  label     ConfidentialityLabel @default(INTERNAL)
+  createdAt DateTime @default(now())
+
+  recordings  Recording[]
+  transcripts Transcript[]
+  minutes     MeetingMinutes[]
+  decisions   Decision[]
+  actionItems ActionItem[]
+  agendaItems AgendaItem[]
+  riskFindings MeetingRiskFinding[]
+
+  @@index([tenantId, occurredAt])
+}
+
+model Recording {
+  id        String   @id @default(cuid())
+  tenantId  String
+  meetingId String
+  fileKey   String?
+  source    String   @default("upload") // upload | zoom | teams | meet | phone
+  durationSec Int    @default(0)
+  createdAt DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model Transcript {
+  id        String   @id @default(cuid())
+  tenantId  String
+  meetingId String
+  fullText  String
+  language  String   @default("ja")
+  provider  String   @default("FakeTranscription")
+  createdAt DateTime @default(now())
+
+  meeting  Meeting             @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  segments TranscriptSegment[]
+
+  @@index([tenantId])
+}
+
+model TranscriptSegment {
+  id           String  @id @default(cuid())
+  tenantId     String
+  transcriptId String
+  speaker      String  @default("")
+  startSec     Int     @default(0)
+  text         String
+
+  transcript Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model MeetingMinutes {
+  id          String   @id @default(cuid())
+  tenantId    String
+  meetingId   String
+  summary3    String   @default("")
+  summaryFull String   @default("")
+  ceoSummary  String   @default("")
+  insights    String   @default("")
+  risks       String   @default("")
+  nextAgenda  String   @default("")
+  generatedBy String   @default("FakeLLM")
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model Decision {
+  id        String   @id @default(cuid())
+  tenantId  String
+  meetingId String
+  text      String
+  createdAt DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model ActionItem {
+  id        String   @id @default(cuid())
+  tenantId  String
+  meetingId String?
+  title     String
+  assigneeId String?
+  assigneeName String?
+  dueDate   DateTime?
+  priority  String   @default("medium") // low | medium | high
+  status    String   @default("open") // open | in_progress | done
+  source    String   @default("meeting")
+  createdAt DateTime @default(now())
+
+  meeting Meeting? @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+}
+
+model AgendaItem {
+  id        String  @id @default(cuid())
+  tenantId  String
+  meetingId String
+  text      String
+  done      Boolean @default(false)
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model MeetingRiskFinding {
+  id        String        @id @default(cuid())
+  tenantId  String
+  meetingId String
+  type      String // legal | compliance | sales
+  detail    String
+  severity  AlertSeverity @default(MEDIUM)
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+// ============================ コミュニケーション ==============================
+
+model CommunicationProviderAccount {
+  id        String @id @default(cuid())
+  tenantId  String
+  provider  String
+  label     String
+  isMock    Boolean @default(true)
+
+  @@index([tenantId])
+}
+
+model CommunicationThread {
+  id         String   @id @default(cuid())
+  tenantId   String
+  channel    String // gmail | line | slack | chatwork | phone
+  subject    String
+  customerId String?
+  relevance  String   @default("relevant") // relevant | review | private | irrelevant
+  label      ConfidentialityLabel @default(INTERNAL)
+  createdAt  DateTime @default(now())
+
+  messages CommunicationMessage[]
+
+  @@index([tenantId])
+}
+
+model CommunicationMessage {
+  id        String   @id @default(cuid())
+  tenantId  String
+  threadId  String
+  sender    String
+  direction String   @default("inbound")
+  body      String
+  sentAt    DateTime @default(now())
+
+  thread      CommunicationThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  attachments MessageAttachment[]
+
+  @@index([tenantId])
+}
+
+model MessageAttachment {
+  id        String @id @default(cuid())
+  tenantId  String
+  messageId String
+  fileKey   String
+  filename  String
+
+  message CommunicationMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model BusinessRelevanceDecision {
+  id        String   @id @default(cuid())
+  tenantId  String
+  itemRef   String
+  relevance String
+  reason    String   @default("")
+  confidence Float   @default(0.6)
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model TemporaryIngestionItem {
+  id        String   @id @default(cuid())
+  tenantId  String
+  channel   String
+  preview   String
+  status    String   @default("review") // review | saved | discarded
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, status])
+}
+
+// ============================ 報連相 =========================================
+
+model DailyReport {
+  id          String   @id @default(cuid())
+  tenantId    String
+  userId      String
+  date        DateTime @default(now())
+  done        String   @default("")
+  todo        String   @default("")
+  blockers    String   @default("")
+  forCeo      String   @default("")
+  isAi        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, date])
+}
+
+model DepartmentReport {
+  id           String   @id @default(cuid())
+  tenantId     String
+  departmentId String?
+  period       String
+  summary      String   @default("")
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model Consultation {
+  id        String   @id @default(cuid())
+  tenantId  String
+  fromId    String?
+  topic     String // price | discount | contract | complaint | hiring | legal | finance
+  question  String
+  status    String   @default("open") // open | answered
+  answer    String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, status])
+}
+
+model Escalation {
+  id        String        @id @default(cuid())
+  tenantId  String
+  title     String
+  severity  AlertSeverity @default(MEDIUM)
+  status    String        @default("open")
+  createdAt DateTime      @default(now())
+
+  @@index([tenantId])
+}
+
+model HORENSOItem {
+  id        String   @id @default(cuid())
+  tenantId  String
+  kind      String // report | contact | consult
+  title     String
+  body      String   @default("")
+  status    String   @default("open")
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+// ============================ AI =============================================
+
+model AIAgent {
+  id          String   @id @default(cuid())
+  tenantId    String
+  key         String // sales | cfo | inventory | chief_of_staff | leadmap_sales ...
+  name        String
+  role        String // 役割の説明
+  department  String?
+  status      String   @default("active")
+  autonomy    String   @default("assist") // assist | supervised | autonomous
+  userId      String? // AI を主体として扱うための User と対応
+  createdAt   DateTime @default(now())
+
+  runs   AIAgentRun[]
+  memory AIAgentMemory[]
+
+  @@index([tenantId])
+}
+
+model AIAgentRole {
+  id          String @id @default(cuid())
+  tenantId    String
+  key         String
+  name        String
+  description String @default("")
+
+  @@index([tenantId])
+}
+
+model AIAgentRun {
+  id        String    @id @default(cuid())
+  tenantId  String
+  agentId   String
+  task      String
+  status    RunStatus @default(SUCCEEDED)
+  input     Json?
+  output    Json?
+  humanReviewed Boolean @default(false)
+  sentExternally Boolean @default(false)
+  riskLevel AlertSeverity @default(LOW)
+  startedAt DateTime  @default(now())
+  finishedAt DateTime?
+  error     String?
+
+  agent   AIAgent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  actions AIAgentAction[]
+
+  @@index([tenantId, agentId])
+}
+
+model AIAgentAction {
+  id        String   @id @default(cuid())
+  tenantId  String
+  runId     String
+  type      String // read | write | recommend | draft | external_send_blocked
+  summary   String
+  refType   String?
+  refId     String?
+  createdAt DateTime @default(now())
+
+  run AIAgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model AIAgentMemory {
+  id        String   @id @default(cuid())
+  tenantId  String
+  agentId   String
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+
+  agent AIAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model PromptTemplate {
+  id          String   @id @default(cuid())
+  tenantId    String
+  key         String
+  name        String
+  description String   @default("")
+  template    String
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+
+  @@unique([tenantId, key])
+  @@index([tenantId])
+}
+
+model LLMCallLog {
+  id          String   @id @default(cuid())
+  tenantId    String
+  provider    String
+  model       String
+  task        String
+  promptTokens Int     @default(0)
+  completionTokens Int @default(0)
+  costUsd     Decimal  @default(0) @db.Decimal(10, 5)
+  masked      Boolean  @default(false)
+  latencyMs   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
+model AIOutput {
+  id        String   @id @default(cuid())
+  tenantId  String
+  task      String
+  entityType String?
+  entityId  String?
+  output    Json
+  confidence Float   @default(0.6)
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, task])
+}
+
+model AIRecommendation {
+  id        String        @id @default(cuid())
+  tenantId  String
+  audience  String // ceo | manager | staff | ai
+  title     String
+  detail    String        @default("")
+  action    String        @default("")
+  severity  AlertSeverity @default(INFO)
+  entityType String?
+  entityId  String?
+  dismissed Boolean       @default(false)
+  createdAt DateTime      @default(now())
+
+  @@index([tenantId, audience])
+}
+
+model AIAlert {
+  id        String        @id @default(cuid())
+  tenantId  String
+  code      String
+  title     String
+  detail    String        @default("")
+  severity  AlertSeverity @default(MEDIUM)
+  entityType String?
+  entityId  String?
+  resolved  Boolean       @default(false)
+  createdAt DateTime      @default(now())
+
+  @@index([tenantId, resolved])
+}
+
+model AIApprovalGate {
+  id        String   @id @default(cuid())
+  tenantId  String
+  runId     String?
+  action    String
+  reason    String
+  status    ApprovalStatus @default(PENDING)
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+// ============================ ナレッジ =======================================
+
+model KnowledgeSource {
+  id        String   @id @default(cuid())
+  tenantId  String
+  type      String // meeting | contract | manual | email | deal ...
+  name      String
+  origin    String   @default("")
+  createdAt DateTime @default(now())
+
+  documents KnowledgeDocument[]
+
+  @@index([tenantId])
+}
+
+model KnowledgeDocument {
+  id         String   @id @default(cuid())
+  tenantId   String
+  sourceId   String?
+  title      String
+  body       String
+  entityType String?
+  entityId   String?
+  label      ConfidentialityLabel @default(INTERNAL)
+  version    Int      @default(1)
+  active     Boolean  @default(true)
+  consent    Boolean  @default(true)
+  masked     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  source KnowledgeSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  chunks KnowledgeChunk[]
+
+  @@index([tenantId, active])
+}
+
+model KnowledgeChunk {
+  id         String   @id @default(cuid())
+  tenantId   String
+  documentId String
+  ordinal    Int      @default(0)
+  text       String
+  label      ConfidentialityLabel @default(INTERNAL)
+  embedding  Float[] // FakeEmbedding/外部Embedding。pgvector へ移行可能。
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  document KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, active])
+  @@index([documentId])
+}
+
+model KnowledgeSummary {
+  id         String   @id @default(cuid())
+  tenantId   String
+  documentId String
+  summary    String
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model RetrievalLog {
+  id        String   @id @default(cuid())
+  tenantId  String
+  actorId   String?
+  query     String
+  chunkIds  String[]
+  topScore  Float    @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
+model AnswerCitation {
+  id         String   @id @default(cuid())
+  tenantId   String
+  retrievalId String?
+  documentId String?
+  chunkId    String?
+  snippet    String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model DataLineage {
+  id         String   @id @default(cuid())
+  tenantId   String
+  documentId String
+  stage      String // ingested | chunked | embedded | summarized | retrieved
+  detail     String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, documentId])
+}
+
+model KnowledgeVersion {
+  id         String   @id @default(cuid())
+  tenantId   String
+  documentId String
+  version    Int
+  snapshot   Json
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model KnowledgeRollbackJob {
+  id         String   @id @default(cuid())
+  tenantId   String
+  documentId String
+  reason     String
+  status     String   @default("queued")
+  affectedChunks Int  @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+// ============================ バックアップ ====================================
+
+model BackupJob {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tier      String // realtime | daily | weekly | monthly | archive | dr
+  status    String   @default("succeeded")
+  sizeBytes Int      @default(0)
+  createdAt DateTime @default(now())
+
+  artifacts BackupArtifact[]
+
+  @@index([tenantId])
+}
+
+model BackupArtifact {
+  id        String   @id @default(cuid())
+  tenantId  String
+  jobId     String
+  fileKey   String
+  scope     String
+  createdAt DateTime @default(now())
+
+  job BackupJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model RestorePoint {
+  id        String   @id @default(cuid())
+  tenantId  String
+  label     String
+  tier      String
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model RestoreJob {
+  id            String   @id @default(cuid())
+  tenantId      String
+  restorePointId String?
+  status        String   @default("queued")
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model ArchivePolicy {
+  id        String  @id @default(cuid())
+  tenantId  String
+  entity    String
+  months    Int
+  enabled   Boolean @default(true)
+
+  @@index([tenantId])
+}
+
+// ============================ 士業・補助金 ====================================
+
+model ExpertPartner {
+  id        String   @id @default(cuid())
+  tenantId  String
+  type      String // 税理士 | 社労士 | 弁護士 | 行政書士 | 診断士 | 金融機関 ...
+  name      String
+  org       String?
+  email     String?
+  phone     String?
+  createdAt DateTime @default(now())
+
+  referrals ExpertReferral[]
+
+  @@index([tenantId])
+}
+
+model ExpertReferral {
+  id        String        @id @default(cuid())
+  tenantId  String
+  partnerId String?
+  reason    String
+  topic     String // legal | hr | finance | subsidy | tax
+  severity  AlertSeverity @default(MEDIUM)
+  status    String        @default("suggested")
+  entityType String?
+  entityId  String?
+  createdAt DateTime      @default(now())
+
+  partner ExpertPartner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+}
+
+model SubsidyProgram {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  authority   String   @default("")
+  summary     String   @default("")
+  maxAmount   Decimal  @default(0) @db.Decimal(14, 2)
+  deadline    DateTime?
+  requirements String[]
+  documents   String[]
+  source      String   @default("DEMO")
+  createdAt   DateTime @default(now())
+
+  eligibilityChecks SubsidyEligibilityCheck[]
+  tasks             SubsidyApplicationTask[]
+
+  @@index([tenantId])
+}
+
+model SubsidyEligibilityCheck {
+  id        String   @id @default(cuid())
+  tenantId  String
+  programId String
+  score     Int      @default(0)
+  result    String   @default("unknown")
+  detail    String   @default("")
+  createdAt DateTime @default(now())
+
+  program SubsidyProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model SubsidyApplicationTask {
+  id        String   @id @default(cuid())
+  tenantId  String
+  programId String
+  title     String
+  status    String   @default("todo")
+  assigneeId String?
+  dueDate   DateTime?
+  draft     String   @default("")
+  createdAt DateTime @default(now())
+
+  program SubsidyProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+// ============================ プランニングホッコー特化 ========================
+
+model EventProject {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  customerId  String?
+  venue       String?
+  eventDate   DateTime?
+  status      String   @default("planned")
+  revenue     Decimal  @default(0) @db.Decimal(14, 2)
+  cost        Decimal  @default(0) @db.Decimal(14, 2)
+  gross       Decimal  @default(0) @db.Decimal(14, 2)
+  loadInAt    DateTime?
+  loadOutAt   DateTime?
+  weatherRisk String   @default("")
+  notes       String   @default("")
+  createdAt   DateTime @default(now())
+
+  productUsages    EventProductUsage[]
+  costs            EventCost[]
+  grossSnapshots   EventGrossProfitSnapshot[]
+  nextProposals    EventNextProposal[]
+
+  @@index([tenantId])
+}
+
+model EventVenue {
+  id       String @id @default(cuid())
+  tenantId String
+  name     String
+  address  String?
+  contact  String?
+
+  @@index([tenantId])
+}
+
+model EventProductUsage {
+  id        String @id @default(cuid())
+  tenantId  String
+  eventId   String
+  assetId   String?
+  assetName String
+  quantity  Int    @default(1)
+
+  event EventProject @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model EventCost {
+  id        String  @id @default(cuid())
+  tenantId  String
+  eventId   String
+  category  String
+  amount    Decimal @db.Decimal(14, 2)
+
+  event EventProject @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model EventGrossProfitSnapshot {
+  id        String   @id @default(cuid())
+  tenantId  String
+  eventId   String
+  revenue   Decimal  @db.Decimal(14, 2)
+  cost      Decimal  @db.Decimal(14, 2)
+  gross     Decimal  @db.Decimal(14, 2)
+  marginRate Decimal @default(0) @db.Decimal(5, 2)
+  createdAt DateTime @default(now())
+
+  event EventProject @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model EventNextProposal {
+  id        String   @id @default(cuid())
+  tenantId  String
+  eventId   String
+  proposal  String
+  createdAt DateTime @default(now())
+
+  event EventProject @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+// ============================ LeadMap AI =====================================
+
+model LeadSearchCampaign {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  region      String // 例: 札幌市
+  industry    String // 例: 美容室
+  keywords    String   @default("")
+  status      String   @default("active")
+  source      DataSource @default(DEMO)
+  ownerId     String?
+  forSalesType String  @default("web制作") // Web制作 | MEO | 広告 | SNS | 採用支援 ...
+  createdAt   DateTime @default(now())
+
+  conditions LeadSearchCondition[]
+  leads      LocalBusinessLead[]
+
+  @@index([tenantId])
+}
+
+model LeadSearchCondition {
+  id          String  @id @default(cuid())
+  tenantId    String
+  campaignId  String
+  minRating   Float?
+  maxRating   Float?
+  minReviews  Int?
+  hasWebsite  Boolean?
+  keyword     String?
+
+  campaign LeadSearchCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model LocalBusinessLead {
+  id          String     @id @default(cuid())
+  tenantId    String
+  campaignId  String
+  name        String
+  industry    String
+  address     String?
+  prefecture  String?
+  city        String?
+  phone       String?
+  website     String?
+  email       String?
+  contactForm String?
+  rating      Float?
+  reviewCount Int        @default(0)
+  openingHours String?
+  lat         Float?
+  lng         Float?
+  googleMapsUrl String?
+  placeId     String?
+  source      DataSource @default(DEMO)
+  attributionRequired Boolean @default(false)
+  fetchedAt   DateTime?
+  expiresAt   DateTime?
+  cachePolicy String     @default("demo")
+  priority    Int        @default(50) // 0-100 営業優先度
+  stage       LeadStage  @default(NEW)
+  ownerId     String?
+  customerId  String? // 商談化したら 369 CRM の Customer に連携
+  dealId      String?
+  lastContactAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  campaign       LeadSearchCampaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contacts       LocalBusinessContact[]
+  placeSnapshots PlaceDataSnapshot[]
+  reviews        PlaceReview[]
+  websiteScans   WebsiteScan[]
+  socialProfiles SocialProfile[]
+  insights       LeadInsight[]
+  scores         LeadScore[]
+  outreachDrafts OutreachDraft[]
+  pipelineHistory LeadPipelineStageHistory[]
+
+  @@index([tenantId, stage])
+  @@index([tenantId, campaignId])
+}
+
+model LocalBusinessContact {
+  id       String  @id @default(cuid())
+  tenantId String
+  leadId   String
+  name     String?
+  title    String?
+  email    String?
+  phone    String?
+
+  lead LocalBusinessLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model PlaceDataSnapshot {
+  id          String     @id @default(cuid())
+  tenantId    String
+  leadId      String
+  source      DataSource @default(DEMO)
+  placeId     String?
+  payload     Json
+  attributionRequired Boolean @default(false)
+  fetchedAt   DateTime   @default(now())
+  expiresAt   DateTime?
+  cachePolicy String     @default("demo")
+
+  lead LocalBusinessLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model PlaceReview {
+  id        String   @id @default(cuid())
+  tenantId  String
+  leadId    String
+  author    String   @default("")
+  rating    Int      @default(0)
+  text      String
+  source    DataSource @default(DEMO)
+  publishedAt DateTime?
+
+  lead LocalBusinessLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model WebsiteScan {
+  id          String   @id @default(cuid())
+  tenantId    String
+  leadId      String
+  url         String
+  fetchedOk   Boolean  @default(false)
+  ssl         Boolean  @default(false)
+  mobile      Boolean  @default(false)
+  hasBooking  Boolean  @default(false)
+  hasLine     Boolean  @default(false)
+  hasContactForm Boolean @default(false)
+  hasRecruit  Boolean  @default(false)
+  title       String   @default("")
+  description String   @default("")
+  emails      String[]
+  socialLinks String[]
+  createdAt   DateTime @default(now())
+
+  lead     LocalBusinessLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  findings WebsiteFinding[]
+
+  @@index([tenantId])
+}
+
+model WebsiteFinding {
+  id        String   @id @default(cuid())
+  tenantId  String
+  scanId    String
+  type      String // mobile | booking | line | seo | recruit | freshness
+  positive  Boolean  @default(false)
+  detail    String
+
+  scan WebsiteScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model SocialProfile {
+  id        String  @id @default(cuid())
+  tenantId  String
+  leadId    String
+  platform  String // instagram | facebook | x | line | youtube | linkedin
+  url       String
+  active    Boolean @default(true)
+
+  lead LocalBusinessLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model LeadInsight {
+  id          String   @id @default(cuid())
+  tenantId    String
+  leadId      String
+  strengths   String[] // 評価されている点（前向き）
+  opportunities String[] // 改善余地・営業チャンス
+  angle       String   @default("") // 営業切り口
+  reasoning   String   @default("")
+  confidence  Float    @default(0.6)
+  generatedBy String   @default("FakeLLM")
+  createdAt   DateTime @default(now())
+
+  lead LocalBusinessLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model LeadScore {
+  id        String   @id @default(cuid())
+  tenantId  String
+  leadId    String
+  score     Int      @default(0)
+  breakdown Json?
+  createdAt DateTime @default(now())
+
+  lead LocalBusinessLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model OutreachDraft {
+  id          String         @id @default(cuid())
+  tenantId    String
+  leadId      String
+  channel     String         @default("email")
+  subject     String
+  body        String
+  rationale   String         @default("") // 提案理由
+  evidence    String         @default("") // 根拠
+  cautions    String         @default("") // 注意点
+  status      OutreachStatus @default(DRAFT)
+  generatedBy String         @default("FakeLLM")
+  createdById String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  lead      LocalBusinessLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  approvals OutreachApproval[]
+  sendLogs  OutreachSendLog[]
+  replies   OutreachReply[]
+
+  @@index([tenantId, status])
+}
+
+model OutreachApproval {
+  id        String         @id @default(cuid())
+  tenantId  String
+  draftId   String
+  status    ApprovalStatus @default(PENDING)
+  approverId String?
+  note      String         @default("")
+  createdAt DateTime       @default(now())
+  decidedAt DateTime?
+
+  draft OutreachDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+}
+
+model OutreachSendLog {
+  id          String   @id @default(cuid())
+  tenantId    String
+  draftId     String
+  channel     String   @default("email")
+  toAddress   String
+  fromAddress String
+  subject     String
+  body        String
+  status      String   @default("logged") // logged | sent | failed | suppressed
+  provider    String   @default("log")
+  approvedById String?
+  createdAt   DateTime @default(now())
+
+  draft OutreachDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model OutreachReply {
+  id           String   @id @default(cuid())
+  tenantId     String
+  draftId      String
+  body         String
+  classification String @default("unknown") // interested | not_now | later | forward | doc | quote | unsubscribe | complaint | auto | unknown
+  confidence   Float    @default(0.6)
+  receivedAt   DateTime @default(now())
+
+  draft OutreachDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model LeadPipelineStageHistory {
+  id        String    @id @default(cuid())
+  tenantId  String
+  leadId    String
+  fromStage LeadStage?
+  toStage   LeadStage
+  note      String    @default("")
+  changedById String?
+  createdAt DateTime  @default(now())
+
+  lead LocalBusinessLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, leadId])
+}
+
+model VisitRoute {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  date      DateTime?
+  ownerId   String?
+  createdAt DateTime @default(now())
+
+  stops VisitRouteStop[]
+
+  @@index([tenantId])
+}
+
+model VisitRouteStop {
+  id       String  @id @default(cuid())
+  tenantId String
+  routeId  String
+  leadId   String?
+  order    Int     @default(0)
+  label    String
+  lat      Float?
+  lng      Float?
+
+  route VisitRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}

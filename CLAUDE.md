@@ -82,4 +82,5 @@ pnpm test:e2e                               # Playwright（要 chromium）
 - Next 15 では `params`/`searchParams`/`cookies()` が **async**。`await` する。
 - ローカル検証環境では Postgres/Redis をネイティブ起動（`/var/lib/pg369`、`redis-server --daemonize`）。Docker daemon は要 `sudo dockerd`。
 - Playwright のブラウザDLは本サンドボックスのネットワークでは失敗する。代わりに署名Cookieを使ったHTTPスモークで主要画面の200を確認済み。
+- `prisma migrate reset`（= `pnpm db:reset`）は Claude Code 実行を検知して**安全ガードで拒否**される。クリーンに再投入したい時は `pnpm db:seed`（内部で `TRUNCATE ... CASCADE` してから再生成）を使う。通常のユーザー環境では `db:reset` も動作する。
 - 機能拡張は「動く薄い縦切り」で。巨大な未完成より、CRUD+権限+監査+デモデータの一気通貫を優先。

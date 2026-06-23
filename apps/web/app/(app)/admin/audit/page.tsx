@@ -7,6 +7,28 @@ import { formatDateTime } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
 
+// この画面が必要とする最小限の行の型（Prisma スキーマの対応カラムに一致）。
+// Prisma Client が未生成のビルド環境でも型が一意に決まるよう、画面用に明示定義する。
+type AuditRow = {
+  id: string;
+  actorId: string | null;
+  actorType: string;
+  action: string;
+  entityType: string;
+  summary: string;
+  createdAt: Date;
+};
+type AccessRow = {
+  id: string;
+  actorId: string | null;
+  actorType: string;
+  entityType: string;
+  label: string;
+  purpose: string;
+  createdAt: Date;
+};
+type UserRow = { id: string; name: string };
+
 export default async function AuditPage() {
   const user = await requireUser();
   const canView = hasPermission(user, 'audit', 'read');
@@ -14,9 +36,9 @@ export default async function AuditPage() {
   const [audit, access, users] = await Promise.all([
     prisma.auditLog.findMany({ where: { tenantId: user.tenantId }, orderBy: { createdAt: 'desc' }, take: 100 }),
     prisma.dataAccessLog.findMany({ where: { tenantId: user.tenantId }, orderBy: { createdAt: 'desc' }, take: 30 }),
-    prisma.user.findMany({ where: { tenantId: user.tenantId } }),
+    prisma.user.findMany({ where: { tenantId: user.tenantId }, select: { id: true, name: true } }),
   ]);
-  const userMap = new Map(users.map((u) => [u.id, u.name]));
+  const userMap = new Map(users.map((u: UserRow) => [u.id, u.name] as const));
 
   if (!canView) {
     return (
@@ -38,7 +60,7 @@ export default async function AuditPage() {
             {audit.length === 0 ? (
               <tr><Td colSpan={6}><EmptyState title="ログがありません" /></Td></tr>
             ) : (
-              audit.map((a) => (
+              audit.map((a: AuditRow) => (
                 <tr key={a.id} className="hover:bg-secondary/50">
                   <Td className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(a.createdAt)}</Td>
                   <Td className="text-xs">{a.actorId ? (userMap.get(a.actorId) ?? a.actorId.slice(0, 6)) : 'system'}</Td>
@@ -58,7 +80,7 @@ export default async function AuditPage() {
         <Table>
           <thead><tr><Th>日時</Th><Th>参照者</Th><Th>種別</Th><Th>対象</Th><Th>ラベル</Th><Th>目的</Th></tr></thead>
           <tbody>
-            {access.map((a) => (
+            {access.map((a: AccessRow) => (
               <tr key={a.id}>
                 <Td className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(a.createdAt)}</Td>
                 <Td className="text-xs">{a.actorId ? (userMap.get(a.actorId) ?? a.actorId.slice(0, 6)) : 'system'}</Td>

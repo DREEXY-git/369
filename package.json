@@ -8,6 +8,7 @@
   },
   "packageManager": "pnpm@10.33.0",
   "scripts": {
+    "postinstall": "pnpm --filter @hokko/db generate",
     "dev": "pnpm --filter @hokko/web dev",
     "build": "pnpm db:generate && pnpm --filter @hokko/web build",
     "start": "pnpm --filter @hokko/web start",

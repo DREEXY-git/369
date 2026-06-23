@@ -14,8 +14,12 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // 実行時クエリはプール接続（Supabase: 6543番 / ?pgbouncer=true）を使う。
+  url       = env("DATABASE_URL")
+  // マイグレーション/イントロスペクションは直接接続（Supabase: 5432番）を使う。
+  // ローカルなど非プール環境では DATABASE_URL と同じ値で可。
+  directUrl = env("DIRECT_URL")
 }
 
 // ============================ Enums ==========================================

@@ -1,0 +1,105 @@
+'use server';
+
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
+import { MockCommunicationConnector } from '@hokko/integrations';
+import { classifyBusinessRelevance } from '@hokko/shared';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
+import { prisma, writeAudit } from '@/lib/db';
+
+/** Mockコネクタから取り込み、AIで業務関連性を判定して二段階保存に振り分ける。 */
+export async function ingestMockMessagesAction(formData: FormData) {
+  const user = await requireUser();
+  if (!hasPermission(user, 'communication', 'create')) redirect('/communications/inbox?denied=1');
+  const provider = String(formData.get('provider') ?? 'gmail');
+
+  const connector = new MockCommunicationConnector(provider);
+  const messages = await connector.fetchRecent(10);
+  const customers = await prisma.customer.findMany({ where: { tenantId: user.tenantId }, select: { name: true, email: true } });
+
+  let relevant = 0;
+  let review = 0;
+  let discarded = 0;
+
+  for (const m of messages) {
+    // 重複取り込みを避ける
+    const already = await prisma.businessRelevanceDecision.count({ where: { tenantId: user.tenantId, itemRef: `${provider}:${m.externalId}` } });
+    if (already > 0) continue;
+
+    const domain = m.sender.includes('@') ? m.sender.slice(m.sender.indexOf('@') + 1) : '';
+    const knownDomain = customers.some((c) => c.email && c.email.includes(domain) && domain.length > 0);
+    const matchedCustomer = customers.find((c) => m.body.includes(c.name) || m.subject.includes(c.name));
+    const res = classifyBusinessRelevance(`${m.subject} ${m.body}`, {
+      customerName: matchedCustomer?.name,
+      knownDomain,
+    });
+
+    await prisma.businessRelevanceDecision.create({
+      data: { tenantId: user.tenantId, itemRef: `${provider}:${m.externalId}`, relevance: res.relevance, reason: res.reason, confidence: res.confidence },
+    });
+
+    if (res.relevance === 'relevant') {
+      await prisma.communicationThread.create({
+        data: {
+          tenantId: user.tenantId,
+          channel: m.channel,
+          subject: m.subject,
+          relevance: 'relevant',
+          messages: { create: [{ tenantId: user.tenantId, sender: m.sender, direction: 'inbound', body: m.body }] },
+        },
+      });
+      relevant++;
+    } else if (res.relevance === 'review') {
+      await prisma.temporaryIngestionItem.create({
+        data: { tenantId: user.tenantId, channel: m.channel, preview: `${m.subject} — ${res.reason}`, status: 'review' },
+      });
+      review++;
+    } else {
+      await prisma.temporaryIngestionItem.create({
+        data: { tenantId: user.tenantId, channel: m.channel, preview: `${m.subject} — ${res.reason}`, status: 'discarded' },
+      });
+      discarded++;
+    }
+  }
+
+  await writeAudit({
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    actorType: 'ai_agent',
+    action: 'ai_run',
+    entityType: 'CommunicationThread',
+    summary: `Mockコネクタ(${provider})から取り込み: 自動保存${relevant}/確認待ち${review}/非保存${discarded}`,
+  });
+  revalidatePath('/communications/inbox');
+  revalidatePath('/communications/temp');
+  redirect(`/communications/inbox?ingested=${relevant}&review=${review}&discarded=${discarded}`);
+}
+
+/** 一時保管アイテムの保存/破棄（二段階保存の確認）。 */
+export async function decideTempItemAction(formData: FormData) {
+  const user = await requireUser();
+  if (!hasPermission(user, 'communication', 'update')) redirect('/communications/temp?denied=1');
+  const itemId = String(formData.get('itemId') ?? '');
+  const decision = String(formData.get('decision') ?? '');
+  const item = await prisma.temporaryIngestionItem.findFirst({ where: { id: itemId, tenantId: user.tenantId } });
+  if (!item) redirect('/communications/temp');
+
+  if (decision === 'save') {
+    await prisma.temporaryIngestionItem.update({ where: { id: itemId }, data: { status: 'saved' } });
+    await prisma.communicationThread.create({
+      data: { tenantId: user.tenantId, channel: item.channel, subject: item.preview.split(' — ')[0] ?? item.preview, relevance: 'relevant' },
+    });
+  } else {
+    await prisma.temporaryIngestionItem.update({ where: { id: itemId }, data: { status: 'discarded' } });
+  }
+  await writeAudit({
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    action: 'update',
+    entityType: 'TemporaryIngestionItem',
+    entityId: itemId,
+    summary: `一時保管アイテムを${decision === 'save' ? '保存' : '破棄'}`,
+  });
+  revalidatePath('/communications/temp');
+  redirect('/communications/temp');
+}

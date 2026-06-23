@@ -24,6 +24,10 @@ const BUSINESS_KEYWORDS = [
 
 const PRIVATE_KEYWORDS = ['家族', 'プライベート', '私用', '個人的', '飲み会', '休暇の相談'];
 
+// 業務文書を強く示すキーワードは単独でも業務関連と判定できるよう重み付けを高くする。
+const STRONG_KEYWORDS = ['見積', '契約', '請求', '発注', '納品', 'クレーム'];
+const weightFor = (k: string) => (STRONG_KEYWORDS.includes(k) ? 0.5 : 0.18);
+
 export interface RelevanceResult {
   relevance: Relevance;
   confidence: number;
@@ -37,7 +41,7 @@ export function classifyBusinessRelevance(
 ): RelevanceResult {
   const matched = BUSINESS_KEYWORDS.filter((k) => text.includes(k));
   const privateMatched = PRIVATE_KEYWORDS.filter((k) => text.includes(k));
-  let score = matched.length * 0.18;
+  let score = matched.reduce((s, k) => s + weightFor(k), 0);
   if (signals.customerName && text.includes(signals.customerName)) score += 0.3;
   if (signals.dealName && text.includes(signals.dealName)) score += 0.2;
   if (signals.knownDomain) score += 0.2;

@@ -31,6 +31,7 @@ import {
   Shield,
   ScrollText,
   Search,
+  Route,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -51,27 +52,27 @@ const NAV: Group[] = [
   {
     title: '営業・顧客',
     items: [
-      { label: '顧客 CRM', href: '/customers', icon: Users },
-      { label: '案件', href: '/deals', icon: Briefcase },
+      { label: '顧客CRM', href: '/customers', icon: Users },
+      { label: '案件管理', href: '/deals', icon: Briefcase },
       { label: '営業パイプライン', href: '/deals/kanban', icon: KanbanSquare },
     ],
   },
   {
-    title: 'LeadMap AI',
+    title: 'リードマップAI（地図営業）',
     items: [
       { label: 'キャンペーン', href: '/leadmap/campaigns', icon: Megaphone },
       { label: 'リード一覧', href: '/leadmap/leads', icon: Users },
       { label: '地図CRM', href: '/leadmap/map', icon: MapPin },
       { label: 'パイプライン', href: '/leadmap/pipeline', icon: KanbanSquare },
-      { label: '訪問ルート', href: '/leadmap/routes', icon: MapPin },
+      { label: '訪問ルート', href: '/leadmap/routes', icon: Route },
     ],
   },
   {
-    title: '見積・請求',
+    title: '見積・契約・請求',
     items: [
-      { label: '見積', href: '/quotes', icon: FileText },
+      { label: '見積書', href: '/quotes', icon: FileText },
       { label: '契約', href: '/contracts', icon: ScrollText },
-      { label: '請求', href: '/invoices', icon: Receipt },
+      { label: '請求書', href: '/invoices', icon: Receipt },
     ],
   },
   {
@@ -128,41 +129,58 @@ const NAV: Group[] = [
 export function Sidebar() {
   const pathname = usePathname();
   return (
-    <aside className="hidden w-60 shrink-0 flex-col border-r bg-card md:flex">
-      <div className="flex h-14 items-center gap-2 border-b px-4">
-        <span className="text-xl font-black text-primary">369</span>
-        <span className="text-xs text-muted-foreground">統合AI経営OS</span>
+    <aside className="hidden w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground md:flex">
+      <div className="flex h-16 items-center gap-2.5 px-4">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-sm font-black text-white shadow-lg shadow-indigo-900/40">
+          369
+        </div>
+        <div className="leading-tight">
+          <div className="text-sm font-bold text-white">統合AI経営OS</div>
+          <div className="text-[10px] text-sidebar-muted">＋ LeadMap AI</div>
+        </div>
       </div>
-      <nav className="flex-1 overflow-y-auto scrollbar-thin px-2 py-3">
+
+      <nav className="scrollbar-dark flex-1 overflow-y-auto px-3 pb-4">
         {NAV.map((group) => (
-          <div key={group.title} className="mb-3">
-            <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <div key={group.title} className="mb-4">
+            <div className="px-2.5 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted">
               {group.title}
             </div>
-            {group.items.map((item) => {
-              const active =
-                pathname === item.href ||
-                (item.href !== '/dashboard' && pathname.startsWith(item.href));
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    'flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition',
-                    active
-                      ? 'bg-accent font-medium text-accent-foreground'
-                      : 'text-foreground/80 hover:bg-secondary',
-                  )}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{item.label}</span>
-                </Link>
-              );
-            })}
+            <div className="space-y-0.5">
+              {group.items.map((item) => {
+                const active =
+                  pathname === item.href ||
+                  (item.href !== '/dashboard' && pathname.startsWith(item.href));
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      'group flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors',
+                      active
+                        ? 'bg-sidebar-accent font-medium text-white shadow-sm shadow-indigo-950/30'
+                        : 'text-sidebar-foreground hover:bg-white/[0.06] hover:text-white',
+                    )}
+                  >
+                    <Icon
+                      className={cn(
+                        'h-[18px] w-[18px] shrink-0 transition-colors',
+                        active ? 'text-white' : 'text-sidebar-muted group-hover:text-white',
+                      )}
+                    />
+                    <span className="truncate">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
           </div>
         ))}
       </nav>
+
+      <div className="border-t border-white/10 px-4 py-3 text-[10px] text-sidebar-muted">
+        © 369 統合AI経営OS
+      </div>
     </aside>
   );
 }

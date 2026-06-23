@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
+import { emitDomainEvent, dispatchDomainEvent } from '@/lib/events';
+import '@/lib/event-handlers'; // ハンドラ登録（副作用）
 
 export async function createCustomerAction(formData: FormData) {
   const user = await requireUser();
@@ -36,6 +38,16 @@ export async function createCustomerAction(formData: FormData) {
     entityId: customer.id,
     summary: `顧客「${name}」を作成`,
   });
+  // ドメインイベント発火（連動基盤）→ Outbox 保存＋同期ハンドラ実行（フォロータスク自動作成）
+  const { eventId, duplicated } = await emitDomainEvent({
+    tenantId: user.tenantId,
+    eventType: 'CUSTOMER_CREATED',
+    aggregateType: 'Customer',
+    aggregateId: customer.id,
+    actorId: user.userId,
+    payload: { name, customerId: customer.id },
+  });
+  if (!duplicated) await dispatchDomainEvent(eventId);
   revalidatePath('/customers');
   redirect(`/customers/${customer.id}`);
 }

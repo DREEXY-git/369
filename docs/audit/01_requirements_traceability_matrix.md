@@ -54,3 +54,10 @@
 - **未実装**: 14
 
 → 「完成」と呼べる領域は現時点で **ゼロ**。最も完成度が高いのは **LeadMap**（DB/UI/Worker/AI/承認/規約遵守が一通り通っている）。最も致命的な欠如は **#1 連動基盤 / #4 会計 / #13 看板見積 / #16 人事 / #17 位置情報 / #20 EC / #22 コールセンター / #33 課金**。
+
+## Phase 1-2 更新（2026-06-23）
+
+- **#1 リアルタイム連動基盤**: 未実装 → **部分**。DomainEvent/OutboxMessage/Webhook(署名検証) を新設、`emitDomainEvent`/`dispatchDomainEvent`/`deliverWebhook` を実装。顧客作成で `CUSTOMER_CREATED` を実発火→フォロータスク自動生成（DB/Action/Handler/Test 接続）。8-1〜8-4 のハンドラ実装済（QUOTE_APPROVED/CONTRACT_SIGNED/PAYMENT_RECEIVED/MEETING_MINUTES_CREATED）。
+- **#30 セキュリティ・権限・監査**: 部分 → **強化(部分)**。ABAC Policy Engine(純関数)＋PolicyDecisionLog、機密参照ログ(DataAccessLog 拡張＋専用 Location/Recording)、承認ゲート関数群、同意基盤(ConsentPolicy/ConsentGrant) を実装。顧客詳細に ABAC＋機密参照ログを組込み。
+- 新規管理UI: `/admin/data-access-logs`・`/admin/policy-decisions`・`/admin/events`・`/admin/compliance/consents`。
+- 残: 位置/録音の「機能本体」UI、ABAC の全 detail/edit への横展開。

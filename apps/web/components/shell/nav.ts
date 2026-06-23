@@ -28,6 +28,10 @@ import {
   ScrollText,
   Search,
   Route,
+  Eye,
+  ShieldCheck,
+  Activity,
+  FileCheck,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -122,6 +126,10 @@ export const NAV: NavGroup[] = [
       { label: '管理コンソール', href: '/admin', icon: Shield },
       { label: 'ユーザー・権限', href: '/admin/users', icon: Users },
       { label: '監査ログ', href: '/admin/audit', icon: ScrollText },
+      { label: '機密参照ログ', href: '/admin/data-access-logs', icon: Eye },
+      { label: 'ポリシー判定', href: '/admin/policy-decisions', icon: ShieldCheck },
+      { label: 'イベント連動', href: '/admin/events', icon: Activity },
+      { label: '同意管理', href: '/admin/compliance/consents', icon: FileCheck },
     ],
   },
 ];

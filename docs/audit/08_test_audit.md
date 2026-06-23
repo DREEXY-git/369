@@ -23,3 +23,10 @@
 ## 結論
 
 **安全性・業務クリティカルパスのテストがほぼ皆無**。Phase 8 で security/integration/e2e を集中整備。まずは「クロステナント拒否」「外部送信は承認必須」「機密ラベル拒否」の3本を最優先で追加すべき。
+
+## Phase 1-2 更新（2026-06-23）
+
+- 追加 unit（DB非依存・`pnpm test`）: policy(14)/consent(6)/events(4)/webhook(5)/retention(4)/approval(3) = **+36**。合計 **85 passed**。
+- 追加 integration（要DB・`pnpm --filter @hokko/db test:integration`）: `p0_foundations.itest.ts`（イベント冪等/クロステナント分離/同意付与→撤回/ポリシー deny 記録）= 4 tests。**14 passed**。
+- カバー: ABAC allow/deny、HR機密拒否、AI不正参照拒否、位置/録音の同意必須、営業時間外拒否、外部送信/エクスポート承認必須、同意撤回ブロック、リテンション失効、冪等防止、Webhook署名/リプレイ。
+- 残: e2e（承認フロー/権限分離の画面操作）、SSRF/XSS/CSRF の自動テスト。

@@ -287,16 +287,24 @@ model ApprovalRequest {
   entityType  String
   entityId    String
   requestedById String?
+  requestedForAction String? // ApprovalAction（shared/approval.ts）
   assigneeRole RoleKey?
+  approverRoleRequired RoleKey?
   riskLevel   AlertSeverity  @default(MEDIUM)
+  reason      String   @default("")
   payload     Json?
+  payloadBefore Json?
+  payloadAfter Json?
   status      ApprovalStatus @default(PENDING)
   decidedById String?
   decidedAt   DateTime?
   decisionNote String?
+  expiresAt   DateTime?
+  auditLogId  String?
   createdAt   DateTime       @default(now())
 
   @@index([tenantId, status])
+  @@index([tenantId, requestedForAction])
 }
 
 model AuditLog {
@@ -324,10 +332,21 @@ model DataAccessLog {
   entityType String
   entityId   String?
   label      ConfidentialityLabel @default(NORMAL)
+  action     String   @default("read") // read | ai_reference | location_view | recording_view | export | external_share | confidential_view
   purpose    String   @default("")
+  policyDecision String? // allow | deny
+  consentGrantId String?
+  sensitiveReasonId String?
+  aiAgentId  String?
+  llmCallLogId String?
+  ip         String?
+  userAgent  String?
+  metadata   Json?
   createdAt  DateTime @default(now())
 
   @@index([tenantId, createdAt])
+  @@index([tenantId, action])
+  @@index([tenantId, entityType, entityId])
 }
 
 model ApiKey {
@@ -2552,4 +2571,204 @@ model VisitRouteStop {
   route VisitRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
+}
+
+// =============================================================================
+// Phase 1-2: コンプラ同意 / ABAC / 機密参照 / イベント連動基盤
+//  - すべて tenantId スカラでスコープ（Tenant への明示リレーションは張らない）。
+//  - フラットなログ/イベントテーブル。検索用 index を付与。
+// =============================================================================
+
+model ConsentPolicy {
+  id              String   @id @default(cuid())
+  tenantId        String
+  key             String // location_tracking | recording | external_llm | expert_share | email_marketing | sms | line | call_center
+  purpose         String
+  dataType        String   @default("")
+  description     String   @default("")
+  requiresConsent Boolean  @default(true)
+  retentionDays   Int      @default(365)
+  version         Int      @default(1)
+  active          Boolean  @default(true)
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([tenantId, key])
+  @@index([tenantId])
+}
+
+model ConsentGrant {
+  id            String    @id @default(cuid())
+  tenantId      String
+  subjectType   String // employee | customer | contact
+  subjectUserId String?
+  customerId    String?
+  subjectLabel  String    @default("") // 表示用（氏名/メール等）
+  policyKey     String
+  purpose       String
+  status        String    @default("granted") // granted | withdrawn
+  version       Int       @default(1)
+  source        String    @default("manual")
+  note          String    @default("")
+  grantedAt     DateTime  @default(now())
+  withdrawnAt   DateTime?
+  expiresAt     DateTime?
+  createdById   String?
+  metadata      Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId, policyKey])
+  @@index([tenantId, subjectUserId])
+  @@index([tenantId, customerId])
+}
+
+model SensitiveAccessReason {
+  id           String    @id @default(cuid())
+  tenantId     String
+  actorId      String?
+  targetType   String
+  targetId     String?
+  dataType     String    @default("")
+  purpose      String    @default("")
+  reason       String
+  approvedById String?
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([tenantId, actorId])
+  @@index([tenantId, targetType, targetId])
+}
+
+model PolicyDecisionLog {
+  id               String               @id @default(cuid())
+  tenantId         String
+  actorId          String?
+  actorType        String               @default("user")
+  resource         String // dataType
+  action           String
+  label            ConfidentialityLabel @default(NORMAL)
+  decision         String // allow | deny
+  reason           String               @default("")
+  policyId         String               @default("abac-v1")
+  matchedRules     String[]
+  purpose          String               @default("")
+  requiredApproval Boolean              @default(false)
+  requiredConsent  Boolean              @default(false)
+  requiredReason   Boolean              @default(false)
+  targetId         String?
+  createdAt        DateTime             @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, decision])
+}
+
+model DomainEvent {
+  id             String    @id @default(cuid())
+  tenantId       String
+  eventType      String
+  aggregateType  String
+  aggregateId    String
+  actorId        String?
+  actorType      String    @default("user")
+  payload        Json?
+  metadata       Json?
+  idempotencyKey String
+  status         String    @default("pending") // pending|processing|processed|failed|dead
+  failureReason  String?
+  retryCount     Int       @default(0)
+  occurredAt     DateTime  @default(now())
+  processedAt    DateTime?
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, eventType])
+  @@index([tenantId, status])
+  @@index([aggregateType, aggregateId])
+}
+
+model OutboxMessage {
+  id            String    @id @default(cuid())
+  tenantId      String
+  eventId       String
+  eventType     String
+  topic         String    @default("domain")
+  payload       Json?
+  status        String    @default("pending") // pending|delivered|failed|dead
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now())
+  lastError     String?
+  createdAt     DateTime  @default(now())
+  deliveredAt   DateTime?
+
+  @@index([tenantId, status, nextAttemptAt])
+  @@index([eventId])
+}
+
+model WebhookSubscription {
+  id          String   @id @default(cuid())
+  tenantId    String
+  eventType   String // "*" で全イベント
+  url         String
+  secret      String
+  active      Boolean  @default(true)
+  description String   @default("")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, active])
+}
+
+model WebhookDelivery {
+  id             String    @id @default(cuid())
+  tenantId       String
+  subscriptionId String
+  eventId        String
+  eventType      String
+  url            String
+  status         String    @default("pending") // pending|success|failed
+  statusCode     Int?
+  attempts       Int       @default(0)
+  signature      String    @default("")
+  error          String?
+  createdAt      DateTime  @default(now())
+  deliveredAt    DateTime?
+
+  @@index([tenantId, status])
+  @@index([subscriptionId])
+}
+
+model LocationAccessLog {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  actorId             String?
+  targetUserId        String?
+  purpose             String   @default("")
+  reason              String   @default("")
+  decision            String   @default("allow")
+  withinBusinessHours Boolean  @default(true)
+  consentStatus       String   @default("")
+  ip                  String?
+  createdAt           DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, targetUserId])
+}
+
+model RecordingAccessLog {
+  id            String   @id @default(cuid())
+  tenantId      String
+  actorId       String?
+  recordingId   String?
+  meetingId     String?
+  purpose       String   @default("")
+  reason        String   @default("")
+  decision      String   @default("allow")
+  consentStatus String   @default("")
+  external      Boolean  @default(false)
+  ip            String?
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, createdAt])
 }

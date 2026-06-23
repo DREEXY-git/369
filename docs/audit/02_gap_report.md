@@ -49,3 +49,11 @@
 2. **G-04/G-05 コンプラ&監査の土台**（位置/録音同意・機密参照ログ）
 3. **G-01 連動基盤**（EventLog/Outbox/Webhook）
 4. **G-02 会計** → **G-03 看板見積** → **G-06 EC** …（Phase 2 以降）
+
+## Phase 1-2 更新（2026-06-23）— 解消状況
+
+- **G-01 連動基盤**: ✅ 基盤実装（Event/Outbox/Webhook/Idempotency/連動ハンドラ）。残: worker での Outbox 定期処理の常時化。
+- **G-05 機密参照ログ**: ✅ `writeDataAccess` 拡張＋専用ロガー（AI/位置/録音/エクスポート/外部共有）。顧客詳細に組込み。残: 契約/請求/会計/人事/勤怠/議事録への横展開。
+- **G-11 ABAC**: ✅ Policy Engine＋`assertCanViewConfidential` 等の assert 群＋PolicyDecisionLog。残: 全 detail/edit への適用、MFA/SSO。
+- **G-04 同意基盤**: ◯ 同意モデル/付与・撤回UI/評価ロジック実装。残: 位置/録音の「取得・機能」本体と「取得中明示」UI。
+- 承認ゲート: ✅ `requiresApproval` を全危険操作に拡張＋`createApprovalRequest`/`executeApprovedAction` 等。残: 各危険操作の実行経路への適用。

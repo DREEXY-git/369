@@ -1,0 +1,82 @@
+// ドメインイベントの型・冪等キー（純ロジック・DB非依存・client安全）。
+// 署名(HMAC)は node:crypto を使うため別モジュール '@hokko/shared/webhook' に隔離。
+
+export const DOMAIN_EVENT_TYPES = [
+  'CUSTOMER_CREATED',
+  'CUSTOMER_UPDATED',
+  'DEAL_CREATED',
+  'DEAL_STAGE_CHANGED',
+  'QUOTE_CREATED',
+  'QUOTE_APPROVED',
+  'CONTRACT_CREATED',
+  'CONTRACT_SIGNED',
+  'INVOICE_CREATED',
+  'PAYMENT_RECEIVED',
+  'RECEIPT_UPLOADED',
+  'JOURNAL_SUGGESTED',
+  'INVENTORY_RESERVED',
+  'INVENTORY_RELEASED',
+  'TASK_CREATED',
+  'MEETING_MINUTES_CREATED',
+  'KNOWLEDGE_INGESTED',
+  'AI_AGENT_RUN_COMPLETED',
+  'OUTREACH_DRAFT_CREATED',
+  'OUTREACH_APPROVED',
+  'EXTERNAL_SEND_REQUESTED',
+  'LOCATION_VIEWED',
+  'RECORDING_VIEWED',
+  'CONFIDENTIAL_DATA_VIEWED',
+] as const;
+
+export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
+
+export function isDomainEventType(v: string): v is DomainEventType {
+  return (DOMAIN_EVENT_TYPES as readonly string[]).includes(v);
+}
+
+export type EventStatus = 'pending' | 'processing' | 'processed' | 'failed' | 'dead';
+
+export interface DomainEventInput {
+  tenantId: string;
+  eventType: DomainEventType;
+  aggregateType: string;
+  aggregateId: string;
+  actorId?: string | null;
+  actorType?: string;
+  payload?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  /** 冪等化のための追加識別子（同一イベントの二重発火を防ぐ）。 */
+  dedupe?: string;
+}
+
+/**
+ * 冪等キー（決定的・衝突しにくい）。同一 (tenant,type,aggregate,dedupe) は同一キー。
+ * crypto不要の安定文字列 + 簡易ハッシュで短縮。
+ */
+export function makeIdempotencyKey(input: {
+  tenantId: string;
+  eventType: string;
+  aggregateId: string;
+  dedupe?: string;
+}): string {
+  const base = `${input.tenantId}:${input.eventType}:${input.aggregateId}:${input.dedupe ?? ''}`;
+  return `${input.eventType}:${fnv1a(base)}`;
+}
+
+// FNV-1a 32bit（依存なしの安定ハッシュ。暗号用途ではない）。
+function fnv1a(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+/** 指数バックオフ（ms）。再試行のスケジューリングに使用。 */
+export function nextRetryDelayMs(retryCount: number, baseMs = 2000, maxMs = 3_600_000): number {
+  const d = baseMs * Math.pow(2, Math.max(0, retryCount));
+  return Math.min(d, maxMs);
+}
+
+export const MAX_EVENT_RETRIES = 6;

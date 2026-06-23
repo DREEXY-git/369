@@ -3,13 +3,27 @@
 export type ApprovalAction =
   | 'outreach_send' // LeadMap 営業メール送信
   | 'customer_email_send'
+  | 'line_send'
+  | 'sms_send'
+  | 'ai_call_dial' // AI電話発信 / AIコールセンター発信
   | 'quote_issue'
   | 'contract_sign'
   | 'invoice_send'
+  | 'dunning_send' // 督促送信
   | 'payment_execute'
+  | 'journal_finalize' // 会計仕訳確定
+  | 'closing_finalize' // 決算確定
+  | 'payroll_process' // 給与関連処理
+  | 'hr_evaluation_change' // 人事評価変更
+  | 'permission_change' // 権限変更
   | 'data_export'
   | 'data_delete'
   | 'hr_decision'
+  | 'expert_share' // 外部士業への共有
+  | 'location_view' // 位置情報の閲覧
+  | 'recording_external_share' // 録音データの外部共有
+  | 'ai_high_confidential_send' // 高機密データのAI送信
+  | 'ai_auto_execute' // AI社員による自動実行
   | 'knowledge_rollback'
   | 'ai_external_action';
 
@@ -22,12 +36,26 @@ export interface ApprovalContext {
 const ALWAYS_APPROVE: ApprovalAction[] = [
   'outreach_send',
   'customer_email_send',
+  'line_send',
+  'sms_send',
+  'ai_call_dial',
   'contract_sign',
   'invoice_send',
+  'dunning_send',
   'payment_execute',
+  'journal_finalize',
+  'closing_finalize',
+  'payroll_process',
+  'hr_evaluation_change',
+  'permission_change',
   'data_export',
   'data_delete',
   'hr_decision',
+  'expert_share',
+  'location_view',
+  'recording_external_share',
+  'ai_high_confidential_send',
+  'ai_auto_execute',
   'knowledge_rollback',
   'ai_external_action',
 ];

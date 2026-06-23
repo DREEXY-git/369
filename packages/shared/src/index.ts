@@ -11,3 +11,9 @@ export * from './approval';
 export * from './suppression';
 export * from './relevance';
 export * from './format';
+export * from './policy';
+export * from './consent';
+export * from './retention';
+export * from './events';
+// 注: './webhook' は node:crypto を使うため barrel に含めない（client汚染防止）。
+//     サーバ/ワーカーは '@hokko/shared/webhook' から直接 import する。

@@ -38,3 +38,13 @@
 ## 結論
 
 土台（認証/RBAC/テナント分離/SSRF/外部送信承認）は**存在するが、機密参照ログ・ABAC・コンプラ同意・AI注入対策・セキュリティテストが未整備**。本番前に P0(G-04/G-05) と ABAC を最優先で固める。
+
+## Phase 1-2 更新（2026-06-23）
+
+実装済みに追加:
+- **ABAC / Policy Engine**（`packages/shared/policy.ts` 純関数＋`apps/web/lib/security/policy.ts` 統合層）。`PolicyDecisionLog` に全判定を記録。
+- **機密参照ログ拡充**: `DataAccessLog` 拡張（action/policyDecision/consent/ip/aiAgent 等）＋`LocationAccessLog`/`RecordingAccessLog`。
+- **同意基盤**: `ConsentPolicy`/`ConsentGrant`＋撤回/失効を反映する評価ロジック。
+- **承認ゲート**: 危険操作21種を `requiresApproval` で必須化＋承認ライフサイクル関数。
+- **Webhook 署名(HMAC-SHA256)** 生成/検証＋timestampリプレイ防止。
+残: MFA/SSO/SCIM、改ざん検知(ハッシュチェーン)、レート制限、CSP、prompt injection 検出、ファイル検証。

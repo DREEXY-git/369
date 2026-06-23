@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireUser } from '@/lib/auth/current-user';
-import { prisma, writeDataAccess } from '@/lib/db';
+import { prisma } from '@/lib/db';
+import { assertCanViewConfidential, PolicyDenied } from '@/lib/security/policy';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Stat, EmptyState } from '@/components/ui';
@@ -24,7 +25,30 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     },
   });
   if (!customer) notFound();
-  await writeDataAccess({ tenantId: user.tenantId, actorId: user.userId, entityType: 'Customer', entityId: customer.id, label: customer.label as any, purpose: '顧客詳細の閲覧' });
+  // ABAC ポリシー判定 ＋ PolicyDecisionLog ＋ 機密参照ログ。拒否時は権限なし表示。
+  try {
+    await assertCanViewConfidential(user, {
+      dataType: 'customer',
+      label: customer.label as any,
+      entityType: 'Customer',
+      entityId: customer.id,
+      ownerId: customer.ownerId,
+      purpose: '顧客詳細の閲覧',
+    });
+  } catch (e) {
+    if (e instanceof PolicyDenied) {
+      return (
+        <div>
+          <PageHeader title={customer.name} breadcrumb={[{ label: '顧客', href: '/customers' }]} />
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            この顧客情報の閲覧は許可されていません（理由: {e.decision.reason}）。
+            {e.decision.requiredSensitiveAccessReason ? '機密アクセス理由の登録が必要です。' : ''}
+          </div>
+        </div>
+      );
+    }
+    throw e;
+  }
 
   const insight = customer.insights[0];
 

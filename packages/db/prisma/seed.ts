@@ -50,6 +50,16 @@ const ROLE_NAMES: Record<RoleKey, string> = {
 
 async function main() {
   console.log('🌱 seeding 369 / LeadMap AI demo data…');
+  // 非破壊ガード: SEED_ONLY_IF_EMPTY=1 のときは、既存データがあれば何もしない（本番の再デプロイ用）。
+  // 通常の `pnpm db:seed`（フラグ無し）は従来どおり reset→再生成する。
+  if (process.env.SEED_ONLY_IF_EMPTY === '1') {
+    const existing = await prisma.tenant.findFirst();
+    if (existing) {
+      console.log('[seed] 既存データを検出したためシードをスキップしました（非破壊）。');
+      return;
+    }
+    console.log('[seed] 空のデータベースを検出 — 初回シードを実行します。');
+  }
   await reset();
 
   // ---- Tenant ----

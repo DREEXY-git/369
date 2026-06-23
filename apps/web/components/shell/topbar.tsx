@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { Bell, CheckSquare, LogOut, Search } from 'lucide-react';
 import { Badge } from '@/components/ui';
+import { ThemeToggle } from '@/components/theme-toggle';
+import { MobileNav } from './mobile-nav';
 import { logoutAction } from '@/app/login/actions';
 import { ROLE_LABEL, primaryRole, type CurrentUser } from '@/lib/auth/current-user';
 
@@ -17,11 +19,13 @@ export function Topbar({
   const initial = (user.name ?? '?').trim().slice(0, 1) || '?';
   return (
     <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-card/70">
-      {/* モバイル用ブランド */}
+      {/* モバイル: ハンバーガー＋ブランド */}
+      <MobileNav />
       <div className="flex items-center gap-2 md:hidden">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-xs font-black text-white">
-          369
+          IK
         </div>
+        <span className="text-sm font-bold tracking-tight">IKEZAKI OS</span>
       </div>
 
       <form action="/knowledge/search" className="relative hidden flex-1 md:block">
@@ -33,6 +37,8 @@ export function Topbar({
         />
       </form>
       <div className="flex-1 md:hidden" />
+
+      <ThemeToggle />
 
       <Link
         href="/approvals"

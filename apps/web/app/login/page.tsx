@@ -33,12 +33,12 @@ export default function LoginPage() {
         {/* 左：ブランド訴求（md以上） */}
         <div className="relative hidden flex-col justify-between bg-gradient-to-br from-indigo-600 to-violet-700 p-8 text-white md:flex">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 text-base font-black backdrop-blur">
-              369
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 text-base font-black tracking-tight backdrop-blur">
+              IK
             </div>
             <div className="leading-tight">
-              <div className="text-sm font-bold">統合AI経営OS</div>
-              <div className="text-[11px] text-white/70">＋ LeadMap AI</div>
+              <div className="text-sm font-bold">IKEZAKI OS</div>
+              <div className="text-[11px] text-white/70">統合AI経営OS ＋ LeadMap AI</div>
             </div>
           </div>
 
@@ -61,14 +61,14 @@ export default function LoginPage() {
             </ul>
           </div>
 
-          <div className="text-[11px] text-white/60">© 369 統合AI経営OS / プランニングホッコー</div>
+          <div className="text-[11px] text-white/60">© IKEZAKI OS / プランニングホッコー</div>
         </div>
 
         {/* 右：ログインフォーム */}
         <div className="p-8">
           <div className="mb-6 md:hidden">
-            <div className="text-3xl font-black tracking-tight text-primary">369</div>
-            <div className="mt-1 text-sm text-muted-foreground">統合AI経営OS + LeadMap AI</div>
+            <div className="text-2xl font-black tracking-tight text-primary">IKEZAKI OS</div>
+            <div className="mt-1 text-sm text-muted-foreground">統合AI経営OS ＋ LeadMap AI</div>
           </div>
 
           <h1 className="text-lg font-bold tracking-tight">ログイン</h1>

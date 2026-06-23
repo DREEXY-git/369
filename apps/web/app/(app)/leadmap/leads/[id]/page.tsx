@@ -127,9 +127,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             </CardContent>
           </Card>
 
-          {/* 369 CRM連携（商談化） */}
+          {/* CRM連携（商談化） */}
           <Card>
-            <CardHeader><CardTitle>369 CRM連携</CardTitle></CardHeader>
+            <CardHeader><CardTitle>CRM連携</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               {lead.customerId ? (
                 <>
@@ -141,7 +141,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                 <form action={convertLeadToCustomerAction}>
                   <input type="hidden" name="leadId" value={lead.id} />
                   <Button type="submit" className="w-full">🤝 商談化（顧客・案件をCRMに作成）</Button>
-                  <p className="mt-1 text-[11px] text-muted-foreground">このリードを369の顧客・案件として登録し、以後はCRM/案件管理で追跡します。</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">このリードをCRMの顧客・案件として登録し、以後はCRM/案件管理で追跡します。</p>
                 </form>
               )}
             </CardContent>

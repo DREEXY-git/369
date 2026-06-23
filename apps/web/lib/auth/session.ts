@@ -2,7 +2,7 @@ import { cookies } from 'next/headers';
 import { SignJWT, jwtVerify } from 'jose';
 import type { RoleKey } from '@hokko/shared';
 
-export const SESSION_COOKIE = '369_session';
+export const SESSION_COOKIE = 'ikezaki_session';
 const ALG = 'HS256';
 
 export interface SessionPayload {

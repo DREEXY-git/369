@@ -6,10 +6,10 @@ import { loginAction, type LoginState } from './actions';
 import { Button, Input } from '@/components/ui';
 
 const DEMO = [
-  { email: 'ceo@369.local', label: '社長 (OWNER)' },
-  { email: 'sales@369.local', label: '営業担当 (STAFF)' },
-  { email: 'admin@369.local', label: '管理者 (ADMIN)' },
-  { email: 'ai-sales@369.local', label: 'AI営業社員 (AI)' },
+  { email: 'ceo@ikezaki.local', label: '社長 (OWNER)' },
+  { email: 'sales@ikezaki.local', label: '営業担当 (STAFF)' },
+  { email: 'admin@ikezaki.local', label: '管理者 (ADMIN)' },
+  { email: 'ai-sales@ikezaki.local', label: 'AI営業社員 (AI)' },
 ];
 
 const FEATURES = [
@@ -20,7 +20,7 @@ const FEATURES = [
 
 export default function LoginPage() {
   const [state, action, pending] = useActionState<LoginState, FormData>(loginAction, {});
-  const [email, setEmail] = useState('ceo@369.local');
+  const [email, setEmail] = useState('ceo@ikezaki.local');
   const [password, setPassword] = useState('password123!');
 
   return (

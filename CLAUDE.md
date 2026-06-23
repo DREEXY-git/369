@@ -1,4 +1,4 @@
-# CLAUDE.md — 369 統合AI経営OS + LeadMap AI
+# CLAUDE.md — IKEZAKI OS（統合AI経営OS） + LeadMap AI
 
 このファイルは Claude Code が次回作業時に参照する開発ガイドです。
 
@@ -80,7 +80,7 @@ pnpm test:e2e                               # Playwright（要 chromium）
 - **autoprefixer を PostCSS に戻さない**: `tailwindcss` の jiti 設定ローダ（peer に tsx）が `browserslist` のロードを壊し `next build` が失敗する。現状 `postcss.config.cjs` は tailwindcss のみ。tailwind/postcss 設定は **`.cjs`（CommonJS）**で維持（web は `"type":"module"`）。
 - パッケージ間importに `.js` 拡張子を**付けない**（付けると webpack が解決失敗）。
 - Next 15 では `params`/`searchParams`/`cookies()` が **async**。`await` する。
-- ローカル検証環境では Postgres/Redis をネイティブ起動（`/var/lib/pg369`、`redis-server --daemonize`）。Docker daemon は要 `sudo dockerd`。
+- ローカル検証環境では Postgres/Redis をネイティブ起動（`/var/lib/pg-ikezaki`、`redis-server --daemonize`）。Docker daemon は要 `sudo dockerd`。
 - Playwright のブラウザDLは本サンドボックスのネットワークでは失敗する。代わりに署名Cookieを使ったHTTPスモークで主要画面の200を確認済み。
 - `prisma migrate reset`（= `pnpm db:reset`）は Claude Code 実行を検知して**安全ガードで拒否**される。クリーンに再投入したい時は `pnpm db:seed`（内部で `TRUNCATE ... CASCADE` してから再生成）を使う。通常のユーザー環境では `db:reset` も動作する。
 - 機能拡張は「動く薄い縦切り」で。巨大な未完成より、CRUD+権限+監査+デモデータの一気通貫を優先。

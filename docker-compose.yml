@@ -1,5 +1,5 @@
 # =============================================================================
-# 369 統合AI経営OS — ローカル開発用 Docker Compose
+# IKEZAKI OS — 統合AI経営OS — ローカル開発用 Docker Compose
 #
 # 使い方:
 #   1) インフラのみ起動（Web/Worker はローカルで pnpm 起動）:
@@ -11,25 +11,25 @@ services:
   postgres:
     # pgvector 拡張入りの公式イメージ（将来のネイティブベクトル検索に対応）
     image: pgvector/pgvector:pg16
-    container_name: app369-postgres
+    container_name: ikezaki_os-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app
-      POSTGRES_DB: app369
+      POSTGRES_DB: ikezaki_os
     ports:
       - '5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U app -d app369']
+      test: ['CMD-SHELL', 'pg_isready -U app -d ikezaki_os']
       interval: 5s
       timeout: 5s
       retries: 10
 
   redis:
     image: redis:7-alpine
-    container_name: app369-redis
+    container_name: ikezaki_os-redis
     restart: unless-stopped
     ports:
       - '6379:6379'
@@ -44,7 +44,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: app369-minio
+    container_name: ikezaki_os-minio
     restart: unless-stopped
     environment:
       MINIO_ROOT_USER: minioadmin
@@ -64,22 +64,22 @@ services:
   # 起動時に MinIO バケットを自動作成
   minio-setup:
     image: minio/mc:latest
-    container_name: app369-minio-setup
+    container_name: ikezaki_os-minio-setup
     depends_on:
       minio:
         condition: service_started
     entrypoint: >
       /bin/sh -c "
       until (mc alias set local http://minio:9000 minioadmin minioadmin) do echo 'waiting minio'; sleep 2; done;
-      mc mb -p local/app369 || true;
-      mc anonymous set none local/app369 || true;
+      mc mb -p local/ikezaki_os || true;
+      mc anonymous set none local/ikezaki_os || true;
       echo 'minio bucket ready';
       "
 
   mailhog:
     # Mailpit（Mailhog 後継、互換UI）。SMTP:1025 / UI:8025
     image: axllent/mailpit:latest
-    container_name: app369-mailhog
+    container_name: ikezaki_os-mailhog
     restart: unless-stopped
     ports:
       - '1025:1025'
@@ -91,14 +91,14 @@ services:
     build:
       context: .
       dockerfile: infra/docker/web.Dockerfile
-    container_name: app369-web
+    container_name: ikezaki_os-web
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://app:app@postgres:5432/app369
+      DATABASE_URL: postgresql://app:app@postgres:5432/ikezaki_os
       REDIS_URL: redis://redis:6379
       S3_ENDPOINT: http://minio:9000
       SESSION_SECRET: dev-only-insecure-session-secret-change-me-0123456789abcdef
@@ -110,14 +110,14 @@ services:
     build:
       context: .
       dockerfile: infra/docker/worker.Dockerfile
-    container_name: app369-worker
+    container_name: ikezaki_os-worker
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://app:app@postgres:5432/app369
+      DATABASE_URL: postgresql://app:app@postgres:5432/ikezaki_os
       REDIS_URL: redis://redis:6379
 
 volumes:

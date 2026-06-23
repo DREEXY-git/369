@@ -1,5 +1,5 @@
 // =============================================================================
-// 369 統合AI経営OS + LeadMap AI — Prisma schema
+// IKEZAKI OS — 統合AI経営OS + LeadMap AI — Prisma schema
 //
 // 設計方針:
 //  - マルチテナント: 原則すべてのモデルが tenantId スカラを持ち @@index([tenantId])。
@@ -2292,7 +2292,7 @@ model LocalBusinessLead {
   priority    Int        @default(50) // 0-100 営業優先度
   stage       LeadStage  @default(NEW)
   ownerId     String?
-  customerId  String? // 商談化したら 369 CRM の Customer に連携
+  customerId  String? // 商談化したら IKEZAKI OS CRM の Customer に連携
   dealId      String?
   lastContactAt DateTime?
   createdAt   DateTime   @default(now())

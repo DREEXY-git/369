@@ -1,8 +1,8 @@
 {
-  "name": "app369-monorepo",
+  "name": "ikezaki-os-monorepo",
   "private": true,
   "version": "0.1.0",
-  "description": "369 統合AI経営OS + LeadMap AI / AI新規開拓OS",
+  "description": "IKEZAKI OS — 統合AI経営OS + LeadMap AI / AI新規開拓OS",
   "engines": {
     "node": ">=20"
   },

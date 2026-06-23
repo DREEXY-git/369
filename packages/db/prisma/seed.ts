@@ -49,7 +49,7 @@ const ROLE_NAMES: Record<RoleKey, string> = {
 };
 
 async function main() {
-  console.log('🌱 seeding 369 / LeadMap AI demo data…');
+  console.log('🌱 seeding IKEZAKI OS / LeadMap AI demo data…');
   // 非破壊ガード: SEED_ONLY_IF_EMPTY=1 のときは、既存データがあれば何もしない（本番の再デプロイ用）。
   // 通常の `pnpm db:seed`（フラグ無し）は従来どおり reset→再生成する。
   if (process.env.SEED_ONLY_IF_EMPTY === '1') {
@@ -111,10 +111,10 @@ async function main() {
     await prisma.userRole.create({ data: { tenantId, userId: user.id, roleId: roleIds[role]! } });
     return user;
   }
-  const ceo = await createUser('ceo@369.local', '北郷 誠一', 'OWNER', false, '#4f46e5');
-  const salesUser = await createUser('sales@369.local', '佐藤 大輔', 'STAFF', false, '#0891b2');
-  await createUser('admin@369.local', '管理 花子', 'ADMIN', false, '#7c3aed');
-  const aiSales = await createUser('ai-sales@369.local', 'AI営業社員 アオイ', 'AI_AGENT', true, '#9333ea');
+  const ceo = await createUser('ceo@ikezaki.local', '北郷 誠一', 'OWNER', false, '#4f46e5');
+  const salesUser = await createUser('sales@ikezaki.local', '佐藤 大輔', 'STAFF', false, '#0891b2');
+  await createUser('admin@ikezaki.local', '管理 花子', 'ADMIN', false, '#7c3aed');
+  const aiSales = await createUser('ai-sales@ikezaki.local', 'AI営業社員 アオイ', 'AI_AGENT', true, '#9333ea');
 
   await prisma.employeeProfile.create({
     data: { tenantId, userId: salesUser.id, employeeCode: 'EMP-001', title: '営業主任', hiredAt: addDays(-900) },

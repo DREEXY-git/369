@@ -1,4 +1,4 @@
-# 369 Web (Next.js) — docker compose の full プロファイル用
+# IKEZAKI OS Web (Next.js) — docker compose の full プロファイル用
 FROM node:22-bookworm-slim
 
 RUN apt-get update \

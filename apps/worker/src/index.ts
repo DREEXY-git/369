@@ -9,7 +9,7 @@ import { JOB_NAMES, runJob, type JobData, type JobName } from './jobs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(__dirname, '../../../.env') });
 
-const QUEUE_NAME = '369-jobs';
+const QUEUE_NAME = 'ikezaki-jobs';
 
 function redisConnection(): ConnectionOptions {
   const url = new URL(process.env.REDIS_URL || 'redis://localhost:6379');
@@ -41,7 +41,7 @@ async function main() {
     console.error(`✗ [${job?.name}] 失敗:`, err.message);
   });
 
-  console.log('🛠  369 Worker 起動。キュー:', QUEUE_NAME);
+  console.log('🛠  IKEZAKI OS Worker 起動。キュー:', QUEUE_NAME);
   console.log('   対応ジョブ:', JOB_NAMES.join(', '));
 
   // 開発時はデモジョブを投入して動作を確認

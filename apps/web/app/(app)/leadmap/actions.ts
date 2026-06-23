@@ -246,7 +246,7 @@ export async function updateLeadStageAction(formData: FormData) {
   revalidatePath(`/leadmap/leads/${leadId}`);
 }
 
-/** リードを商談化し、369 CRM（顧客）・案件に連携する（LeadMap→369の接続）。 */
+/** リードを商談化し、CRM（顧客）・案件に連携する（LeadMap→本体CRMへの接続）。 */
 export async function convertLeadToCustomerAction(formData: FormData) {
   const user = await requireUser();
   const leadId = String(formData.get('leadId') ?? '');

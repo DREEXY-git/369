@@ -45,7 +45,7 @@ export async function safeFetch(url: string, opts: SafeFetchOptions = {}): Promi
     const res = await fetch(url, {
       signal: controller.signal,
       redirect: 'follow',
-      headers: { 'user-agent': '369-LeadMap-Scanner/0.1 (+compliance: public pages only)' },
+      headers: { 'user-agent': 'IKEZAKI-OS-LeadMap-Scanner/0.1 (+compliance: public pages only)' },
     });
     const reader = res.body?.getReader();
     let received = 0;

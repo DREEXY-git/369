@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 async function login(page: Page) {
   await page.goto('/login');
-  await page.getByLabel('メールアドレス').fill('ceo@369.local');
+  await page.getByLabel('メールアドレス').fill('ceo@ikezaki.local');
   await page.getByLabel('パスワード').fill('password123!');
   await page.getByRole('button', { name: 'ログイン' }).click();
   await page.waitForURL('**/dashboard');

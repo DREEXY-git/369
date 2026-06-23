@@ -1,4 +1,4 @@
-# 369 Worker (BullMQ) — docker compose の full プロファイル用
+# IKEZAKI OS Worker (BullMQ) — docker compose の full プロファイル用
 FROM node:22-bookworm-slim
 
 RUN apt-get update \

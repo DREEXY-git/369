@@ -1,4 +1,4 @@
-# 369 統合AI経営OS + LeadMap AI / AI新規開拓OS
+# IKEZAKI OS（統合AI経営OS） + LeadMap AI / AI新規開拓OS
 
 中小企業の経営・営業・顧客対応・会計・財務・人事・在庫・会議・ナレッジ・AI社員を**1つに統合**し、
 散らばった情報をAIが繋いで「売上機会・利益漏れ・リスク・次のアクション」を提示する経営OSのMVPです。
@@ -11,7 +11,7 @@
 
 ---
 
-## 1. 369 とは
+## 1. IKEZAKI OS とは
 
 会社中に散らばる情報を一元化し、AIが以下を発見し、社長・社員・AI社員に次のアクションを提示します。
 
@@ -93,7 +93,7 @@ cp .env.example .env
 
 | 変数 | 既定 | 説明 |
 | --- | --- | --- |
-| `DATABASE_URL` | postgres://app:app@localhost:5432/app369 | PostgreSQL |
+| `DATABASE_URL` | postgres://app:app@localhost:5432/ikezaki_os | PostgreSQL |
 | `REDIS_URL` | redis://localhost:6379 | BullMQ |
 | `SESSION_SECRET` | （要変更） | セッション署名鍵 |
 | `LLM_PROVIDER` | `fake` | `fake`/`openai`/`anthropic`（キー無しは自動fake） |
@@ -129,10 +129,10 @@ docker compose exec web pnpm db:seed
 
 | メール | パスワード | ロール |
 | --- | --- | --- |
-| ceo@369.local | password123! | OWNER（社長） |
-| sales@369.local | password123! | STAFF（担当者） |
-| admin@369.local | password123! | ADMIN（管理者） |
-| ai-sales@369.local | password123! | AI_AGENT（AI社員） |
+| ceo@ikezaki.local | password123! | OWNER（社長） |
+| sales@ikezaki.local | password123! | STAFF（担当者） |
+| admin@ikezaki.local | password123! | ADMIN（管理者） |
+| ai-sales@ikezaki.local | password123! | AI_AGENT（AI社員） |
 
 ---
 
@@ -150,7 +150,7 @@ docker compose exec web pnpm db:seed
 
 ## 8. デモシナリオ
 
-1. `ceo@369.local` でログイン → **社長コックピット**で売上/粗利/承認待ち/利益漏れ/高優先度リードを確認。
+1. `ceo@ikezaki.local` でログイン → **社長コックピット**で売上/粗利/承認待ち/利益漏れ/高優先度リードを確認。
 2. **AI朝礼レポート**（`/reports/morning`）でAIが当日の要点・経営異常を生成。
 3. **LeadMap**: `/leadmap/campaigns/new` で「札幌市 美容室」を作成 → リードが抽出される。
 4. リード詳細 → **AIで分析**（強み/改善余地/営業切り口） → **個別営業メール生成**（下書き）。

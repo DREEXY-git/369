@@ -3,7 +3,7 @@ import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
-import { Card, CardContent, Button, Input, Textarea } from '@/components/ui';
+import { Card, CardContent, Button, Input } from '@/components/ui';
 import { updateDealAction } from '../../actions';
 
 export const dynamic = 'force-dynamic';

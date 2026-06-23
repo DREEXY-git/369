@@ -8,13 +8,21 @@ import {
   generateOutreachAction,
   updateOutreachDraftAction,
   requestOutreachApprovalAction,
+  classifyReplyAction,
 } from '../../../actions';
 import { isSuppressed, formatDateTime } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
 
-export default async function OutreachPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function OutreachPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ classified?: string }>;
+}) {
   const { id } = await params;
+  const sp = await searchParams;
   const user = await requireUser();
   const lead = await prisma.localBusinessLead.findFirst({
     where: { id, tenantId: user.tenantId },
@@ -53,6 +61,12 @@ export default async function OutreachPage({ params }: { params: Promise<{ id: s
           </form>
         }
       />
+      {sp.classified ? (
+        <div className={`mb-3 rounded-md px-3 py-2 text-sm ${sp.classified === 'unsubscribe' || sp.classified === 'complaint' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-800'}`}>
+          🤖 返信をAIで分類しました: <span className="font-medium">{sp.classified}</span>
+          {sp.classified === 'unsubscribe' ? '（配信停止リストに追加・ステージを配信停止に更新）' : ''}
+        </div>
+      ) : null}
 
       {!draft ? (
         <Card>
@@ -142,6 +156,19 @@ export default async function OutreachPage({ params }: { params: Promise<{ id: s
                 </CardContent>
               </Card>
             ) : null}
+
+            <Card>
+              <CardHeader><CardTitle>返信の取り込み（AI分類）</CardTitle></CardHeader>
+              <CardContent>
+                <form action={classifyReplyAction} className="space-y-2">
+                  <input type="hidden" name="draftId" value={draft.id} />
+                  <input type="hidden" name="leadId" value={lead.id} />
+                  <Textarea name="body" rows={3} placeholder="相手からの返信を貼り付け…（例: 配信停止してください / ぜひ詳しく聞きたいです）" />
+                  <Button type="submit" variant="secondary" className="w-full">AIで分類</Button>
+                </form>
+                <p className="mt-1 text-[11px] text-muted-foreground">配信停止希望を検知すると自動で抑止リストへ追加し、ステージを更新します。</p>
+              </CardContent>
+            </Card>
 
             {draft.replies.length ? (
               <Card>

@@ -4,7 +4,7 @@ import { requireUser } from '@/lib/auth/current-user';
 import { prisma, writeDataAccess } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
-import { Card, CardContent, CardHeader, CardTitle, Badge, Stat, EmptyState } from '@/components/ui';
+import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Stat, EmptyState } from '@/components/ui';
 import { LabelBadge, DEAL_STAGE_LABEL } from '@/components/badges';
 import { formatJpy, formatDate } from '@hokko/shared';
 
@@ -34,7 +34,13 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         title={customer.name}
         description={`${customer.industry ?? ''} ・ ${customer.phone ?? ''}`}
         breadcrumb={[{ label: '顧客', href: '/customers' }, { label: customer.name, href: `/customers/${customer.id}` }]}
-        action={<div className="flex gap-2"><Link href={`/customers/${customer.id}/timeline`} className="text-sm text-primary hover:underline">タイムライン</Link><Link href={`/customers/${customer.id}/insights`} className="text-sm text-primary hover:underline">インサイト</Link></div>}
+        action={
+          <div className="flex items-center gap-3">
+            <Link href={`/customers/${customer.id}/timeline`} className="text-sm text-primary hover:underline">タイムライン</Link>
+            <Link href={`/customers/${customer.id}/insights`} className="text-sm text-primary hover:underline">インサイト</Link>
+            <Link href={`/customers/${customer.id}/edit`}><Button variant="outline">編集</Button></Link>
+          </div>
+        }
       />
 
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">

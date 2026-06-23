@@ -35,6 +35,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
         title={deal.title}
         description={deal.customer.name}
         breadcrumb={[{ label: '案件', href: '/deals' }, { label: deal.title, href: `/deals/${deal.id}` }]}
+        action={<Link href={`/deals/${deal.id}/edit`}><Button variant="outline">編集</Button></Link>}
       />
 
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">

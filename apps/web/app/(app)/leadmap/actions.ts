@@ -191,6 +191,74 @@ export async function updateLeadStageAction(formData: FormData) {
   revalidatePath(`/leadmap/leads/${leadId}`);
 }
 
+/** リードを商談化し、369 CRM（顧客）・案件に連携する（LeadMap→369の接続）。 */
+export async function convertLeadToCustomerAction(formData: FormData) {
+  const user = await requireUser();
+  const leadId = String(formData.get('leadId') ?? '');
+  if (!hasPermission(user, 'customer', 'create') || !hasPermission(user, 'deal', 'create')) {
+    redirect(`/leadmap/leads/${leadId}?denied=1`);
+  }
+
+  const lead = await prisma.localBusinessLead.findFirst({ where: { id: leadId, tenantId: user.tenantId } });
+  if (!lead) redirect('/leadmap/leads');
+  // 既に連携済みなら顧客へ
+  if (lead.customerId) redirect(`/customers/${lead.customerId}`);
+
+  const customer = await prisma.customer.create({
+    data: {
+      tenantId: user.tenantId,
+      name: lead.name,
+      industry: lead.industry,
+      rank: 'B',
+      ownerId: lead.ownerId ?? user.userId,
+      phone: lead.phone,
+      email: lead.email,
+      address: lead.address,
+      website: lead.website,
+      status: 'prospect',
+      notes: `LeadMap（${lead.city ?? ''} ${lead.industry}）から商談化。優先度 ${lead.priority}。`,
+    },
+  });
+
+  const deal = await prisma.deal.create({
+    data: {
+      tenantId: user.tenantId,
+      customerId: customer.id,
+      title: `${lead.name} 商談（新規開拓）`,
+      ownerId: lead.ownerId ?? user.userId,
+      stage: 'CONTACT',
+      probability: 30,
+      nextAction: '初回ヒアリングの日程調整',
+      source: 'leadmap',
+      leadId: lead.id,
+    },
+  });
+
+  await prisma.customerTimelineEvent.create({
+    data: { tenantId: user.tenantId, customerId: customer.id, type: 'deal', title: 'LeadMapから商談化', body: `新規開拓リードを顧客・案件に連携しました。`, actorId: user.userId },
+  });
+  await prisma.localBusinessLead.update({
+    where: { id: lead.id },
+    data: { customerId: customer.id, dealId: deal.id, stage: 'APPOINTMENT' },
+  });
+  await prisma.leadPipelineStageHistory.create({
+    data: { tenantId: user.tenantId, leadId: lead.id, fromStage: lead.stage, toStage: 'APPOINTMENT', note: '商談化（CRM連携）', changedById: user.userId },
+  });
+  await writeAudit({
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    action: 'create',
+    entityType: 'Customer',
+    entityId: customer.id,
+    summary: `LeadMapリード「${lead.name}」を商談化（顧客・案件を作成）`,
+  });
+
+  revalidatePath(`/leadmap/leads/${lead.id}`);
+  revalidatePath('/customers');
+  revalidatePath('/deals');
+  redirect(`/customers/${customer.id}`);
+}
+
 /** キャンペーン内の未分析リードを一括でAI分析（LeadMapの半自動化の中核）。 */
 export async function bulkAnalyzeCampaignAction(formData: FormData) {
   const user = await requireUser();

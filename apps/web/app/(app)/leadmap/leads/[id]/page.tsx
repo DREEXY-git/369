@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, EmptyState } from '@/components/ui';
 import { LeadStageBadge, PriorityBadge } from '@/components/badges';
-import { analyzeLeadAction, generateOutreachAction } from '../../actions';
+import { analyzeLeadAction, generateOutreachAction, convertLeadToCustomerAction } from '../../actions';
 import { formatDate, formatDateTime, type LeadStage } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
@@ -124,6 +124,26 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                 <Button type="submit" className="w-full">✉️ 個別営業メールを生成</Button>
               </form>
               <p className="text-[11px] text-muted-foreground">営業メールは必ず下書きとして生成され、送信には人間の承認が必要です。</p>
+            </CardContent>
+          </Card>
+
+          {/* 369 CRM連携（商談化） */}
+          <Card>
+            <CardHeader><CardTitle>369 CRM連携</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              {lead.customerId ? (
+                <>
+                  <Badge tone="green">商談化済み</Badge>
+                  <Link href={`/customers/${lead.customerId}`} className="block text-sm text-primary hover:underline">→ 連携先の顧客を見る</Link>
+                  {lead.dealId ? <Link href={`/deals/${lead.dealId}`} className="block text-sm text-primary hover:underline">→ 案件を見る</Link> : null}
+                </>
+              ) : (
+                <form action={convertLeadToCustomerAction}>
+                  <input type="hidden" name="leadId" value={lead.id} />
+                  <Button type="submit" className="w-full">🤝 商談化（顧客・案件をCRMに作成）</Button>
+                  <p className="mt-1 text-[11px] text-muted-foreground">このリードを369の顧客・案件として登録し、以後はCRM/案件管理で追跡します。</p>
+                </form>
+              )}
             </CardContent>
           </Card>
 

@@ -4,7 +4,7 @@ import { requireUser } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
-import { Card, CardContent, CardHeader, CardTitle, Table, Th, Td, Badge, Stat } from '@/components/ui';
+import { Card, CardContent, CardHeader, CardTitle, Table, Th, Td, Badge, Button, Stat } from '@/components/ui';
 import { formatJpy, formatDate } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
@@ -30,7 +30,12 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
         title={`${quote.number} ${quote.title}`}
         description={quote.deal?.customer?.name ?? ''}
         breadcrumb={[{ label: '見積', href: '/quotes' }, { label: quote.number, href: '#' }]}
-        action={<Badge tone={STATUS_TONE[quote.status] ?? 'slate'}>{quote.status}</Badge>}
+        action={
+          <div className="flex items-center gap-3">
+            <Badge tone={STATUS_TONE[quote.status] ?? 'slate'}>{quote.status}</Badge>
+            <Link href={`/print/quotes/${quote.id}`} target="_blank"><Button variant="outline">印刷 / PDF</Button></Link>
+          </div>
+        }
       />
 
       {quote.status === 'pending_approval' ? (

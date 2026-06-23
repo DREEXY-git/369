@@ -1,8 +1,9 @@
+import Link from 'next/link';
 import { requireUser } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
-import { Card, Table, Th, Td, Badge, EmptyState } from '@/components/ui';
+import { Card, Table, Th, Td, Badge, Button, EmptyState } from '@/components/ui';
 import { formatJpy, isLowMargin } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +15,11 @@ export default async function QuotesPage() {
 
   return (
     <div>
-      <PageHeader title="見積管理" description={`${quotes.length} 件。原価・粗利の自動計算と低粗利アラート付き。`} />
+      <PageHeader
+        title="見積管理"
+        description={`${quotes.length} 件。原価・粗利の自動計算と低粗利アラート付き。`}
+        action={<Link href="/quotes/new"><Button>＋ 見積作成</Button></Link>}
+      />
       {lowMargin > 0 ? (
         <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">⚠️ 低粗利の見積が {lowMargin} 件あります。値引き根拠の確認を推奨します。</div>
       ) : null}
@@ -27,7 +32,7 @@ export default async function QuotesPage() {
                 const gm = toNumber(q.grossMarginRate);
                 return (
                   <tr key={q.id} className="hover:bg-secondary/50">
-                    <Td className="font-mono text-xs">{q.number}</Td>
+                    <Td className="font-mono text-xs"><Link href={`/quotes/${q.id}`} className="text-primary hover:underline">{q.number}</Link></Td>
                     <Td>{q.title}</Td>
                     <Td className="font-medium">{formatJpy(toNumber(q.total))}</Td>
                     <Td><Badge tone={gm < 0 ? 'red' : gm < 15 ? 'amber' : 'green'}>{gm}%</Badge></Td>

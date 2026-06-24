@@ -127,15 +127,38 @@ export async function assertApprovalStillValid(id: string): Promise<boolean> {
 }
 
 /**
- * 承認済みアクションを実行する。承認の有効性を確認してから executor を呼ぶ。
- * 危険操作は必ずこの関数経由でのみ実行する。
+ * 承認済みアクションを実行する。承認の有効性を確認し、`executedAt` を原子的にクレームしてから
+ * executor を呼ぶ（二重実行防止）。危険操作は必ずこの関数経由でのみ実行する。
+ *  - status=APPROVED かつ 未失効 かつ 未実行 のときだけ実行。
+ *  - 実行に失敗したら executedAt を戻し再実行可能にする。
  */
 export async function executeApprovedAction<T>(
   id: string,
   executor: () => Promise<T>,
+  opts: { executedById?: string | null; preventReexecution?: boolean } = {},
 ): Promise<{ executed: boolean; result?: T; reason?: string }> {
   const valid = await assertApprovalStillValid(id);
   if (!valid) return { executed: false, reason: 'approval-invalid-or-expired' };
-  const result = await executor();
-  return { executed: true, result };
+
+  if (opts.preventReexecution !== false) {
+    // 原子的クレーム: executedAt が null のものだけ「実行中」に更新（同時/再実行を防ぐ）。
+    const claim = await prisma.approvalRequest.updateMany({
+      where: { id, executedAt: null },
+      data: { executedAt: new Date(), executedById: opts.executedById ?? null, executionStatus: 'executing' },
+    });
+    if (claim.count === 0) return { executed: false, reason: 'already-executed' };
+  }
+
+  try {
+    const result = await executor();
+    await prisma.approvalRequest.update({ where: { id }, data: { executionStatus: 'executed' } });
+    return { executed: true, result };
+  } catch (e) {
+    // 失敗時はクレームを戻して再実行可能にする。
+    await prisma.approvalRequest.update({
+      where: { id },
+      data: { executedAt: null, executionStatus: 'failed' },
+    });
+    throw e;
+  }
 }

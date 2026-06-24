@@ -7,6 +7,7 @@ import {
   inventoryEffectOfMovement,
   growthTypeOfMovement,
   eventProfitMargin,
+  reorderSuggestion,
   INVENTORY_MOVEMENT_LABEL,
   type InventoryMovementType,
   type DomainEventType,
@@ -113,6 +114,27 @@ export async function emitOperationsGrowthEvent(input: EmitGrowthInput) {
   return emitGrowthEvent(input);
 }
 
+// ============ 発注候補の抽出（ReorderRule × 在庫） ============
+
+/** 有効な発注点ルールのうち、在庫が発注点以下のものを発注候補として返す。 */
+export async function reorderCandidates(tenantId: string) {
+  const rules = await prisma.reorderRule.findMany({
+    where: { tenantId, active: true },
+    include: { asset: true, vendor: true },
+  });
+  return rules
+    .map((r) => {
+      const s = reorderSuggestion({
+        quantity: r.asset.quantity,
+        minQuantity: r.minQuantity,
+        reorderQuantity: r.reorderQuantity,
+        active: r.active,
+      });
+      return { rule: r, asset: r.asset, vendor: r.vendor, ...s };
+    })
+    .filter((c) => c.needsReorder);
+}
+
 // ============ イベント案件の粗利スナップショット ============
 
 /**
@@ -187,18 +209,51 @@ export interface OperationsDashboardSummary {
   reservationsThisMonth: number;
   eventsThisMonth: number;
   eventGrossTotal: number;
+  // Phase 1-7
+  stocktakesInProgress: number;
+  stocktakeDiffLines: number;
+  reorderCandidates: number;
+  purchaseOrdersPending: number;
+  logisticsOpen: number;
+  logisticsThisWeek: number;
+  highRisks: number;
+  eventsWithoutStaff: number;
+  movementsThisMonth: number;
 }
 
-/** Operations ダッシュボードの集計（在庫状態・稼働・案件粗利）。 */
+/** Operations ダッシュボードの集計（在庫状態・稼働・案件粗利・棚卸/発注/物流/リスク）。 */
 export async function summarizeOperationsDashboard(tenantId: string): Promise<OperationsDashboardSummary> {
   const monthStart = new Date();
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
+  const weekAhead = new Date(Date.now() + 7 * 86_400_000);
 
-  const [assets, reservationsThisMonth, events] = await Promise.all([
+  const [
+    assets,
+    reservationsThisMonth,
+    events,
+    stocktakesInProgress,
+    stocktakeDiffLines,
+    candidates,
+    purchaseOrdersPending,
+    logisticsOpen,
+    logisticsThisWeek,
+    highRisks,
+    eventsWithoutStaff,
+    movementsThisMonth,
+  ] = await Promise.all([
     prisma.productAsset.findMany({ where: { tenantId } }),
     prisma.leaseReservation.count({ where: { tenantId, startAt: { gte: monthStart } } }),
     prisma.eventProject.findMany({ where: { tenantId } }),
+    prisma.stocktake.count({ where: { tenantId, status: { in: ['draft', 'counted'] } } }),
+    prisma.stocktakeLine.count({ where: { tenantId, reconciled: false, difference: { not: 0 } } }),
+    reorderCandidates(tenantId),
+    prisma.purchaseOrder.count({ where: { tenantId, status: 'pending_approval' } }),
+    prisma.logisticsTask.count({ where: { tenantId, status: { in: ['todo', 'in_progress', 'blocked'] } } }),
+    prisma.logisticsTask.count({ where: { tenantId, status: { not: 'done' }, scheduledAt: { gte: new Date(), lte: weekAhead } } }),
+    prisma.eventRisk.count({ where: { tenantId, status: { not: 'resolved' }, severity: { in: ['high', 'critical'] } } }),
+    prisma.eventProject.count({ where: { tenantId, status: { notIn: ['completed', 'cancelled'] }, staffAssignments: { none: {} } } }),
+    prisma.inventoryMovement.count({ where: { tenantId, occurredAt: { gte: monthStart } } }),
   ]);
 
   const countStatus = (s: string) => assets.filter((a) => a.status === s).length;
@@ -221,5 +276,14 @@ export async function summarizeOperationsDashboard(tenantId: string): Promise<Op
     reservationsThisMonth,
     eventsThisMonth,
     eventGrossTotal: events.reduce((s, e) => s + toNumber(e.gross), 0),
+    stocktakesInProgress,
+    stocktakeDiffLines,
+    reorderCandidates: candidates.length,
+    purchaseOrdersPending,
+    logisticsOpen,
+    logisticsThisWeek,
+    highRisks,
+    eventsWithoutStaff,
+    movementsThisMonth,
   };
 }

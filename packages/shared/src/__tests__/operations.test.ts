@@ -11,9 +11,18 @@ import {
   isInventoryMovementType,
   isLargeInventoryAdjustment,
   INVENTORY_MOVEMENT_TYPES,
+  stocktakeDifference,
+  isLargeStocktakeDifference,
+  reorderSuggestion,
+  canTransitionLogistics,
+  growthTypeOfLogisticsCompletion,
+  isLogisticsTaskType,
+  eventStaffCost,
+  isHighSeverityRisk,
+  riskSeverityRank,
 } from '../operations';
 import { growthCategoryOf, isGrowthEventType, isRevenueRelated } from '../growth';
-import { requiresApproval } from '../approval';
+import { requiresApproval, canExecuteApproval } from '../approval';
 
 describe('operations metrics', () => {
   it('computes inventory utilization rate with clamp and zero-guard', () => {
@@ -125,5 +134,82 @@ describe('operations dangerous operations require approval', () => {
   it('inventory_force_release and damage_charge_finalize always need approval', () => {
     expect(requiresApproval('inventory_force_release')).toBe(true);
     expect(requiresApproval('damage_charge_finalize')).toBe(true);
+  });
+});
+
+describe('Phase 1-7 — stocktake / reorder / logistics / staff / risk', () => {
+  it('computes stocktake difference and flags large diffs', () => {
+    expect(stocktakeDifference(10, 7)).toBe(-3);
+    expect(stocktakeDifference(5, 9)).toBe(4);
+    expect(isLargeStocktakeDifference(-12)).toBe(true);
+    expect(isLargeStocktakeDifference(4)).toBe(false);
+  });
+
+  it('suggests reorder when stock at or below min', () => {
+    expect(reorderSuggestion({ quantity: 2, minQuantity: 3, reorderQuantity: 5 })).toEqual({ needsReorder: true, suggestedQuantity: 5, shortBy: 1 });
+    expect(reorderSuggestion({ quantity: 3, minQuantity: 3, reorderQuantity: 5 }).needsReorder).toBe(true);
+    expect(reorderSuggestion({ quantity: 9, minQuantity: 3, reorderQuantity: 5 }).needsReorder).toBe(false);
+    expect(reorderSuggestion({ quantity: 0, minQuantity: 3, reorderQuantity: 5, active: false }).needsReorder).toBe(false);
+  });
+
+  it('validates logistics status transitions (done is terminal)', () => {
+    expect(canTransitionLogistics('todo', 'in_progress')).toBe(true);
+    expect(canTransitionLogistics('in_progress', 'done')).toBe(true);
+    expect(canTransitionLogistics('done', 'todo')).toBe(false);
+    expect(canTransitionLogistics('todo', 'todo')).toBe(false);
+    expect(canTransitionLogistics('blocked', 'done')).toBe(false);
+  });
+
+  it('maps logistics completion to valid operations growth types', () => {
+    expect(isLogisticsTaskType('delivery')).toBe(true);
+    expect(isLogisticsTaskType('teleport')).toBe(false);
+    for (const t of ['delivery', 'setup', 'teardown', 'pickup'] as const) {
+      const g = growthTypeOfLogisticsCompletion(t);
+      expect(isGrowthEventType(g)).toBe(true);
+      expect(growthCategoryOf(g)).toBe('operations');
+    }
+  });
+
+  it('sums event staff cost and ranks risk severity', () => {
+    expect(eventStaffCost([{ cost: 10000 }, { cost: 5000 }, { cost: -3 }])).toBe(15000);
+    expect(riskSeverityRank('critical')).toBeGreaterThan(riskSeverityRank('high'));
+    expect(isHighSeverityRisk('high')).toBe(true);
+    expect(isHighSeverityRisk('critical')).toBe(true);
+    expect(isHighSeverityRisk('medium')).toBe(false);
+  });
+});
+
+describe('Phase 1-7 — approval thresholds and post-approval execution', () => {
+  it('purchase_order_issue and stocktake_adjust need approval above thresholds', () => {
+    expect(requiresApproval('purchase_order_issue', { amount: 150000 })).toBe(true);
+    expect(requiresApproval('purchase_order_issue', { amount: 50000 })).toBe(false);
+    expect(requiresApproval('stocktake_adjust', { amount: 20 })).toBe(true);
+    expect(requiresApproval('stocktake_adjust', { amount: 3 })).toBe(false);
+  });
+
+  it('canExecuteApproval guards status / double-execution / expiry', () => {
+    const now = new Date('2026-06-24T00:00:00Z');
+    expect(canExecuteApproval({ status: 'APPROVED', executedAt: null }, now)).toEqual({ ok: true, reason: 'ok' });
+    expect(canExecuteApproval({ status: 'PENDING' }, now).reason).toBe('not-approved');
+    expect(canExecuteApproval({ status: 'APPROVED', executedAt: new Date('2026-06-23') }, now).reason).toBe('already-executed');
+    expect(canExecuteApproval({ status: 'APPROVED', expiresAt: new Date('2026-06-23') }, now).reason).toBe('expired');
+  });
+});
+
+describe('Phase 1-7 — new growth event types are valid and operational', () => {
+  it('recognizes new operations growth types', () => {
+    for (const t of [
+      'inventory.stocktake.created',
+      'inventory.stocktake.reconciled',
+      'inventory.purchase_order.created',
+      'inventory.purchase_order.received',
+      'logistics.task.created',
+      'logistics.setup.completed',
+      'event.risk.created',
+      'event.risk.resolved',
+    ]) {
+      expect(isGrowthEventType(t)).toBe(true);
+      expect(growthCategoryOf(t)).toBe('operations');
+    }
   });
 });

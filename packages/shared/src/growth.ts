@@ -66,6 +66,18 @@ export const GROWTH_EVENT_TYPES = [
   'event.issue.recorded',
   'event.completed',
   'event.profitability.recorded',
+  // Operations 実行管理（棚卸/発注/物流/人員/リスク）— Phase 1-7
+  'inventory.stocktake.created',
+  'inventory.stocktake.reconciled',
+  'inventory.purchase_order.created',
+  'inventory.purchase_order.received',
+  'inventory.reorder.suggested',
+  'logistics.task.created',
+  'logistics.setup.completed',
+  'logistics.teardown.completed',
+  'logistics.pickup.completed',
+  'event.risk.created',
+  'event.risk.resolved',
 ] as const;
 
 export type GrowthEventType = (typeof GROWTH_EVENT_TYPES)[number];

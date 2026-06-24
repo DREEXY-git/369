@@ -194,3 +194,133 @@ export const INVENTORY_LARGE_ADJUST_THRESHOLD = 10;
 export function isLargeInventoryAdjustment(delta: number): boolean {
   return Math.abs(delta) >= INVENTORY_LARGE_ADJUST_THRESHOLD;
 }
+
+// ============ 棚卸（Stocktake）— Phase 1-7 ============
+
+/** 棚卸差異 = 実地カウント − 帳簿数。正なら過剰、負なら不足。 */
+export function stocktakeDifference(expected: number, counted: number): number {
+  return counted - expected;
+}
+
+// 棚卸差異の大幅判定（在庫反映時に承認が必要なライン）。
+export const STOCKTAKE_LARGE_DIFF_THRESHOLD = 10;
+
+export function isLargeStocktakeDifference(diff: number): boolean {
+  return Math.abs(diff) >= STOCKTAKE_LARGE_DIFF_THRESHOLD;
+}
+
+// ============ 発注点（Reorder）— Phase 1-7 ============
+
+export interface ReorderInput {
+  quantity: number; // 現在の利用可能/在庫数
+  minQuantity: number; // 発注点
+  reorderQuantity: number; // 補充数
+  active?: boolean;
+}
+
+export interface ReorderSuggestion {
+  needsReorder: boolean;
+  suggestedQuantity: number;
+  shortBy: number;
+}
+
+/** 在庫が発注点（min）以下なら発注候補。reorderQuantity を提案。 */
+export function reorderSuggestion(input: ReorderInput): ReorderSuggestion {
+  if (input.active === false) return { needsReorder: false, suggestedQuantity: 0, shortBy: 0 };
+  const needsReorder = input.quantity <= input.minQuantity;
+  return {
+    needsReorder,
+    suggestedQuantity: needsReorder ? Math.max(1, input.reorderQuantity) : 0,
+    shortBy: needsReorder ? Math.max(0, input.minQuantity - input.quantity) : 0,
+  };
+}
+
+// ============ 物流タスク（Logistics）— Phase 1-7 ============
+
+export type LogisticsTaskType = 'delivery' | 'setup' | 'showtime' | 'teardown' | 'pickup' | 'return';
+export type LogisticsStatus = 'todo' | 'in_progress' | 'done' | 'blocked';
+
+export const LOGISTICS_TASK_LABEL: Record<LogisticsTaskType, string> = {
+  delivery: '配送',
+  setup: '設営',
+  showtime: '本番',
+  teardown: '撤去',
+  pickup: '回収',
+  return: '返却',
+};
+
+export const LOGISTICS_TASK_TYPES: readonly LogisticsTaskType[] = [
+  'delivery',
+  'setup',
+  'showtime',
+  'teardown',
+  'pickup',
+  'return',
+] as const;
+
+export function isLogisticsTaskType(v: string): v is LogisticsTaskType {
+  return (LOGISTICS_TASK_TYPES as readonly string[]).includes(v);
+}
+
+const LOGISTICS_TRANSITIONS: Record<LogisticsStatus, LogisticsStatus[]> = {
+  todo: ['in_progress', 'blocked', 'done'],
+  in_progress: ['done', 'blocked', 'todo'],
+  blocked: ['todo', 'in_progress'],
+  done: [],
+};
+
+/** 物流タスクの状態遷移が妥当か（done は終端、不正な飛びを禁止）。 */
+export function canTransitionLogistics(from: LogisticsStatus, to: LogisticsStatus): boolean {
+  if (from === to) return false;
+  return (LOGISTICS_TRANSITIONS[from] ?? []).includes(to);
+}
+
+/** 物流タスク種別 → 完了時の成長イベント種別。 */
+export function growthTypeOfLogisticsCompletion(type: LogisticsTaskType): string {
+  switch (type) {
+    case 'delivery':
+      return 'logistics.delivery.completed';
+    case 'setup':
+      return 'logistics.setup.completed';
+    case 'teardown':
+      return 'logistics.teardown.completed';
+    case 'pickup':
+    case 'return':
+      return 'logistics.pickup.completed';
+    default:
+      return 'logistics.task.created';
+  }
+}
+
+// ============ イベント人員配置（人件費）— Phase 1-7 ============
+
+/** 人員配置の人件費合計。 */
+export function eventStaffCost(assignments: { cost: number }[]): number {
+  return assignments.reduce((s, a) => s + Math.max(0, a.cost), 0);
+}
+
+// ============ イベントリスク — Phase 1-7 ============
+
+export type RiskSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+const RISK_SEVERITY_RANK: Record<RiskSeverity, number> = { low: 1, medium: 2, high: 3, critical: 4 };
+
+export function riskSeverityRank(s: string): number {
+  return RISK_SEVERITY_RANK[s as RiskSeverity] ?? 0;
+}
+
+/** high / critical は要警告（ダッシュボード強調・即対応）。 */
+export function isHighSeverityRisk(s: string): boolean {
+  return riskSeverityRank(s) >= RISK_SEVERITY_RANK.high;
+}
+
+export const RISK_TYPE_LABEL: Record<string, string> = {
+  weather: '天候',
+  venue: '会場',
+  inventory: '在庫',
+  staffing: '人員',
+  customer: '顧客',
+  safety: '安全',
+  finance: '財務',
+  other: 'その他',
+};

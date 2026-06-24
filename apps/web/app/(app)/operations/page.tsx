@@ -68,6 +68,26 @@ export default async function OperationsDashboardPage() {
         )}
       </div>
 
+      {/* 実行管理（棚卸/発注/物流/リスク）の要対応 */}
+      <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-8">
+        <Stat label="棚卸中" value={summary.stocktakesInProgress} tone={summary.stocktakesInProgress > 0 ? 'blue' : 'slate'} />
+        <Stat label="棚卸差異" value={summary.stocktakeDiffLines} tone={summary.stocktakeDiffLines > 0 ? 'amber' : 'slate'} />
+        <Stat label="発注候補" value={summary.reorderCandidates} tone={summary.reorderCandidates > 0 ? 'amber' : 'slate'} />
+        <Stat label="発注承認待ち" value={summary.purchaseOrdersPending} tone={summary.purchaseOrdersPending > 0 ? 'amber' : 'slate'} />
+        <Stat label="物流未完了" value={summary.logisticsOpen} tone={summary.logisticsOpen > 0 ? 'amber' : 'slate'} />
+        <Stat label="今週の配送/設営" value={summary.logisticsThisWeek} tone="blue" />
+        <Stat label="高リスク" value={summary.highRisks} tone={summary.highRisks > 0 ? 'red' : 'slate'} />
+        <Stat label="人員未割当案件" value={summary.eventsWithoutStaff} tone={summary.eventsWithoutStaff > 0 ? 'amber' : 'slate'} />
+      </div>
+
+      {(summary.highRisks > 0 || summary.reorderCandidates > 0 || summary.logisticsThisWeek > 0) ? (
+        <div className="mt-3 space-y-1">
+          {summary.highRisks > 0 ? <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">⚠️ 高/致命リスクが {summary.highRisks} 件あります。<Link href="/operations/events" className="ml-1 underline">案件を確認</Link></div> : null}
+          {summary.reorderCandidates > 0 ? <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">📦 発注点を下回る在庫が {summary.reorderCandidates} 件。<Link href="/operations/reorder" className="ml-1 underline">発注候補</Link></div> : null}
+          {summary.logisticsThisWeek > 0 ? <div className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-700">🚚 今週の配送/設営/回収が {summary.logisticsThisWeek} 件。<Link href="/operations/logistics" className="ml-1 underline">物流</Link></div> : null}
+        </div>
+      ) : null}
+
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader><CardTitle>直近の在庫移動</CardTitle></CardHeader>

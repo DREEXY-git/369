@@ -5,7 +5,7 @@ import { toNumber } from '@/lib/utils';
 import { writeConfidentialViewLog } from '@/lib/audit';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Table, Th, Td, Badge, Stat, Input, Select, Button, EmptyState } from '@/components/ui';
-import { formatJpy, formatDate, eventProfitMargin, type ConfidentialityLabel } from '@hokko/shared';
+import { formatJpy, formatDate, eventProfitMargin, isHighSeverityRisk, RISK_TYPE_LABEL, LOGISTICS_TASK_LABEL, isLogisticsTaskType, type ConfidentialityLabel } from '@hokko/shared';
 import {
   assignAssetToEventAction,
   recordEventCostAction,
@@ -13,7 +13,11 @@ import {
   calculateEventProfitabilityAction,
   completeEventProjectAction,
   createEventNextProposalAction,
+  assignEventStaffAction,
+  createEventRiskAction,
+  updateEventRiskStatusAction,
 } from '../../actions';
+import { createEventLogisticsTasksAction } from '../../logistics/actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +34,9 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
       costs: true,
       grossSnapshots: { orderBy: { createdAt: 'desc' }, take: 1 },
       nextProposals: { orderBy: { createdAt: 'desc' } },
+      staffAssignments: { orderBy: { createdAt: 'desc' } },
+      risks: { orderBy: { createdAt: 'desc' } },
+      logisticsTasks: { orderBy: { scheduledAt: 'asc' } },
     },
   });
   if (!event) notFound();
@@ -178,6 +185,100 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
                 ))}
               </div>
             )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 人員配置・リスク・物流 */}
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* 人員配置 */}
+        <Card>
+          <CardHeader><CardTitle>人員配置（{event!.staffAssignments.length}）</CardTitle></CardHeader>
+          <CardContent>
+            {event!.staffAssignments.length === 0 ? <EmptyState title="未割当" /> : (
+              <div className="space-y-1">
+                {event!.staffAssignments.map((s) => (
+                  <div key={s.id} className="flex items-center justify-between text-sm">
+                    <span>{s.name}<span className="ml-1 text-xs text-muted-foreground">{s.role}</span></span>
+                    {canViewFinance ? <Badge tone="slate">{formatJpy(toNumber(s.cost))}</Badge> : null}
+                  </div>
+                ))}
+              </div>
+            )}
+            {canEdit ? (
+              <form action={assignEventStaffAction} className="mt-3 space-y-2">
+                <input type="hidden" name="eventId" value={event!.id} />
+                <Input name="name" placeholder="氏名" />
+                <div className="flex gap-2">
+                  <Input name="role" placeholder="役割" className="flex-1" />
+                  <Input name="cost" type="number" min="0" placeholder="人件費" className="w-28" />
+                </div>
+                <Button type="submit" variant="outline">割り当て</Button>
+              </form>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        {/* リスク */}
+        <Card>
+          <CardHeader><CardTitle>リスク（{event!.risks.filter((r) => r.status !== 'resolved').length}）</CardTitle></CardHeader>
+          <CardContent>
+            {event!.risks.length === 0 ? <EmptyState title="リスクなし" /> : (
+              <div className="space-y-1">
+                {event!.risks.map((r) => (
+                  <div key={r.id} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="truncate">
+                      <Badge tone={isHighSeverityRisk(r.severity) ? 'red' : 'amber'}>{r.severity}</Badge>
+                      <span className="ml-1">{RISK_TYPE_LABEL[r.type] ?? r.type}</span>
+                      {r.status === 'resolved' ? <span className="ml-1 text-xs text-emerald-600">解消</span> : null}
+                    </span>
+                    {canEdit && r.status !== 'resolved' ? (
+                      <form action={updateEventRiskStatusAction}>
+                        <input type="hidden" name="riskId" value={r.id} />
+                        <input type="hidden" name="status" value="resolved" />
+                        <Button type="submit" variant="ghost" className="h-6 px-2 text-xs">解消</Button>
+                      </form>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+            {canEdit ? (
+              <form action={createEventRiskAction} className="mt-3 space-y-2">
+                <input type="hidden" name="eventId" value={event!.id} />
+                <div className="flex gap-2">
+                  <Select name="type" className="flex-1">{Object.entries(RISK_TYPE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select>
+                  <Select name="severity"><option value="low">低</option><option value="medium">中</option><option value="high">高</option><option value="critical">致命</option></Select>
+                </div>
+                <Input name="description" placeholder="内容" />
+                <Button type="submit" variant="outline">リスク登録</Button>
+              </form>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        {/* 物流 */}
+        <Card>
+          <CardHeader><CardTitle>物流タスク（{event!.logisticsTasks.length}）</CardTitle></CardHeader>
+          <CardContent>
+            {event!.logisticsTasks.length === 0 ? (
+              <EmptyState title="未作成" hint="配送/設営/撤去/回収を一括作成できます。" />
+            ) : (
+              <div className="space-y-1">
+                {event!.logisticsTasks.map((t) => (
+                  <div key={t.id} className="flex items-center justify-between text-sm">
+                    <span>{isLogisticsTaskType(t.type) ? LOGISTICS_TASK_LABEL[t.type] : t.type}</span>
+                    <Badge tone={t.status === 'done' ? 'green' : t.status === 'blocked' ? 'red' : 'blue'}>{t.status}</Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+            {canEdit && event!.logisticsTasks.length === 0 ? (
+              <form action={createEventLogisticsTasksAction} className="mt-3">
+                <input type="hidden" name="eventId" value={event!.id} />
+                <Button type="submit" variant="outline">配送/設営/撤去/回収を作成</Button>
+              </form>
+            ) : null}
           </CardContent>
         </Card>
       </div>

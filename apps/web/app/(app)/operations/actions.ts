@@ -609,3 +609,105 @@ export async function createEventNextProposalAction(formData: FormData) {
   revalidatePath(`/operations/events/${eventId}`);
   redirect(`/operations/events/${eventId}?proposal=1`);
 }
+
+// ============================ イベント人員配置 ============================
+
+/** イベントに人員を割り当て、人件費を EventCost に反映。 */
+export async function assignEventStaffAction(formData: FormData) {
+  const user = await requireUser();
+  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
+  const eventId = String(formData.get('eventId') ?? '');
+  const name = String(formData.get('name') ?? '').trim() || '担当者';
+  const role = String(formData.get('role') ?? 'staff');
+  const cost = Math.max(0, Number(formData.get('cost') ?? 0) || 0);
+  const event = await prisma.eventProject.findFirst({ where: { id: eventId, tenantId: user.tenantId } });
+  if (!event) redirect('/operations/events');
+
+  const assignment = await prisma.eventStaffAssignment.create({
+    data: { tenantId: user.tenantId, eventId, name, role, cost, costRecorded: cost > 0 },
+  });
+  // 人件費を原価へ反映（粗利に直結）。
+  if (cost > 0) {
+    await prisma.eventCost.create({ data: { tenantId: user.tenantId, eventId, category: `人件費(${role})`, amount: cost } });
+  }
+  await writeAudit({
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    action: 'create',
+    entityType: 'EventStaffAssignment',
+    entityId: assignment.id,
+    summary: `人員配置: ${name}（${role}・${cost}円）→ ${event!.name}`,
+  });
+  await emitGrowthEvent({
+    tenantId: user.tenantId,
+    type: 'event.staff.assigned',
+    title: `人員配置: ${name} → ${event!.name}`,
+    actorId: user.userId,
+    entityType: 'EventProject',
+    entityId: eventId,
+    metric: { cost, role },
+    alsoDomainEvent: { domainType: 'EVENT_STAFF_ASSIGNED' as DomainEventType, aggregateType: 'EventProject', aggregateId: eventId },
+  });
+  revalidatePath(`/operations/events/${eventId}`);
+  redirect(`/operations/events/${eventId}?staff=1`);
+}
+
+// ============================ イベントリスク ============================
+
+export async function createEventRiskAction(formData: FormData) {
+  const user = await requireUser();
+  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
+  const eventId = String(formData.get('eventId') ?? '');
+  const type = String(formData.get('type') ?? 'other');
+  const severity = String(formData.get('severity') ?? 'medium');
+  const description = String(formData.get('description') ?? '').trim();
+  const mitigation = String(formData.get('mitigation') ?? '').trim();
+  const event = await prisma.eventProject.findFirst({ where: { id: eventId, tenantId: user.tenantId } });
+  if (!event) redirect('/operations/events');
+
+  const risk = await prisma.eventRisk.create({
+    data: { tenantId: user.tenantId, eventId, type, severity, description, mitigation, status: 'open' },
+  });
+  await writeAudit({
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    action: 'create',
+    entityType: 'EventRisk',
+    entityId: risk.id,
+    summary: `リスク登録: ${type}/${severity} — ${description.slice(0, 40)}`,
+  });
+  await emitGrowthEvent({
+    tenantId: user.tenantId,
+    type: 'event.risk.created',
+    title: `リスク登録(${severity}): ${event!.name}`,
+    actorId: user.userId,
+    entityType: 'EventRisk',
+    entityId: risk.id,
+    alsoDomainEvent: { domainType: 'EVENT_RISK_CREATED' as DomainEventType, aggregateType: 'EventProject', aggregateId: eventId },
+  });
+  revalidatePath(`/operations/events/${eventId}`);
+  redirect(`/operations/events/${eventId}?risk=1`);
+}
+
+export async function updateEventRiskStatusAction(formData: FormData) {
+  const user = await requireUser();
+  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
+  const riskId = String(formData.get('riskId') ?? '');
+  const status = String(formData.get('status') ?? 'open');
+  const risk = await prisma.eventRisk.findFirst({ where: { id: riskId, tenantId: user.tenantId } });
+  if (!risk) redirect('/operations/events');
+  await prisma.eventRisk.update({ where: { id: riskId }, data: { status } });
+  if (status === 'resolved') {
+    await emitGrowthEvent({
+      tenantId: user.tenantId,
+      type: 'event.risk.resolved',
+      title: `リスク解消: ${risk!.type}`,
+      actorId: user.userId,
+      entityType: 'EventRisk',
+      entityId: riskId,
+      alsoDomainEvent: { domainType: 'EVENT_RISK_RESOLVED' as DomainEventType, aggregateType: 'EventProject', aggregateId: risk!.eventId },
+    });
+  }
+  revalidatePath(`/operations/events/${risk!.eventId}`);
+  redirect(`/operations/events/${risk!.eventId}?risk=updated`);
+}

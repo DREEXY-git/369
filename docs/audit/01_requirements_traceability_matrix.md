@@ -93,3 +93,10 @@
 - DomainEvent に Operations 系10種、GrowthEvent に運用種別を拡充。重要操作は writeAudit＋emitGrowthEvent（＋DomainEvent→Outbox→Webhook）。
 - 危険操作（大幅数量調整・予約強制解除）は承認ゲート。原価/粗利は財務権限のみ＋writeConfidentialViewLog（機密）。
 - AI次回提案は Phase 1-5 安全基盤（注入検出＋AIOutput）。検証: unit 131 / integration 34、lint/typecheck/build green、e2e operations spec 追加。
+
+## Phase 1-7 更新（2026-06-24）— Operations 実行管理
+
+- **#19 在庫・倉庫管理**: 部分 → **実用（棚卸/発注/移動）**。Stocktake（差異→反映、大幅差異承認）、ReorderRule→発注候補→PurchaseOrder→入庫、InventoryMovement で在庫状態を一元管理。
+- **イベント会社（Phase 4系）**: LogisticsTask（配送/設営/撤去/回収）、EventStaffAssignment（人件費→原価反映）、EventRisk（high/critical 警告）を実装。
+- **#30 セキュリティ・承認**: `executeApprovedAction` 冪等化（二重実行防止）＋ `canExecuteApproval` 純判定。危険操作（大幅棚卸差異/高額発注/破損請求確定/予約強制解除）を承認ゲート→承認後実行。`/admin/operations-actions`。
+- 機密（発注単価/金額/仕入先/原価/人件費/粗利）は財務権限ゲート。新規9モデル＋ApprovalRequest実行フィールド。検証: unit 139 / integration 44、lint/typecheck/build green、e2e spec 追加。

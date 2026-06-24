@@ -116,3 +116,42 @@ ProductAsset/ProductCategory/StockLocation/AssetMaintenanceRecord/DamageLossReco
 - 強制解除/破損請求確定の「承認後の実処理（executeApprovedAction）」は未実装（申請まで）。
 - 発注(PurchaseOrder)/棚卸(Stocktake)/車両・配送/設営人員/協力会社/看板AI見積/請求・入金・会計連動 は次フェーズ。
 - EventTask/EventStaffAssignment/EventRisk は人員配置・リスク管理の本格化時に追加。
+
+---
+
+## Phase 1-7 実装（2026-06-24）— Operations 実行管理（棚卸/発注/物流/人員/リスク＋承認後実行）
+
+**目的**: Phase 1-6 の「見える化」を「現場実行」へ。承認申請までだった危険操作を承認後に安全実行し、棚卸/発注/物流/人員/リスクを最小実装。
+
+### 承認後実行
+- `executeApprovedAction` を**冪等化**: `updateMany where executedAt=null` で原子的にクレーム→executor→`executionStatus='executed'`、失敗時は executedAt を戻す。純判定 `canExecuteApproval()`（APPROVED かつ未実行かつ未失効）。
+- ApprovalRequest に `executedAt`/`executedById`/`executionStatus` を追加（二重実行防止）。
+- `executeApprovedInventoryAdjustmentAction` / `executeApprovedForceReleaseAction` / `executeApprovedDamageChargeAction` を実装。`/admin/operations-actions` に承認済み・未実行の一覧＋実行ボタン。
+
+### 棚卸（Stocktake / StocktakeLine）
+作成（対象倉庫の全品に帳簿数ライン自動生成）→実地カウント→差異自動計算→反映（小差異は即 `adjust`、**大幅差異(|Δ|≥10)は `stocktake_adjust` 承認申請**）→完了。GrowthEvent `inventory.stocktake.created/reconciled`。`/operations/stocktakes(/[id])`。
+
+### 発注（Vendor / ReorderRule / PurchaseOrder / PurchaseOrderLine）
+発注先登録、発注点ルール、**発注候補の自動抽出**（`reorderCandidates`＋`reorderSuggestion`）、発注書作成→確定（**10万円以上は `purchase_order_issue` 承認**）→入庫（`receive` で在庫増）。GrowthEvent `inventory.purchase_order.created/received`、`inventory.reorder.suggested`。`/operations/{vendors,reorder,purchase-orders(/new,/[id])}`。
+
+### 物流（LogisticsTask）
+イベントから配送/設営/撤去/回収を一括作成、状態遷移（`canTransitionLogistics`、done終端）、完了で種別別 GrowthEvent（`logistics.*.completed`）。`/operations/logistics`、イベント詳細にも表示。
+
+### 人員配置（EventStaffAssignment）
+イベントに人員割当、**人件費を EventCost に反映（粗利直結）**。GrowthEvent `event.staff.assigned`。人件費は財務権限のみ表示。
+
+### リスク（EventRisk）
+天候/会場/在庫/人員/安全/財務/顧客のリスク登録・解消、**high/critical はダッシュボード警告**。GrowthEvent `event.risk.created/resolved`。
+
+### ダッシュボード強化
+棚卸中/差異/発注候補/発注承認待ち/物流未完了/今週の配送設営/高リスク/人員未割当を集計（`summarizeOperationsDashboard`）＋警告バナー。
+
+### DomainEvent / GrowthEvent / Approval
+DomainEventType に11種、GrowthEvent に運用種別を追加。重要操作は Audit＋GrowthEvent（＋DomainEvent→Outbox→Webhook）。危険操作（大幅棚卸差異・高額発注・破損請求確定・予約強制解除）は承認ゲート→承認後 executeApprovedAction。
+
+### 機密（財務権限ゲート＋必要に応じ writeConfidentialViewLog）
+発注単価/発注金額/仕入先連絡先/案件原価/人件費/粗利を `hasPermission('finance','read')` で制御。
+
+### 残リスク / 次フェーズ
+- stocktake_adjust / purchase_order_issue の「承認後の実反映」は専用導線が最小（PO は ordered 後に入庫、棚卸大幅差異は承認のみで反映ボタンは次段）。
+- 配送車両最適化・協力会社単価マスタ・EventVendor は次フェーズ。会計連動（原価→仕訳）は Phase 2。

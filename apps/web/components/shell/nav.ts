@@ -41,6 +41,11 @@ import {
   ClipboardCheck,
   Warehouse,
   Truck,
+  ClipboardList,
+  ShoppingCart,
+  PackageSearch,
+  Send,
+  PlayCircle,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -111,6 +116,10 @@ export const NAV: NavGroup[] = [
       { label: '経営資産ダッシュボード', href: '/operations', icon: Warehouse },
       { label: 'イベント案件', href: '/operations/events', icon: PartyPopper },
       { label: '在庫移動台帳', href: '/operations/inventory-movements', icon: Truck },
+      { label: '棚卸', href: '/operations/stocktakes', icon: ClipboardList },
+      { label: '発注管理', href: '/operations/purchase-orders', icon: ShoppingCart },
+      { label: '発注点・候補', href: '/operations/reorder', icon: PackageSearch },
+      { label: '配送・設営・回収', href: '/operations/logistics', icon: Send },
     ],
   },
   {
@@ -162,6 +171,7 @@ export const NAV: NavGroup[] = [
       { label: 'ジョブ実行', href: '/admin/jobs', icon: Cog },
       { label: '位置情報アクセス', href: '/admin/location-access', icon: MapPin },
       { label: 'Operations準備', href: '/admin/operations-readiness', icon: ClipboardCheck },
+      { label: 'Operations実行', href: '/admin/operations-actions', icon: PlayCircle },
     ],
   },
 ];

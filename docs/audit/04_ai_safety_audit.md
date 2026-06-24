@@ -63,3 +63,8 @@
 - 方針: 生成（外向き）は high で中止、外部コンテンツの分析/分類は検出＋記録のうえ継続（FakeLLM は決定論で安全）。誤検知で正常業務を止めない。
 - テスト: unit 125 / integration 28（AISafetyLog 各チェック記録・AIOutput 標準保存・テナント分離）。e2e `security.spec.ts`（注入無害化・権限分離）を追加。
 残: PIIマスクの送信実行時自動適用（実送信経路実装と同時）、citations 実データ充実、コスト実測、MFA/改ざん検知/レート制限/CSP。
+
+## Phase 1-7 更新（2026-06-24）
+
+- Operations 実行管理（棚卸/発注/物流/人員/リスク）は決定論ロジック中心で AI 生成は限定的。Phase 1-6 の `createEventNextProposalAction`（safeAiInput→saveAIOutputStandard）を踏襲。
+- AI 拡張余地（棚卸差異要約/発注理由文/リスク対策案）は安全基盤（safeAiInput/saveAIOutputStandard）前提で次フェーズ。外部送信は引き続き持たない（AI は外部送信ツール不可）。

@@ -83,3 +83,11 @@
 - 全 Operations action は tenantId 分離＋RBAC＋writeAudit。在庫変化は InventoryMovement 経由で監査可能。
 - AI次回提案は注入検出＋AIOutput保存。AIは外部送信を持たない（多重防御）。
 残: 承認後実処理（executeApprovedAction）の Operations 経路、レート制限、CSP、MFA、改ざん検知。
+
+## Phase 1-7 更新（2026-06-24）— Operations 実行管理
+
+- **承認後実行の冪等化**: `executeApprovedAction` を原子的クレーム（`updateMany where executedAt=null`）で二重実行防止。`canExecuteApproval`（APPROVED/未実行/未失効）を純判定で追加。ApprovalRequest に executedAt/executedById/executionStatus。
+- **危険操作の承認ゲート拡張**: 大幅棚卸差異（`stocktake_adjust`、|Δ|≥10）・高額発注（`purchase_order_issue`、≥10万円）・破損請求確定（`damage_charge_finalize`）・予約強制解除（`inventory_force_release`）。承認後のみ executeApproved* で実処理。
+- **機密の権限分離**: 発注単価/発注金額/仕入先連絡先/案件原価/人件費/粗利は `hasPermission('finance','read')` ゲート。スタッフは発注金額カラム等が非表示。
+- 全 Operations 実行系 action は tenantId＋RBAC＋writeAudit＋GrowthEvent/DomainEvent。
+残: 強制解除/破損請求の請求書連動（次Phase）、レート制限、CSP、MFA、改ざん検知。

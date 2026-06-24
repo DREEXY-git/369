@@ -301,6 +301,10 @@ model ApprovalRequest {
   decisionNote String?
   expiresAt   DateTime?
   auditLogId  String?
+  // 承認後実行の冪等化（二重実行防止）。Phase 1-7。
+  executedAt      DateTime?
+  executedById    String?
+  executionStatus String? // null | executing | executed | failed
   createdAt   DateTime       @default(now())
 
   @@index([tenantId, status])
@@ -1281,6 +1285,9 @@ model ProductAsset {
   profitabilitySnapshots AssetProfitabilitySnapshot[]
   pricingSuggestions DynamicPricingSuggestion[]
   movements          InventoryMovement[]
+  stocktakeLines     StocktakeLine[]
+  reorderRules       ReorderRule[]
+  purchaseOrderLines PurchaseOrderLine[]
 
   @@index([tenantId, status])
 }
@@ -1405,6 +1412,140 @@ model InventoryMovement {
   @@index([tenantId, occurredAt])
   @@index([tenantId, type])
   @@index([assetId])
+}
+
+// 棚卸（実地在庫の照合）。Phase 1-7。
+model Stocktake {
+  id          String   @id @default(cuid())
+  tenantId    String
+  title       String
+  status      String   @default("draft") // draft | counted | reconciled | approved
+  locationId  String?
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lines StocktakeLine[]
+
+  @@index([tenantId, status])
+}
+
+model StocktakeLine {
+  id               String   @id @default(cuid())
+  tenantId         String
+  stocktakeId      String
+  assetId          String
+  expectedQuantity Int      @default(0)
+  countedQuantity  Int?
+  difference       Int      @default(0)
+  reconciled       Boolean  @default(false)
+  note             String   @default("")
+  createdAt        DateTime @default(now())
+
+  stocktake Stocktake    @relation(fields: [stocktakeId], references: [id], onDelete: Cascade)
+  asset     ProductAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([stocktakeId])
+}
+
+// 発注先（仕入先・協力会社）。単価/連絡先は機密。Phase 1-7。
+model Vendor {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  contactName String?
+  email       String?
+  phone       String?
+  note        String   @default("")
+  createdAt   DateTime @default(now())
+
+  reorderRules   ReorderRule[]
+  purchaseOrders PurchaseOrder[]
+
+  @@index([tenantId])
+}
+
+// 発注点ルール（在庫がminを下回ったら reorderQuantity を発注候補に）。Phase 1-7。
+model ReorderRule {
+  id             String   @id @default(cuid())
+  tenantId       String
+  assetId        String
+  minQuantity    Int      @default(0)
+  reorderQuantity Int     @default(1)
+  vendorId       String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  asset  ProductAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  vendor Vendor?      @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, active])
+  @@index([assetId])
+}
+
+model PurchaseOrder {
+  id          String   @id @default(cuid())
+  tenantId    String
+  vendorId    String?
+  orderNo     String
+  status      String   @default("draft") // draft | pending_approval | ordered | received | cancelled
+  totalAmount Decimal  @default(0) @db.Decimal(14, 2)
+  expectedAt  DateTime?
+  receivedAt  DateTime?
+  approvalId  String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  vendor Vendor?            @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  lines  PurchaseOrderLine[]
+
+  @@index([tenantId, status])
+}
+
+model PurchaseOrderLine {
+  id              String  @id @default(cuid())
+  tenantId        String
+  purchaseOrderId String
+  assetId         String?
+  assetName       String
+  quantity        Int     @default(1)
+  unitPrice       Decimal @default(0) @db.Decimal(12, 2)
+  amount          Decimal @default(0) @db.Decimal(14, 2)
+  receivedQuantity Int    @default(0)
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  asset         ProductAsset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([purchaseOrderId])
+}
+
+// 配送・設営・撤去・回収などの物流タスク。Phase 1-7。
+model LogisticsTask {
+  id            String   @id @default(cuid())
+  tenantId      String
+  eventId       String?
+  reservationId String?
+  type          String // delivery | setup | showtime | teardown | pickup | return
+  title         String
+  status        String   @default("todo") // todo | in_progress | done | blocked
+  scheduledAt   DateTime?
+  completedAt   DateTime?
+  assigneeId    String?
+  vehicle       String?
+  note          String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  event EventProject? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([tenantId, scheduledAt])
 }
 
 // ============================ マーケティング ==================================
@@ -2236,6 +2377,9 @@ model EventProject {
   costs            EventCost[]
   grossSnapshots   EventGrossProfitSnapshot[]
   nextProposals    EventNextProposal[]
+  staffAssignments EventStaffAssignment[]
+  risks            EventRisk[]
+  logisticsTasks   LogisticsTask[]
 
   @@index([tenantId])
 }
@@ -2300,6 +2444,46 @@ model EventNextProposal {
   event EventProject @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
+}
+
+// イベント人員配置（作業員/役割/人件費）。人件費は機密。Phase 1-7。
+model EventStaffAssignment {
+  id        String   @id @default(cuid())
+  tenantId  String
+  eventId   String
+  userId    String?
+  name      String   @default("")
+  role      String   @default("staff")
+  startAt   DateTime?
+  endAt     DateTime?
+  cost      Decimal  @default(0) @db.Decimal(12, 2)
+  costRecorded Boolean @default(false)
+  note      String   @default("")
+  createdAt DateTime @default(now())
+
+  event EventProject @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([eventId])
+}
+
+// イベントリスク管理（天候/会場/在庫/人員/安全/財務/顧客）。Phase 1-7。
+model EventRisk {
+  id          String   @id @default(cuid())
+  tenantId    String
+  eventId     String
+  type        String // weather | venue | inventory | staffing | customer | safety | finance | other
+  severity    String   @default("medium") // low | medium | high | critical
+  description String   @default("")
+  mitigation  String   @default("")
+  status      String   @default("open") // open | monitoring | resolved
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  event EventProject @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([eventId])
 }
 
 // ============================ LeadMap AI =====================================

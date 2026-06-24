@@ -56,3 +56,11 @@
 - 追加 e2e（`operations.spec.ts`）: /operations 表示、イベント案件作成、在庫移動記録、スタッフは原価/粗利の機密情報を閲覧不可（権限分離）。CI/実環境で実行。
 - カバー: 在庫状態の単一真実源（InventoryMovement）、案件粗利、可用性/重複、運用 GrowthEvent、機密（原価/粗利）の権限分離、危険操作の承認。
 - 残: e2e の実ブラウザ実行（環境）、強制解除/破損請求確定の承認後実処理、SSRF/XSS/CSRF 自動テスト。
+
+## Phase 1-7 更新（2026-06-24）— Operations 実行管理
+
+- 追加 unit（`operations.test.ts` 拡張）: 棚卸差異/大幅判定、発注提案、物流状態遷移（done終端）、物流完了→成長種別、人件費合計、リスク重大度、発注/棚卸の承認閾値、`canExecuteApproval`（status/二重実行/失効）、新 GrowthEvent 種別 = **+8** → 合計 **139 passed**。
+- 追加 integration（`p1_7_operations_exec.itest.ts`）: 承認済み inventory_adjust 実行＋**二重実行防止（原子クレーム）**、承認済み force_release、Stocktake 作成→差異→小差異反映＋大幅差異承認、Reorder 候補抽出、PurchaseOrder→入庫→receive で在庫増、Logistics 完了→Growth、EventStaff→EventCost反映、Risk high/critical 集計、tenant分離 = **+10** → 合計 **44 passed**。
+- 追加 e2e（`operations_exec.spec.ts`）: 棚卸/発注/物流/Operations実行ページ表示、イベント詳細の人員/リスク/物流表示、スタッフは発注金額の機密を閲覧不可。CI/実環境で実行。
+- カバー: 承認後実行の冪等性、危険操作の承認、運用イベントの Growth/Domain 接続、機密（原価/単価/人件費/粗利）の権限分離。
+- 残: e2e 実ブラウザ実行（環境）、棚卸大幅差異の承認後反映導線、SSRF/XSS/CSRF。

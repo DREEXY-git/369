@@ -29,7 +29,10 @@ export type ApprovalAction =
   // Operations OS（Phase 1-6）
   | 'inventory_adjust' // 在庫数量の大幅調整（閾値以上で承認）
   | 'inventory_force_release' // 予約済み在庫の強制解除
-  | 'damage_charge_finalize'; // 破損請求の確定
+  | 'damage_charge_finalize' // 破損請求の確定
+  // Operations 実行管理（Phase 1-7）
+  | 'stocktake_adjust' // 大幅棚卸差異の在庫反映（閾値以上で承認）
+  | 'purchase_order_issue'; // 高額発注の確定（閾値以上で承認）
 
 export interface ApprovalContext {
   actorIsAi?: boolean;
@@ -68,6 +71,8 @@ const ALWAYS_APPROVE: ApprovalAction[] = [
 
 export const QUOTE_AUTO_APPROVE_LIMIT = 500_000; // 円。これ以上は承認必須。
 export const INVENTORY_ADJUST_APPROVE_THRESHOLD = 10; // |Δ数量| がこれ以上は承認必須。
+export const STOCKTAKE_ADJUST_APPROVE_THRESHOLD = 10; // |棚卸差異| がこれ以上は承認必須。
+export const PURCHASE_ORDER_APPROVE_THRESHOLD = 100_000; // 円。これ以上の発注は承認必須。
 
 /**
  * 重要操作は承認必須。
@@ -85,7 +90,37 @@ export function requiresApproval(action: ApprovalAction, ctx: ApprovalContext = 
     // 数量差分の絶対値が閾値以上なら承認必須（amount に Δ数量を渡す）。
     return Math.abs(ctx.amount ?? 0) >= INVENTORY_ADJUST_APPROVE_THRESHOLD;
   }
+  if (action === 'stocktake_adjust') {
+    return Math.abs(ctx.amount ?? 0) >= STOCKTAKE_ADJUST_APPROVE_THRESHOLD;
+  }
+  if (action === 'purchase_order_issue') {
+    return (ctx.amount ?? 0) >= PURCHASE_ORDER_APPROVE_THRESHOLD;
+  }
   return false;
+}
+
+// ============ 承認後実行の可否（純判定）— Phase 1-7 ============
+
+export interface ApprovalExecState {
+  status: string; // PENDING | APPROVED | REJECTED | CANCELLED
+  executedAt?: Date | string | null;
+  expiresAt?: Date | string | null;
+}
+
+export interface ApprovalExecCheck {
+  ok: boolean;
+  reason: 'ok' | 'not-approved' | 'already-executed' | 'expired';
+}
+
+/**
+ * 承認済みアクションを実行してよいか（APPROVED かつ 未実行 かつ 未失効）。
+ * executeApprovedAction の前段判定に使う（二重実行・失効を防ぐ）。
+ */
+export function canExecuteApproval(req: ApprovalExecState, now: Date = new Date()): ApprovalExecCheck {
+  if (req.status !== 'APPROVED') return { ok: false, reason: 'not-approved' };
+  if (req.executedAt) return { ok: false, reason: 'already-executed' };
+  if (req.expiresAt && new Date(req.expiresAt).getTime() < now.getTime()) return { ok: false, reason: 'expired' };
+  return { ok: true, reason: 'ok' };
 }
 
 /** AI は外部送信を構造的に実行不可。必ず人間承認後に人間/システムが送信。 */

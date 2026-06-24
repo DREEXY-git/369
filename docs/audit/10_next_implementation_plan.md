@@ -79,3 +79,14 @@ Phase 1-5（次）:
 3. **イベント会社の深化**: 配送/設営/撤去/回収のワークフロー、EventStaffAssignment（人員配置・人件費）、EventRisk（リスク管理）。
 4. **会計連動（Phase 2）**: イベント原価/売上 → 仕訳候補（OCRProvider 実経路）→ 承認後確定、請求・入金連動。
 5. **看板AI見積（Phase 3）**: 13マスタ＋原価/粗利ロジック＋UI。
+
+## Phase 1-7 完了 → 次の計画（2026-06-24）
+
+完了: Operations 実行管理。承認後実行（冪等 `executeApprovedAction`＋二重実行防止＋3アクション、`/admin/operations-actions`）、棚卸（Stocktake/Line、差異→反映、大幅差異承認）、発注（Vendor/ReorderRule/PurchaseOrder/Line、発注点→候補→発注書→承認→入庫）、物流（LogisticsTask、状態遷移、完了Growth）、人員配置（EventStaffAssignment→EventCost反映）、リスク（EventRisk、high/critical警告）、ダッシュボード強化。新規9モデル＋ApprovalRequest実行フィールド。unit 139 / integration 44、lint/typecheck/build green。
+
+次（Phase 1-8 / Phase 2 候補）:
+1. **棚卸大幅差異/高額発注の承認後反映導線**を operations-actions に統合（現状: 申請まで＋PO は ordered 後に入庫）。
+2. **協力会社マスタ深化**: EventVendor、協力会社単価（機密）、配送車両・ルート最適化。
+3. **会計連動（Phase 2）**: 発注/イベント原価 → 仕訳候補（OCRProvider 実経路）→ 承認後確定、請求/入金連動、破損請求の請求書化。
+4. **AI 拡張**: 棚卸差異要約・発注理由文・リスク対策案（safeAiInput/saveAIOutputStandard 前提）。
+5. 残セキュリティ: レート制限、CSP、MFA、改ざん検知。

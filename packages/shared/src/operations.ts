@@ -83,3 +83,114 @@ export function classifyOperationCategory(type: string): OperationCategory {
       return 'other';
   }
 }
+
+// ============ 在庫移動（InventoryMovement）の純ロジック — Phase 1-6 ============
+
+export type InventoryMovementType =
+  | 'receive'
+  | 'move'
+  | 'reserve'
+  | 'dispatch'
+  | 'return'
+  | 'damage'
+  | 'maintenance_start'
+  | 'maintenance_complete'
+  | 'adjust';
+
+export const INVENTORY_MOVEMENT_TYPES: readonly InventoryMovementType[] = [
+  'receive',
+  'move',
+  'reserve',
+  'dispatch',
+  'return',
+  'damage',
+  'maintenance_start',
+  'maintenance_complete',
+  'adjust',
+] as const;
+
+export const INVENTORY_MOVEMENT_LABEL: Record<InventoryMovementType, string> = {
+  receive: '入庫',
+  move: '倉庫内移動',
+  reserve: '予約',
+  dispatch: '出庫',
+  return: '返却',
+  damage: '破損',
+  maintenance_start: 'メンテナンス開始',
+  maintenance_complete: 'メンテナンス完了',
+  adjust: '数量調整',
+};
+
+export function isInventoryMovementType(v: string): v is InventoryMovementType {
+  return (INVENTORY_MOVEMENT_TYPES as readonly string[]).includes(v);
+}
+
+export interface InventoryEffect {
+  status?: string; // ProductAsset.status の目標（available|reserved|out|maintenance）
+  condition?: string; // ProductAsset.condition の目標（good|repair|broken|retired）
+  setsLocation?: boolean; // move: toLocationId を反映
+  changesQuantity?: boolean; // receive(+qty)/adjust(数量を設定)
+}
+
+/**
+ * 在庫移動タイプ → ProductAsset への効果（状態/状態/位置/数量）。
+ * ProductAsset.status / condition / locationId / quantity と連動する単一の写像。
+ */
+export function inventoryEffectOfMovement(type: InventoryMovementType): InventoryEffect {
+  switch (type) {
+    case 'receive':
+      return { status: 'available', changesQuantity: true };
+    case 'move':
+      return { setsLocation: true };
+    case 'reserve':
+      return { status: 'reserved' };
+    case 'dispatch':
+      return { status: 'out' };
+    case 'return':
+      return { status: 'available' };
+    case 'damage':
+      return { status: 'maintenance', condition: 'broken' };
+    case 'maintenance_start':
+      return { status: 'maintenance', condition: 'repair' };
+    case 'maintenance_complete':
+      return { status: 'available', condition: 'good' };
+    case 'adjust':
+      return { changesQuantity: true };
+    default:
+      return {};
+  }
+}
+
+/** 在庫移動タイプ → 成長イベント種別。 */
+export function growthTypeOfMovement(type: InventoryMovementType): string {
+  switch (type) {
+    case 'receive':
+      return 'inventory.stock.received';
+    case 'move':
+      return 'inventory.stock.moved';
+    case 'reserve':
+      return 'inventory.stock.reserved';
+    case 'dispatch':
+      return 'inventory.stock.dispatched';
+    case 'return':
+      return 'inventory.stock.returned';
+    case 'damage':
+      return 'inventory.stock.damaged';
+    case 'maintenance_start':
+      return 'inventory.maintenance.created';
+    case 'maintenance_complete':
+      return 'inventory.maintenance.completed';
+    case 'adjust':
+      return 'inventory.stock.adjusted';
+    default:
+      return 'inventory.stock.adjusted';
+  }
+}
+
+// 在庫数量の大幅調整は承認必須（誤操作・棚卸し不整合の防止）。
+export const INVENTORY_LARGE_ADJUST_THRESHOLD = 10;
+
+/** 数量差分の絶対値が閾値以上なら「大幅調整」（承認対象）。 */
+export function isLargeInventoryAdjustment(delta: number): boolean {
+  return Math.abs(delta) >= INVENTORY_LARGE_ADJUST_THRESHOLD;
+}

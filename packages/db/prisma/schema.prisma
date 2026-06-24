@@ -1280,6 +1280,7 @@ model ProductAsset {
   reservationLines   LeaseReservationLine[]
   profitabilitySnapshots AssetProfitabilitySnapshot[]
   pricingSuggestions DynamicPricingSuggestion[]
+  movements          InventoryMovement[]
 
   @@index([tenantId, status])
 }
@@ -1378,6 +1379,32 @@ model DynamicPricingSuggestion {
   asset ProductAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
+}
+
+// 在庫の動き（入庫/移動/予約/出庫/返却/破損/メンテ/調整）を記録する台帳。Phase 1-6。
+// ProductAsset の status/condition/locationId/quantity と連動する単一の真実源。
+model InventoryMovement {
+  id             String   @id @default(cuid())
+  tenantId       String
+  assetId        String
+  type           String // receive | move | reserve | dispatch | return | damage | maintenance_start | maintenance_complete | adjust
+  quantity       Int      @default(1)
+  fromLocationId String?
+  toLocationId   String?
+  reservationId  String?
+  eventId        String?
+  beforeStatus   String?
+  afterStatus    String?
+  note           String   @default("")
+  actorId        String?
+  occurredAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  asset ProductAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, occurredAt])
+  @@index([tenantId, type])
+  @@index([assetId])
 }
 
 // ============================ マーケティング ==================================

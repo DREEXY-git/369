@@ -85,3 +85,11 @@
 - **管理可視化**: `/admin/ai-safety`（社長/役員/管理者のみ）・`/admin/ai-outputs`（audit:read）・`/admin/operations-readiness`。
 - **Operations OS 準備（本体未着手）**: `operations.ts`（稼働率/可用性/粗利率/運用分類）、GrowthEvent に在庫/リース/イベント/物流/販売の種別＋`operations` カテゴリ。棚卸しは `11_operations_os_readiness.md`。
 - 検証: unit 125 / integration 28、lint/typecheck/build green、e2e security spec 追加（CI実行）。
+
+## Phase 1-6 更新（2026-06-24）— Operations OS 最小縦スライス
+
+- **在庫/リース/イベント会社（Phase 4系）**: 準備 → **最小実用（縦スライス）**。在庫登録/移動→リース予約→イベント案件→商品割当→原価/売上/粗利→GrowthEvent→ダッシュボードを貫通。
+- 新規モデルは `InventoryMovement` のみ（在庫状態の単一の真実源）。ProductAsset/LeaseReservation(+Line)/EventProject/EventProductUsage/EventCost/EventGrossProfitSnapshot/EventNextProposal を活用。
+- DomainEvent に Operations 系10種、GrowthEvent に運用種別を拡充。重要操作は writeAudit＋emitGrowthEvent（＋DomainEvent→Outbox→Webhook）。
+- 危険操作（大幅数量調整・予約強制解除）は承認ゲート。原価/粗利は財務権限のみ＋writeConfidentialViewLog（機密）。
+- AI次回提案は Phase 1-5 安全基盤（注入検出＋AIOutput）。検証: unit 131 / integration 34、lint/typecheck/build green、e2e operations spec 追加。

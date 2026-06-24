@@ -1,0 +1,225 @@
+// Operations OS（在庫/リース/イベント会社）の共通処理。Phase 1-6。
+// 在庫移動を単一の真実源として ProductAsset を更新し、Audit / DomainEvent / GrowthEvent に接続する。
+import { prisma, writeAudit } from './db';
+import { emitGrowthEvent, type EmitGrowthInput } from './growth';
+import { toNumber } from './utils';
+import {
+  inventoryEffectOfMovement,
+  growthTypeOfMovement,
+  eventProfitMargin,
+  INVENTORY_MOVEMENT_LABEL,
+  type InventoryMovementType,
+  type DomainEventType,
+} from '@hokko/shared';
+
+// ============ 在庫移動の適用 ============
+
+export interface ApplyMovementInput {
+  tenantId: string;
+  actorId?: string | null;
+  assetId: string;
+  type: InventoryMovementType;
+  quantity?: number;
+  fromLocationId?: string | null;
+  toLocationId?: string | null;
+  reservationId?: string | null;
+  eventId?: string | null;
+  note?: string;
+  /** adjust 用: 設定する絶対数量。 */
+  setQuantity?: number;
+}
+
+/**
+ * 在庫移動を適用する。InventoryMovement を記録し ProductAsset を更新、
+ * Audit ＋ DomainEvent（INVENTORY_MOVEMENT_CREATED / STATUS_CHANGED）＋ GrowthEvent を発火する。
+ * ProductAsset の status/condition/locationId/quantity を一元更新（単一の真実源）。
+ */
+export async function applyInventoryMovement(input: ApplyMovementInput) {
+  const asset = await prisma.productAsset.findFirst({
+    where: { id: input.assetId, tenantId: input.tenantId },
+  });
+  if (!asset) throw new Error('asset not found');
+
+  const effect = inventoryEffectOfMovement(input.type);
+  const beforeStatus = asset.status;
+  const qty = Math.max(0, input.quantity ?? 1);
+
+  const data: Record<string, unknown> = {};
+  if (effect.status) data.status = effect.status;
+  if (effect.condition) data.condition = effect.condition;
+  if (effect.setsLocation && input.toLocationId) data.locationId = input.toLocationId;
+  if (effect.changesQuantity) {
+    if (input.type === 'receive') data.quantity = asset.quantity + qty;
+    else if (input.type === 'adjust') data.quantity = Math.max(0, input.setQuantity ?? asset.quantity);
+  }
+  if (input.type === 'dispatch') {
+    data.usageCount = asset.usageCount + 1;
+    data.lastUsedAt = new Date();
+  }
+
+  const updated =
+    Object.keys(data).length > 0
+      ? await prisma.productAsset.update({ where: { id: asset.id }, data })
+      : asset;
+
+  const movement = await prisma.inventoryMovement.create({
+    data: {
+      tenantId: input.tenantId,
+      assetId: asset.id,
+      type: input.type,
+      quantity: qty,
+      fromLocationId: input.fromLocationId ?? asset.locationId ?? null,
+      toLocationId: input.toLocationId ?? null,
+      reservationId: input.reservationId ?? null,
+      eventId: input.eventId ?? null,
+      beforeStatus,
+      afterStatus: updated.status,
+      note: input.note ?? '',
+      actorId: input.actorId ?? null,
+    },
+  });
+
+  await writeAudit({
+    tenantId: input.tenantId,
+    actorId: input.actorId,
+    action: 'inventory_movement',
+    entityType: 'InventoryMovement',
+    entityId: movement.id,
+    summary: `${INVENTORY_MOVEMENT_LABEL[input.type]}: ${asset.name}（${beforeStatus}→${updated.status}）`,
+  });
+
+  const statusChanged = beforeStatus !== updated.status;
+  await emitGrowthEvent({
+    tenantId: input.tenantId,
+    type: growthTypeOfMovement(input.type),
+    title: `${INVENTORY_MOVEMENT_LABEL[input.type]}: ${asset.name}`,
+    description: input.note ?? '',
+    actorId: input.actorId,
+    entityType: 'InventoryMovement',
+    entityId: movement.id,
+    metric: { assetId: asset.id, quantity: qty, beforeStatus, afterStatus: updated.status },
+    alsoDomainEvent: {
+      domainType: (statusChanged ? 'INVENTORY_STATUS_CHANGED' : 'INVENTORY_MOVEMENT_CREATED') as DomainEventType,
+      aggregateType: 'ProductAsset',
+      aggregateId: asset.id,
+    },
+  });
+
+  return { movement, asset: updated };
+}
+
+/** Operations 系の成長イベントを記録（emitGrowthEvent の薄いラッパ）。 */
+export async function emitOperationsGrowthEvent(input: EmitGrowthInput) {
+  return emitGrowthEvent(input);
+}
+
+// ============ イベント案件の粗利スナップショット ============
+
+/**
+ * イベント案件の売上・原価・粗利を確定し EventGrossProfitSnapshot を作成。
+ * EventProject.gross を更新し、GrowthEvent(event.profitability.recorded)＋DomainEvent を発火。
+ */
+export async function recordEventProfitabilitySnapshot(input: {
+  tenantId: string;
+  eventId: string;
+  actorId?: string | null;
+}) {
+  const event = await prisma.eventProject.findFirst({
+    where: { id: input.eventId, tenantId: input.tenantId },
+    include: { costs: true },
+  });
+  if (!event) throw new Error('event not found');
+
+  const revenue = toNumber(event.revenue);
+  const costFromLines = event.costs.reduce((s, c) => s + toNumber(c.amount), 0);
+  const cost = Math.max(toNumber(event.cost), costFromLines);
+  const gross = revenue - cost;
+  const marginRate = eventProfitMargin(revenue, cost);
+
+  await prisma.eventProject.update({ where: { id: event.id }, data: { cost, gross } });
+  const snap = await prisma.eventGrossProfitSnapshot.create({
+    data: { tenantId: input.tenantId, eventId: event.id, revenue, cost, gross, marginRate },
+  });
+
+  await writeAudit({
+    tenantId: input.tenantId,
+    actorId: input.actorId,
+    action: 'event_profitability',
+    entityType: 'EventProject',
+    entityId: event.id,
+    summary: `案件粗利を記録: ${event.name}（売上${revenue} / 原価${cost} / 粗利${gross} / 率${marginRate}%）`,
+  });
+
+  await emitGrowthEvent({
+    tenantId: input.tenantId,
+    type: 'event.profitability.recorded',
+    title: `案件粗利: ${event.name}`,
+    actorId: input.actorId,
+    entityType: 'EventProject',
+    entityId: event.id,
+    amount: revenue,
+    revenueImpact: gross,
+    metric: { marginRate, cost },
+    alsoDomainEvent: {
+      domainType: 'EVENT_PROFITABILITY_RECORDED' as DomainEventType,
+      aggregateType: 'EventProject',
+      aggregateId: event.id,
+    },
+  });
+
+  return { snapshot: snap, revenue, cost, gross, marginRate };
+}
+
+// ============ ダッシュボード集計 ============
+
+export interface OperationsDashboardSummary {
+  assetCount: number;
+  available: number;
+  reserved: number;
+  out: number;
+  maintenance: number;
+  broken: number;
+  totalAcquisitionValue: number;
+  cumulativeRevenue: number;
+  cumulativeGross: number;
+  avgUtilization: number;
+  idleAssets: number;
+  reservationsThisMonth: number;
+  eventsThisMonth: number;
+  eventGrossTotal: number;
+}
+
+/** Operations ダッシュボードの集計（在庫状態・稼働・案件粗利）。 */
+export async function summarizeOperationsDashboard(tenantId: string): Promise<OperationsDashboardSummary> {
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
+  const [assets, reservationsThisMonth, events] = await Promise.all([
+    prisma.productAsset.findMany({ where: { tenantId } }),
+    prisma.leaseReservation.count({ where: { tenantId, startAt: { gte: monthStart } } }),
+    prisma.eventProject.findMany({ where: { tenantId } }),
+  ]);
+
+  const countStatus = (s: string) => assets.filter((a) => a.status === s).length;
+  const avgUtilization =
+    assets.length > 0 ? Math.round(assets.reduce((s, a) => s + toNumber(a.utilizationRate), 0) / assets.length) : 0;
+  const eventsThisMonth = events.filter((e) => e.eventDate && e.eventDate >= monthStart).length;
+
+  return {
+    assetCount: assets.length,
+    available: countStatus('available'),
+    reserved: countStatus('reserved'),
+    out: countStatus('out'),
+    maintenance: countStatus('maintenance'),
+    broken: assets.filter((a) => a.condition === 'broken').length,
+    totalAcquisitionValue: assets.reduce((s, a) => s + toNumber(a.acquisitionCost), 0),
+    cumulativeRevenue: assets.reduce((s, a) => s + toNumber(a.cumulativeRevenue), 0),
+    cumulativeGross: assets.reduce((s, a) => s + toNumber(a.cumulativeGross), 0),
+    avgUtilization,
+    idleAssets: assets.filter((a) => toNumber(a.utilizationRate) < 30).length,
+    reservationsThisMonth,
+    eventsThisMonth,
+    eventGrossTotal: events.reduce((s, e) => s + toNumber(e.gross), 0),
+  };
+}

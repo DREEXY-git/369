@@ -71,3 +71,48 @@
 ## 6. 接続方針（既存P0を再利用）
 
 新OSは新しい認可/監査/承認/イベントを**再実装しない**。`hasPermission`(RBAC)＋`evaluatePolicy`(ABAC)、`writeAudit`/`writeDataAccess`、`requiresApproval`/`executeApprovedAction`、`emitDomainEvent`/`emitGrowthEvent` を標準利用する。
+
+---
+
+## Phase 1-6 実装（2026-06-24）— Operations OS 最小縦スライス
+
+**通した縦スライス**: 在庫登録/在庫移動 → リース予約 → イベント案件 → 商品割当 → 原価/売上/粗利 → GrowthEvent → ダッシュボード。
+
+### 追加モデル（最小）
+- **`InventoryMovement`**（唯一の新規モデル）: 在庫の動き（receive/move/reserve/dispatch/return/damage/maintenance_start/maintenance_complete/adjust）を記録する台帳。`assetId`→ProductAsset リレーション。**ProductAsset の status/condition/locationId/quantity を更新する単一の真実源**。マイグレーション `20260624034022_p1_6_inventory_movement`。
+- EventTask/EventStaffAssignment/EventRisk は最小縦スライスに不要のため**今回は追加せず**、次フェーズへ（リスクは暫定で EventProject.weatherRisk/notes）。
+
+### 活用した既存モデル
+ProductAsset/ProductCategory/StockLocation/AssetMaintenanceRecord/DamageLossRecord、LeaseReservation(+Line)、EventProject/EventVenue/EventProductUsage/EventCost/EventGrossProfitSnapshot/EventNextProposal、Customer、ApprovalRequest/AuditLog/DataAccessLog/GrowthEvent/DomainEvent。
+
+### InventoryMovement の位置付け
+全在庫変化を InventoryMovement 経由（`lib/operations.applyInventoryMovement`）で行い、`ProductAsset` 更新＋`writeAudit`＋`emitGrowthEvent`（重要時 DomainEvent も）を一括実行。状態の二重管理を排除。
+
+### LeaseReservation の実用化
+作成→商品追加（在庫可用性チェック `availableQuantity`／重複防止 `hasReservationConflict`）→確定→出庫→返却→破損記録→**イベント案件化**まで Server Action を実装。出庫/返却は InventoryMovement で在庫状態を out/available に同期。
+
+### EventProject の実用化
+作成→会場/顧客→商品割当（EventProductUsage＋在庫予約）→原価記録（EventCost）→売上記録→**粗利計算（EventGrossProfitSnapshot）**→完了→AI次回提案。
+
+### 案件別粗利
+`/operations/events` 一覧で案件ごとの売上/原価/粗利率（`eventProfitMargin`）、`/operations/events/[id]` で粗利サマリー・原価内訳・粗利スナップショット・次回提案。**原価/粗利は財務閲覧権限のみ表示**（機密）。
+
+### 在庫別収益性
+既存 `/inventory/profitability` ＋ `/operations` ダッシュボードで稼働率・累計売上/粗利・低稼働/破損在庫を可視化（`summarizeOperationsDashboard`）。
+
+### GrowthEvent / DomainEvent 接続
+- DomainEventType に Operations 系10種を追加（INVENTORY_MOVEMENT_CREATED/STATUS_CHANGED, LEASE_RESERVATION_CREATED/CONFIRMED, LEASE_ITEM_DISPATCHED/RETURNED, EVENT_PROJECT_CREATED, EVENT_EQUIPMENT_ASSIGNED, EVENT_PROFITABILITY_RECORDED, EVENT_PROJECT_COMPLETED）。
+- GROWTH_EVENT_TYPES に運用種別を拡充。重要操作は `emitGrowthEvent({alsoDomainEvent})` で Growth＋Domain（→Outbox→Webhook→worker）に接続。
+
+### ABAC / Audit / Approval
+- 全 action: tenantId 分離＋`hasPermission('inventory', …)`。原価/粗利の詳細閲覧は `hasPermission('finance','read')` で制御し `writeConfidentialViewLog` を記録（CONFIDENTIAL）。
+- **危険操作の承認ゲート**: 在庫数量の大幅調整（`inventory_adjust`、|Δ|≥10 で承認）、予約済み在庫の強制解除（`inventory_force_release`、常時承認）を `requireApprovalForDangerousAction` 経由。承認待ちは申請のみ作成し直接適用しない。
+- **設計上Approval対象（今回UI未実装、docs明記）**: 在庫削除、在庫評価額の変更、破損請求の確定（`damage_charge_finalize`）、案件粗利/原価の外部共有・export、協力会社単価のexport。
+
+### AI安全基盤の適用
+`createEventNextProposalAction` は Phase 1-5 の `safeAiInput`（注入検出）→決定論生成→`saveAIOutputStandard`（AIOutput保存）→GrowthEvent（event.proposal.created）。外部送信は今回なし。
+
+### 残リスク / 次フェーズ
+- 強制解除/破損請求確定の「承認後の実処理（executeApprovedAction）」は未実装（申請まで）。
+- 発注(PurchaseOrder)/棚卸(Stocktake)/車両・配送/設営人員/協力会社/看板AI見積/請求・入金・会計連動 は次フェーズ。
+- EventTask/EventStaffAssignment/EventRisk は人員配置・リスク管理の本格化時に追加。

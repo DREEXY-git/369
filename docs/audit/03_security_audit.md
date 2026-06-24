@@ -74,3 +74,12 @@
 - **AISafetyLog 管理画面**は社長/役員/管理者のみ（スタッフ/閲覧のみは不可＝権限分離）。AIOutput は audit:read。
 - セキュリティ自動テスト `apps/web/tests/e2e/security.spec.ts`（注入クエリが500を出さず無害化／スタッフは AI安全ログ不可視）を追加。
 残: 外部送信実行時のPIIマスク自動適用、MFA/SSO、改ざん検知(ハッシュチェーン)、レート制限、CSP、ファイル検証。
+
+## Phase 1-6 更新（2026-06-24）— Operations OS
+
+- **原価・粗利・在庫評価額の機密扱い**: イベント原価/粗利の閲覧は `hasPermission('finance','read')` で制御し、閲覧時に `writeConfidentialViewLog`（CONFIDENTIAL）を記録。スタッフは案件は見えても原価/粗利は非表示（権限分離）。
+- **危険操作の承認ゲート**: 在庫数量の大幅調整（`inventory_adjust`、|Δ|≥10）・予約済み在庫の強制解除（`inventory_force_release`、常時）を `requireApprovalForDangerousAction` 経由（直接適用しない）。
+- **設計上Approval対象（docs明記・UI後続）**: 在庫削除/評価額変更/破損請求確定（`damage_charge_finalize`）/原価・粗利の外部共有・export/協力会社単価export。
+- 全 Operations action は tenantId 分離＋RBAC＋writeAudit。在庫変化は InventoryMovement 経由で監査可能。
+- AI次回提案は注入検出＋AIOutput保存。AIは外部送信を持たない（多重防御）。
+残: 承認後実処理（executeApprovedAction）の Operations 経路、レート制限、CSP、MFA、改ざん検知。

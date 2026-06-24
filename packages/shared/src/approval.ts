@@ -25,7 +25,11 @@ export type ApprovalAction =
   | 'ai_high_confidential_send' // 高機密データのAI送信
   | 'ai_auto_execute' // AI社員による自動実行
   | 'knowledge_rollback'
-  | 'ai_external_action';
+  | 'ai_external_action'
+  // Operations OS（Phase 1-6）
+  | 'inventory_adjust' // 在庫数量の大幅調整（閾値以上で承認）
+  | 'inventory_force_release' // 予約済み在庫の強制解除
+  | 'damage_charge_finalize'; // 破損請求の確定
 
 export interface ApprovalContext {
   actorIsAi?: boolean;
@@ -58,9 +62,12 @@ const ALWAYS_APPROVE: ApprovalAction[] = [
   'ai_auto_execute',
   'knowledge_rollback',
   'ai_external_action',
+  'inventory_force_release',
+  'damage_charge_finalize',
 ];
 
 export const QUOTE_AUTO_APPROVE_LIMIT = 500_000; // 円。これ以上は承認必須。
+export const INVENTORY_ADJUST_APPROVE_THRESHOLD = 10; // |Δ数量| がこれ以上は承認必須。
 
 /**
  * 重要操作は承認必須。
@@ -73,6 +80,10 @@ export function requiresApproval(action: ApprovalAction, ctx: ApprovalContext = 
   if (ALWAYS_APPROVE.includes(action)) return true;
   if (action === 'quote_issue') {
     return (ctx.amount ?? 0) >= QUOTE_AUTO_APPROVE_LIMIT;
+  }
+  if (action === 'inventory_adjust') {
+    // 数量差分の絶対値が閾値以上なら承認必須（amount に Δ数量を渡す）。
+    return Math.abs(ctx.amount ?? 0) >= INVENTORY_ADJUST_APPROVE_THRESHOLD;
   }
   return false;
 }

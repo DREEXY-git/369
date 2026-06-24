@@ -24,7 +24,12 @@ export default async function InventoryPage() {
       <PageHeader
         title="在庫・商品管理"
         description="イベント・リース商品を経営資産として管理します。"
-        action={<Link href="/inventory/lease"><Button variant="outline">リース予約</Button></Link>}
+        action={
+          <div className="flex gap-2">
+            <Link href="/operations"><Button variant="outline">Operations OS</Button></Link>
+            <Link href="/inventory/lease"><Button variant="outline">リース予約</Button></Link>
+          </div>
+        }
       />
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="商品種類" value={assets.length} />

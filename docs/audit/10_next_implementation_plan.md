@@ -68,3 +68,14 @@ Phase 1-5（次）:
 2. **Operations OS 本体（Phase 4系）**: 在庫入出庫(StockMovement)/棚卸(Stocktake)/発注(PurchaseOrder)・発注点、リース→搬入→設営→撤去→回収→精算、SalesOrder/Shipment。すべて DB→Action(Zod/RBAC/監査)→UI→承認→DomainEvent/GrowthEvent→Worker→テスト を縦に通す。
 3. 外部送信実行経路の実装時に `prepareExternalPayload` を送信直前へ自動適用＋ `EXTERNAL_SEND_ENABLED` ＋承認。
 4. 残セキュリティ: MFA/SSO、改ざん検知(ハッシュチェーン)、レート制限、CSP、ファイル検証。
+
+## Phase 1-6 完了 → 次の計画（2026-06-24）
+
+完了: Operations OS 最小縦スライス。新規 `InventoryMovement`（在庫状態の単一の真実源）＋既存 ProductAsset/LeaseReservation/EventProject を活用。`lib/operations.ts`（applyInventoryMovement/recordEventProfitabilitySnapshot/summarizeOperationsDashboard）＋ `operations/actions.ts`（在庫/リース/イベントの各 action）。画面 `/operations`・`/operations/events(/new,/[id])`・`/operations/inventory-movements(/new)`、`/inventory/lease` を実用化。DomainEvent/GrowthEvent 接続、危険操作の承認ゲート、原価/粗利の機密権限分離。unit 131 / integration 34、lint/typecheck/build green。
+
+次（Phase 1-7 / Phase 2 候補）:
+1. **承認後実処理**: 強制解除・破損請求確定を `executeApprovedAction` で承認後に実行する経路を実装。
+2. **在庫の深化**: 発注（PurchaseOrder）・発注点アラート・棚卸（Stocktake）・入出庫の差異監査。
+3. **イベント会社の深化**: 配送/設営/撤去/回収のワークフロー、EventStaffAssignment（人員配置・人件費）、EventRisk（リスク管理）。
+4. **会計連動（Phase 2）**: イベント原価/売上 → 仕訳候補（OCRProvider 実経路）→ 承認後確定、請求・入金連動。
+5. **看板AI見積（Phase 3）**: 13マスタ＋原価/粗利ロジック＋UI。

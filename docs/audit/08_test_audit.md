@@ -42,3 +42,17 @@
 - 追加 unit: ai-safety(11: injection/pii/toolperm/runSafetyChecks)、growth(5: 型/カテゴリ/DXインパクト/集計)、growth_marketing(3: 権限/承認非送信/優先度) = **+19** → 合計 **111 passed**。
 - 追加 integration（`p1_4_growth.itest.ts`）: 成長台帳記録＋集計、テナント分離、DX診断→改善機会(優先度計算)、マーケ資産→承認(非送信) = **+4** → 合計 **24 passed**。
 - カバー: 命令注入検出、PIIマスク、AIツール権限、DXインパクト計算、成長集計、承認なし送信不可、tenant分離。
+
+## Phase 1-5 更新（2026-06-24）
+
+- 追加 unit: operations(8: 稼働率/可用性/粗利率/運用分類/成長種別)、multimodal(6: TextAI/OCR/Voice Fake) = **+14** → 合計 **125 passed**。
+- 追加 integration（`p1_5_ai_safety.itest.ts`）: AISafetyLog 各チェック記録（injection/pii_mask/tool_permission）、AIOutput 標準保存（inputHash/safetyFlags/confidence/model）、tenant分離 = **+4** → 合計 **28 passed**。
+- 追加 e2e（`security.spec.ts`）: 注入クエリ無害化（500なし）、誤検知なし、AI安全ログの権限分離（社長可・スタッフ不可）。CI/実環境で実行（本サンドボックスは chromium DL 不可）。
+
+## Phase 1-6 更新（2026-06-24）— Operations OS
+
+- 追加 unit（`operations.test.ts` 拡張）: 在庫移動効果の写像（receive/reserve/dispatch/return/damage/maintenance…→status/condition）、移動→成長種別が全て operations、大幅調整判定、危険操作の承認要否（inventory_adjust 閾値・inventory_force_release/damage_charge_finalize 常時）= **+6** → 合計 **131 passed**。
+- 追加 integration（`p1_6_operations.itest.ts`）: 入庫→InventoryMovement＋ProductAsset数量増＋GrowthEvent / 出庫→status out・返却→available＋Growth / リース予約＋商品追加＋重複検知 / イベント案件→割当→原価→粗利計算→EventGrossProfitSnapshot＋Growth / tenant分離 / 危険操作の承認必須 = **+6** → 合計 **34 passed**。
+- 追加 e2e（`operations.spec.ts`）: /operations 表示、イベント案件作成、在庫移動記録、スタッフは原価/粗利の機密情報を閲覧不可（権限分離）。CI/実環境で実行。
+- カバー: 在庫状態の単一真実源（InventoryMovement）、案件粗利、可用性/重複、運用 GrowthEvent、機密（原価/粗利）の権限分離、危険操作の承認。
+- 残: e2e の実ブラウザ実行（環境）、強制解除/破損請求確定の承認後実処理、SSRF/XSS/CSRF 自動テスト。

@@ -39,6 +39,8 @@ import {
   Siren,
   Sparkles,
   ClipboardCheck,
+  Warehouse,
+  Truck,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -101,6 +103,14 @@ export const NAV: NavGroup[] = [
       { label: '財務サマリー', href: '/finance', icon: Wallet },
       { label: '資金繰り', href: '/finance/cashflow', icon: CalendarClock },
       { label: '利益漏れ検知', href: '/finance/profit-leaks', icon: TrendingDown },
+    ],
+  },
+  {
+    title: 'Operations OS',
+    items: [
+      { label: '経営資産ダッシュボード', href: '/operations', icon: Warehouse },
+      { label: 'イベント案件', href: '/operations/events', icon: PartyPopper },
+      { label: '在庫移動台帳', href: '/operations/inventory-movements', icon: Truck },
     ],
   },
   {

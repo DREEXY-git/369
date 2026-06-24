@@ -2440,6 +2440,7 @@ model EventProject {
   gross       Decimal  @default(0) @db.Decimal(14, 2)
   loadInAt    DateTime?
   loadOutAt   DateTime?
+  completedAt DateTime? // 経営上の案件完了日時。loadOutAt(撤去・物流時刻)とは意味を分離。Phase 1-13。
   weatherRisk String   @default("")
   notes       String   @default("")
   createdAt   DateTime @default(now())

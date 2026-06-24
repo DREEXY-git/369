@@ -126,3 +126,39 @@
 2. 「今すぐ見るべき案件」から各是正アクション（請求送信/督促/リスク対応）への深いディープリンク。
 3. KPI のキャッシュ/集計テーブル化（規模拡大時）。
 4. 承認種別 `invoice_finalize`／`invoice_send` 分離（可読性・監査性、03 参照）。
+
+---
+
+## Phase 1-13 — Golden Path Action Deep Links + completedAt + Approval 分離（2026-06-24）
+
+目的: Phase 1-12 で「見える・気づく」を実現。本 Phase は **「すぐ対処する」導線**を整える。横展開なし・既存モデルのみ（completedAt の最小フィールド追加を除く）。
+
+### Action Deep Links（reason → 是正アクション）
+- 純ロジック `golden-path-actions.ts`: `buildGoldenPathActionLinks(kpi)` / `getGoldenPathActionForReason` / `visibleGoldenPathActions`（finance系を非financeで除外）。href 生成と finance 要否を一元管理（UI に散らさない）。
+- reason→href: 延滞/未回収/未送信→`/invoices/{id}`（finance）、低粗利→`#finance-summary`（finance）、高リスク→`#risks`、物流遅延→`#logistics`、承認待ち→`/approvals`、Finance未接続→`#golden-path`（非finance）。invoiceId 欠如時は `#finance-summary` フォールバック。
+- `AttentionList` に「対処」アクションボタンを追加。「次の一手（前進）」と「対処（是正）」を視覚的に区別。
+- event detail に deep link 用アンカー `#golden-path / #finance-summary / #costs / #staff / #risks / #logistics / #proposals`。
+
+### completedAt 精緻化（最小フィールド追加）
+- `EventProject.completedAt DateTime?` 追加。`completeEventProject` でセット（loadOutAt 維持）。KPI「今月完了」は completedAt 優先・null 時のみ `status=completed かつ eventDate 当月` で代理（`isCompletedInMonth`）。理由は 12 に記録。
+
+### Approval 種別分離
+- `invoice_finalize`（候補→正式化＝内部確定）を `invoice_send`（外部送信）から分離。実行は後方互換（entityType='InvoiceCandidate' ＋ in[...]）。既存の外部送信/正式化フローは不変。
+
+### 権限制御
+- finance 系アクションは `requiresFinance` ＋ redact ＋ `visibleGoldenPathActions` で STAFF 非表示（深層防御）。invoiceId も redact 対象。非 finance（リスク/物流/承認/Bridge導線）は STAFF にも表示。Finance Bridge **実行**は引き続き finance:create。
+
+### テスト
+- unit **200 passed**: golden_path_actions（reason別 action/finance filter）＋ golden_path_dashboard（completedAt 優先/fallback/invoiceId redact）＋ approval（finalize/send 分離）。
+- integration **80 passed**: `p1_13_golden_path_actions.itest.ts`（completedAt セット/集計・action link・redact・tenant分離・approval 分離）。
+- e2e spec: `golden_path_actions.spec.ts`（是正アクション表示・高リスク→#risks・低粗利→#finance-summary・STAFF finance 非表示）。
+
+### まだ残る弱点（正直な評価）
+- 是正アクションは「該当箇所へジャンプ」まで（その場でワンクリック実行はしない）。
+- completedAt は今後の新規完了に有効。過去の完了案件は completedAt=null のため fallback で集計。
+- リードタイム/月次完了率の時系列分析は未実装（completedAt を起点に将来拡張可）。
+
+### 次にやるべきこと
+1. 是正アクション先での「その場ワンクリック実行」（請求送信/督促のインライン化）。
+2. completedAt を用いたリードタイム・月次完了率の時系列 KPI。
+3. `requestInvoiceSend` 等の関数名を実態（finalize）へリネーム（呼び出し元含む安全な範囲で）。

@@ -16,6 +16,7 @@ export interface ExecProjectFact {
   eventDate: Date | null;
   venue: string | null;
   status: string; // EventProject.status（planned / completed 等）
+  completedAt: Date | null; // 経営上の完了日時。null なら status=completed かつ eventDate 当月で代理（Phase 1-13）
   // Golden Path 進捗（computeGoldenPath の結果を渡す）
   progressPercent: number;
   doneCount: number;
@@ -39,6 +40,7 @@ export interface ExecProjectFact {
   paidAmount: number;
   unpaidAmount: number; // 請求済かつ未回収の残額（max(total-paid,0)）。未請求は 0
   receivableOverdue: boolean;
+  invoiceId: string | null; // 是正アクションの deep link 用（finance機密＝redact対象）
 }
 
 // ---- 「今すぐ見るべき案件」理由コードと重み（優先度） ----
@@ -90,6 +92,7 @@ export interface ExecProjectKpi {
   venue: string | null;
   status: string;
   active: boolean; // status !== 'completed'
+  completedAt: Date | null;
   progressPercent: number;
   doneCount: number;
   totalCount: number;
@@ -114,6 +117,7 @@ export interface ExecProjectKpi {
   unpaidAmount: number | null;
   paidAmount: number | null;
   receivableOverdue: boolean | null;
+  invoiceId: string | null; // 是正アクションの deep link 用（redact対象）
   // 優先度
   attentionReasons: AttentionReasonCode[];
   attentionScore: number;
@@ -166,6 +170,12 @@ function inMonth(d: Date | null, start: Date, end: Date): boolean {
   return d != null && d >= start && d < end;
 }
 
+/** 「今月完了」判定: completedAt があれば優先、無ければ status=completed かつ eventDate 当月で代理。Phase 1-13。 */
+export function isCompletedInMonth(f: ExecProjectFact, start: Date, end: Date): boolean {
+  if (f.completedAt != null) return inMonth(f.completedAt, start, end);
+  return f.status === 'completed' && inMonth(f.eventDate, start, end);
+}
+
 /** 1 案件の事実 → KPI（finance 込み・redact 前）。理由コードと優先度スコアを付与。 */
 function toProjectKpi(f: ExecProjectFact): ExecProjectKpi {
   const gross = f.revenue - f.cost;
@@ -194,6 +204,7 @@ function toProjectKpi(f: ExecProjectFact): ExecProjectKpi {
     venue: f.venue,
     status: f.status,
     active,
+    completedAt: f.completedAt,
     progressPercent: f.progressPercent,
     doneCount: f.doneCount,
     totalCount: f.totalCount,
@@ -216,6 +227,7 @@ function toProjectKpi(f: ExecProjectFact): ExecProjectKpi {
     unpaidAmount: f.unpaidAmount,
     paidAmount: f.paidAmount,
     receivableOverdue: f.receivableOverdue,
+    invoiceId: f.invoiceId,
     attentionReasons: reasons,
     attentionScore,
   };
@@ -248,9 +260,7 @@ export function summarizeExecutiveDashboard(
     completedCount,
     avgProgressPercent,
     monthEventCount: facts.filter((f) => inMonth(f.eventDate, opts.monthStart, opts.monthEnd)).length,
-    monthCompletedCount: facts.filter(
-      (f) => f.status === 'completed' && inMonth(f.eventDate, opts.monthStart, opts.monthEnd),
-    ).length,
+    monthCompletedCount: facts.filter((f) => isCompletedInMonth(f, opts.monthStart, opts.monthEnd)).length,
     highRiskCount: projects.filter((p) => p.highRiskOpen).length,
     unfinishedLogisticsTotal: projects.reduce((s, p) => s + p.unfinishedLogisticsCount, 0),
     overdueLogisticsCount: projects.filter((p) => p.overdueLogisticsCount > 0).length,
@@ -302,6 +312,7 @@ export function redactExecutiveFinance(
       unpaidAmount: null,
       paidAmount: null,
       receivableOverdue: null,
+      invoiceId: null,
       attentionReasons: reasons,
       attentionScore: reasons.reduce((s, r) => s + EXEC_ATTENTION_WEIGHT[r], 0),
     };

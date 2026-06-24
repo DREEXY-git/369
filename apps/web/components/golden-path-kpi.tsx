@@ -7,6 +7,8 @@ import {
   formatJpy,
   formatDate,
   EXEC_ATTENTION_LABEL,
+  buildGoldenPathActionLinks,
+  visibleGoldenPathActions,
   type ExecOverall,
   type ExecProjectKpi,
   type AttentionReasonCode,
@@ -64,47 +66,65 @@ export function GoldenPathKpiGrid({ overall, financeVisible }: { overall: ExecOv
   );
 }
 
-/** 「今すぐ見るべき案件」リスト。低粗利・未回収・高リスク・承認待ち・物流遅延・Bridge未接続を優先度順に。 */
+/**
+ * 「今すぐ見るべき案件」リスト。優先度順に、各 attention 理由の是正アクション（deep link）を提示。
+ * カードは Link で包まず（リンク入れ子回避）、案件名と是正アクションを個別の Link にする。
+ * 「次の一手（前進）」と「対処（是正アクション）」を視覚的に区別。finance系アクションは redact＋visible で STAFF に出さない。
+ */
 export function AttentionList({ items, financeVisible }: { items: ExecProjectKpi[]; financeVisible: boolean }) {
   if (items.length === 0) {
     return <EmptyState title="今すぐ対応が必要な案件はありません" hint="進捗・リスク・請求・入金は良好です。" />;
   }
   return (
     <div className="space-y-2">
-      {items.map((p) => (
-        <Link
-          key={p.id}
-          href={`/operations/events/${p.id}`}
-          className="block rounded-md border p-3 hover:bg-secondary/50"
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium">{p.name}</span>
-            {p.customerName ? <Badge tone="slate">{p.customerName}</Badge> : null}
-            {p.eventDate ? <Badge tone="blue">{formatDate(p.eventDate)}</Badge> : null}
-            {!p.active ? <Badge tone="green">完了</Badge> : null}
-            {financeVisible && p.marginPercent != null && p.lowMargin ? <Badge tone="amber">粗利率 {p.marginPercent}%</Badge> : null}
-          </div>
-          <div className="mt-2 flex items-center gap-3">
-            <ProgressBar percent={p.progressPercent} />
-            <span className="whitespace-nowrap text-xs text-muted-foreground">{p.doneCount}/{p.totalCount}（{p.progressPercent}%）</span>
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {p.attentionReasons.map((r) => (
-              <Badge key={r} tone={REASON_TONE[r]}>{EXEC_ATTENTION_LABEL[r]}</Badge>
-            ))}
-          </div>
-          <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span className="text-blue-800">
-              {p.nextActionLabel ? <>次の一手: <strong>{p.nextActionLabel}</strong></> : '✅ Golden Path 完了'}
-            </span>
-            {financeVisible && p.unpaidAmount != null && p.unpaidAmount > 0 ? (
-              <span className={p.receivableOverdue ? 'font-semibold text-red-600' : 'text-amber-700'}>
-                未回収 {formatJpy(p.unpaidAmount)}{p.receivableOverdue ? '（延滞）' : ''}
-              </span>
+      {items.map((p) => {
+        const actions = visibleGoldenPathActions(buildGoldenPathActionLinks(p), financeVisible);
+        return (
+          <div key={p.id} className="rounded-md border p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link href={`/operations/events/${p.id}`} className="font-medium text-primary hover:underline">{p.name}</Link>
+              {p.customerName ? <Badge tone="slate">{p.customerName}</Badge> : null}
+              {p.eventDate ? <Badge tone="blue">{formatDate(p.eventDate)}</Badge> : null}
+              {!p.active ? <Badge tone="green">完了</Badge> : null}
+              {financeVisible && p.marginPercent != null && p.lowMargin ? <Badge tone="amber">粗利率 {p.marginPercent}%</Badge> : null}
+            </div>
+            <div className="mt-2 flex items-center gap-3">
+              <ProgressBar percent={p.progressPercent} />
+              <span className="whitespace-nowrap text-xs text-muted-foreground">{p.doneCount}/{p.totalCount}（{p.progressPercent}%）</span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {p.attentionReasons.map((r) => (
+                <Badge key={r} tone={REASON_TONE[r]}>{EXEC_ATTENTION_LABEL[r]}</Badge>
+              ))}
+            </div>
+            {/* 対処（是正アクション）: reason ごとの deep link。前進＝次の一手とは別物。 */}
+            {actions.length > 0 ? (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground">対処:</span>
+                {actions.map((a) => (
+                  <Link
+                    key={a.reason}
+                    href={a.href}
+                    className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-800 hover:bg-blue-100"
+                  >
+                    {a.actionLabel} →
+                  </Link>
+                ))}
+              </div>
             ) : null}
+            <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="text-muted-foreground">
+                {p.nextActionLabel ? <>次の一手（前進）: <strong className="text-blue-800">{p.nextActionLabel}</strong></> : '✅ Golden Path 完了'}
+              </span>
+              {financeVisible && p.unpaidAmount != null && p.unpaidAmount > 0 ? (
+                <span className={p.receivableOverdue ? 'font-semibold text-red-600' : 'text-amber-700'}>
+                  未回収 {formatJpy(p.unpaidAmount)}{p.receivableOverdue ? '（延滞）' : ''}
+                </span>
+              ) : null}
+            </div>
           </div>
-        </Link>
-      ))}
+        );
+      })}
     </div>
   );
 }

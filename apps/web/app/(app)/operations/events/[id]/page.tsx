@@ -92,7 +92,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
 
       {/* Golden Path: 現在地と次の一手（プランニングホッコー業務フロー） */}
       {gp ? (
-        <Card className="mb-4 border-blue-100">
+        <Card id="golden-path" className="mb-4 scroll-mt-4 border-blue-100">
           <CardHeader><CardTitle>Golden Path — 現在地と次の一手</CardTitle></CardHeader>
           <CardContent>
             <div className="mb-3 flex items-center gap-3">
@@ -160,7 +160,8 @@ export default async function EventDetailPage({ params, searchParams }: { params
         </Card>
       ) : null}
 
-      {/* 粗利サマリー（財務権限のみ） */}
+      {/* 粗利サマリー（財務権限のみ）。#finance-summary でディープリンク。 */}
+      <div id="finance-summary" className="scroll-mt-4" />
       {canViewFinance ? (
         <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
           <Stat label="売上" value={formatJpy(revenue)} tone="emerald" />
@@ -202,7 +203,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
         </Card>
 
         {/* 原価内訳（財務権限のみ） */}
-        <Card>
+        <Card id="costs" className="scroll-mt-4">
           <CardHeader><CardTitle>原価内訳</CardTitle></CardHeader>
           <CardContent>
             {!canViewFinance ? (
@@ -262,7 +263,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
             </CardContent>
           </Card>
         ) : null}
-        <Card>
+        <Card id="proposals" className="scroll-mt-4">
           <CardHeader><CardTitle>次回提案（AI下書き）</CardTitle></CardHeader>
           <CardContent>
             {event!.nextProposals.length === 0 ? <EmptyState title="まだありません" hint="「AI次回提案を生成」で作成します。" /> : (
@@ -279,7 +280,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
       {/* 人員配置・リスク・物流 */}
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* 人員配置 */}
-        <Card>
+        <Card id="staff" className="scroll-mt-4">
           <CardHeader><CardTitle>人員配置（{event!.staffAssignments.length}）</CardTitle></CardHeader>
           <CardContent>
             {event!.staffAssignments.length === 0 ? <EmptyState title="未割当" /> : (
@@ -307,7 +308,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
         </Card>
 
         {/* リスク */}
-        <Card>
+        <Card id="risks" className="scroll-mt-4">
           <CardHeader><CardTitle>リスク（{event!.risks.filter((r) => r.status !== 'resolved').length}）</CardTitle></CardHeader>
           <CardContent>
             {event!.risks.length === 0 ? <EmptyState title="リスクなし" /> : (
@@ -345,7 +346,7 @@ export default async function EventDetailPage({ params, searchParams }: { params
         </Card>
 
         {/* 物流 */}
-        <Card>
+        <Card id="logistics" className="scroll-mt-4">
           <CardHeader><CardTitle>物流タスク（{event!.logisticsTasks.length}）</CardTitle></CardHeader>
           <CardContent>
             {event!.logisticsTasks.length === 0 ? (

@@ -9,6 +9,7 @@ describe('requiresApproval — dangerous actions', () => {
       'sms_send',
       'ai_call_dial',
       'invoice_send',
+      'invoice_finalize',
       'dunning_send',
       'journal_finalize',
       'closing_finalize',
@@ -35,5 +36,11 @@ describe('requiresApproval — dangerous actions', () => {
   it('AI external actions always require approval and AI cannot send externally', () => {
     expect(requiresApproval('quote_issue', { actorIsAi: true, external: true })).toBe(true);
     expect(aiCanSendExternally()).toBe(false);
+  });
+
+  // Phase 1-13: 候補正式化(invoice_finalize) と 外部送信(invoice_send) を意味的に分離。両方とも承認必須。
+  it('separates invoice_finalize (候補→正式化) from invoice_send (外部送信); both require approval', () => {
+    expect(requiresApproval('invoice_finalize')).toBe(true);
+    expect(requiresApproval('invoice_send')).toBe(true);
   });
 });

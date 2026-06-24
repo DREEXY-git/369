@@ -147,6 +147,7 @@ export async function getGoldenPathExecutiveDashboardData(
       eventDate: e.eventDate,
       venue: e.venue,
       status: e.status,
+      completedAt: e.completedAt,
       progressPercent: gp.percent,
       doneCount: gp.doneCount,
       totalCount: gp.totalCount,
@@ -167,6 +168,7 @@ export async function getGoldenPathExecutiveDashboardData(
       paidAmount,
       unpaidAmount,
       receivableOverdue,
+      invoiceId: cand?.invoiceId ?? null,
     };
   });
 

@@ -128,3 +128,10 @@
 - **是正（軽微なセキュリティ修正）**: 従来 `/planning-hokko` は売上/原価/粗利を無ゲートで表示しており STAFF も金額を閲覧できた → 本Phaseで `canViewFinance` 分岐＋redact を追加し機密漏れを解消。event detail（Phase 1-11 で既にゲート済み）と整合。
 - 集約クエリは全て tenantId スコープ＋バッチ取得（per-event 個別クエリ無し）。クロステナント遮断は `p1_12_executive_dashboard.itest`（tenant分離）で検証。
 - 新規の外部送信・承認・削除権限は追加していない（読み取り・集計のみ）。AIロール権限は不変。
+
+## Phase 1-13 更新（2026-06-24）— Action Deep Links の権限制御と Approval 種別分離
+
+- 是正アクション（deep link）は `requiresFinance` を持ち、finance 系（請求書/入金/原価売上/資金繰り）は `redactExecutiveFinance`（finance reason 除去）＋ `visibleGoldenPathActions`（requiresFinance フィルタ）の**二重で STAFF 非表示**。invoiceId も redact 対象に追加。
+- 非 finance（高リスク→#risks、物流遅延→#logistics、承認待ち→/approvals、Finance未接続→#golden-path）は STAFF にも表示してよい。Finance Bridge の**実行**は引き続き finance:create。承認実行は approval:approve。
+- Approval 種別分離: 候補正式化=`invoice_finalize`（内部確定）、外部送信=`invoice_send`。実行クエリは後方互換（entityType='InvoiceCandidate' ＋ in['invoice_finalize','invoice_send']）で旧 pending を壊さない。外部送信フロー（entityType='Invoice'）は不変。`p1_13` で分離を検証。
+- 新規DBモデルなし（completedAt の1列追加のみ）。新規の送信/削除権限なし。

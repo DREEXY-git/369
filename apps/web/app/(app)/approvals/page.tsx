@@ -12,6 +12,7 @@ const TYPE_LABEL: Record<string, string> = {
   outreach_send: '営業メール送信',
   quote_issue: '見積発行',
   invoice_send: '請求書送付',
+  invoice_finalize: '請求書の正式化',
   contract_sign: '契約締結',
   payment_execute: '支払実行',
 };

@@ -101,7 +101,8 @@ export async function executeApprovedInvoiceSendAction(formData: FormData) {
   const user = await requireUser();
   if (!hasPermission(user, 'finance', 'create')) redirect('/finance/invoice-candidates?denied=1');
   const approvalId = String(formData.get('approvalId') ?? '');
-  const req = await prisma.approvalRequest.findFirst({ where: { id: approvalId, tenantId: user.tenantId, requestedForAction: 'invoice_send' } });
+  // Phase 1-13: 候補正式化は invoice_finalize。旧 pending（invoice_send）も entityType で後方互換に拾う。
+  const req = await prisma.approvalRequest.findFirst({ where: { id: approvalId, tenantId: user.tenantId, entityType: 'InvoiceCandidate', requestedForAction: { in: ['invoice_finalize', 'invoice_send'] } } });
   if (!req) redirect('/finance/invoice-candidates?error=notfound');
   const candidateId = String((req!.payloadAfter as { candidateId?: string } | null)?.candidateId ?? req!.entityId);
 

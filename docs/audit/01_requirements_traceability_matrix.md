@@ -150,3 +150,17 @@
 | 新規DBモデルを増やさない | 既存モデルのみ連結（migration なし） | 新規 migration なし |
 
 詳細監査: `13_planning_hokko_golden_path.md` §Phase 1-12。
+
+## Phase 1-13（2026-06-24）— Golden Path Action Deep Links + completedAt + Approval 分離
+
+| 要件 | 実装 | テスト |
+|---|---|---|
+| 危険検知→是正アクション導線（reason→deep link） | `buildGoldenPathActionLinks`/`getGoldenPathActionForReason`（golden-path-actions.ts） | golden_path_actions.test / p1_13_golden_path_actions.itest |
+| finance 系アクションを STAFF 非表示 | `visibleGoldenPathActions` ＋ redact（invoiceId 含む） | golden_path_actions.test / p1_13（redact で action 消滅）/ golden_path_actions.spec |
+| 今月完了の精緻化（completedAt 優先） | `EventProject.completedAt`＋`isCompletedInMonth`（completedAt→fallback） | golden_path_dashboard.test / p1_13（completedAt 集計） |
+| completeEventProject で completedAt セット | `completeEventProject`（loadOutAt 維持＋completedAt） | p1_13（更新で両方セット） |
+| 承認種別の意味分離 | `invoice_finalize`（候補正式化）/`invoice_send`（外部送信）、実行は後方互換 | approval.test / p1_13（finalize/send 分離） |
+| event detail の deep link アンカー | #golden-path/#finance-summary/#costs/#staff/#risks/#logistics/#proposals | golden_path_actions.spec |
+| 新規DBモデルを増やさない | completedAt の1列のみ（migration 1行） | 20260624184937_p1_13_event_completed_at |
+
+詳細監査: `13_planning_hokko_golden_path.md` §Phase 1-13、`12_maintenance_architecture.md` §Phase 1-13。

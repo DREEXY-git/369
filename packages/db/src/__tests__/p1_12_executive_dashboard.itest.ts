@@ -94,6 +94,7 @@ async function buildDashboard(tenantId: string, canViewFinance: boolean): Promis
     });
     return {
       id: e.id, name: e.name, customerName: null, eventDate: e.eventDate, venue: e.venue, status: e.status,
+      completedAt: e.completedAt,
       progressPercent: gp.percent, doneCount: gp.doneCount, totalCount: gp.totalCount,
       nextActionKey: gp.nextActionKey, nextActionLabel: gp.nextActionLabel,
       highRiskOpen: highRiskSet.has(e.id),
@@ -106,6 +107,7 @@ async function buildDashboard(tenantId: string, canViewFinance: boolean): Promis
       approvalPendingCount: approvalCountByEvent.get(e.id) ?? 0,
       revenue, cost, invoiceTotal, paidAmount, unpaidAmount,
       receivableOverdue: receivable?.status === 'overdue',
+      invoiceId: cand?.invoiceId ?? null,
     };
   });
 

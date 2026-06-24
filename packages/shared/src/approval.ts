@@ -8,7 +8,8 @@ export type ApprovalAction =
   | 'ai_call_dial' // AI電話発信 / AIコールセンター発信
   | 'quote_issue'
   | 'contract_sign'
-  | 'invoice_send'
+  | 'invoice_send' // 正式 Invoice の外部送信
+  | 'invoice_finalize' // 請求候補 → 正式 Invoice 化（外部送信なし・内部確定）。Phase 1-13 で invoice_send から意味分離
   | 'dunning_send' // 督促送信
   | 'payment_execute'
   | 'journal_finalize' // 会計仕訳確定
@@ -48,6 +49,7 @@ const ALWAYS_APPROVE: ApprovalAction[] = [
   'ai_call_dial',
   'contract_sign',
   'invoice_send',
+  'invoice_finalize',
   'dunning_send',
   'payment_execute',
   'journal_finalize',

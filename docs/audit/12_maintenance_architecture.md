@@ -157,3 +157,18 @@ DamageLossRecord(破損)   ─┘              └─→ InvoiceCandidate(請求
   - 薄い action `bridgeEventToFinanceAction`（認証→finance権限→lib→redirect）。
 - `bridgeEventProjectToFinance` を**冪等化**（既存 InvoiceCandidate(sourceType=EventProject) 検出で二重生成防止）。/finance/bridge と event detail の双方から安全に呼べる。
 - データ分類は不変: 候補(InvoiceCandidate/JournalCandidate)・正式(Invoice)・実績(Payment/FinanceEvent posted)・ブリッジ(FinanceEvent)・分析(GrowthEvent) を混ぜない。
+
+## Phase 1-13 — completedAt 追加 と Approval 種別分離（2026-06-24）
+
+### EventProject.completedAt（最小フィールド追加）の理由
+- **なぜ既存で足りないか**: KPI「今月完了」は従来 `status=completed かつ eventDate 当月` の代理。eventDate は開催予定日であり完了日ではないため、延期・月跨ぎで誤差が出る。`loadOutAt` は撤去/物流時刻で「経営上の完了」と意味が異なり、混用すると物流完了と経営完了が混線する。
+- **追加内容（最小）**: `EventProject.completedAt DateTime?`（nullable・default なし・backfill なし）。migration は `ALTER TABLE "EventProject" ADD COLUMN "completedAt"` の単純追加で非ブロッキング・既存行は null。**この1列以外の DB 変更は入れていない**。
+- **互換**: `completeEventProject` は `status:'completed', loadOutAt:now` に加え `completedAt:now` をセット（loadOutAt は維持）。KPI は `isCompletedInMonth`（shared）で completedAt 優先・null 時のみ従来 fallback。意味分離: **completedAt=経営完了 / loadOutAt=撤去・物流**。
+
+### Approval 種別の意味分離（invoice_finalize / invoice_send）
+- 課題: 「候補→正式 Invoice 化（内部確定）」と「正式 Invoice の外部送信」がともに `invoice_send` だった。
+- 対応: `invoice_finalize` を新設し、候補正式化の申請（`requestInvoiceSend` 内）を invoice_finalize に。外部送信は invoice_send のまま。
+- 後方互換: 正式化の実行クエリは `entityType='InvoiceCandidate' かつ requestedForAction in ['invoice_finalize','invoice_send']` で旧 pending も拾う。外部送信は entityType='Invoice' の invoice_send で別系統。関数名は据え置き（呼び出し元/UI を壊さない）。
+
+### Action Deep Links の集約
+- reason→是正アクションの href 生成と finance 要否は `packages/shared/src/golden-path-actions.ts` に集約（page.tsx に散らさない）。UI は `buildGoldenPathActionLinks`＋`visibleGoldenPathActions` を呼ぶだけ。

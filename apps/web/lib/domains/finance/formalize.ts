@@ -110,7 +110,7 @@ export async function finalizeInvoiceCandidate(actor: Actor, candidateId: string
   });
   await prisma.invoiceCandidate.update({ where: { id: candidateId }, data: { status: 'sent', invoiceId: invoice.id } });
 
-  await writeAudit({ tenantId: actor.tenantId, actorId: actor.userId, action: 'invoice_send', entityType: 'Invoice', entityId: invoice.id, summary: `請求候補を正式化: ${ic.title}（${total}円・${number}）` });
+  await writeAudit({ tenantId: actor.tenantId, actorId: actor.userId, action: 'invoice_finalize', entityType: 'Invoice', entityId: invoice.id, summary: `請求候補を正式化: ${ic.title}（${total}円・${number}）` });
   await writeConfidentialViewLog({ tenantId: actor.tenantId, actorId: actor.userId, entityType: 'Invoice', entityId: invoice.id, label: 'FINANCIAL_CONFIDENTIAL' as ConfidentialityLabel, purpose: '正式請求書の作成' });
   await emitGrowthEvent({
     tenantId: actor.tenantId,

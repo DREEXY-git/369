@@ -98,3 +98,10 @@
 - integration: **73**（+6）。`p1_12_executive_dashboard.itest.ts`（複数EventProject集計・未回収[invoice+payment+receivable+financeEvent]横断・低粗利/高リスク/物流遅延/承認待ち検出・tenant分離・STAFF相当 redact）。
 - e2e: `executive_dashboard.spec.ts`（CEO に GP KPI 表示・planning-hokko 平均進捗/次の一手・event→dashboard 導線・STAFF は金額不可視）。サンドボックスは chromium DL 不可のため CI/実環境で実行。
 - 6検証コマンド: db:generate / typecheck / test(186) / lint / build / integration(73) すべて green。
+
+## Phase 1-13 更新（2026-06-24）
+
+- unit: **200**（+14）。`golden_path_actions.test.ts`（reason別 action link・invoiceId フォールバック・finance filter）、`golden_path_dashboard.test.ts` 拡張（completedAt 優先/fallback・isCompletedInMonth・invoiceId redact）、`approval.test.ts`（invoice_finalize/invoice_send 分離）。
+- integration: **80**（+7）。`p1_13_golden_path_actions.itest.ts`（completedAt セット/集計・attention→action link・tenant分離・finance redact で action 消滅・invoice_finalize/invoice_send の承認種別分離[後方互換クエリ]）。
+- e2e: `golden_path_actions.spec.ts`（是正アクション表示・高リスク→#risks・低粗利→#finance-summary・STAFF finance 非表示）。CI/実環境で実行。
+- 6検証コマンド: db:generate / typecheck / test(200) / lint / build / integration(80) すべて green。

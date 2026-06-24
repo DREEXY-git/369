@@ -153,3 +153,13 @@ Phase 1-11 完了後、機能追加の前に本番足場固めを実施。詳細
 3. 規模拡大に備えた KPI 集計のキャッシュ/集計テーブル化（現状はリクエスト毎 force-dynamic）。
 4. 承認種別 `invoice_finalize`／`invoice_send` 分離（可読性・監査性）。
 5. 横展開（会計本体/銀行API/OCR/契約/給与/労務/AI社員本体）は引き続き対象外。
+
+## Phase 1-13 完了 → 次の計画（2026-06-24）
+
+完了: **Golden Path Action Deep Links + completedAt 精緻化 + Approval 種別分離**。純ロジック `golden-path-actions.ts`（reason→是正アクション・finance filter）、`EventProject.completedAt` 追加（KPI今月完了を completedAt 優先・fallback付き）、`invoice_finalize`/`invoice_send` 意味分離（後方互換）。`AttentionList` に是正アクションボタン、event detail に #アンカー。新規DBモデルなし（completedAt の1列のみ）。unit 200 / integration 80、6コマンド green。
+
+次（Phase 1-14 / Phase 2 候補）:
+1. 是正アクション先での「その場ワンクリック実行」（請求送信/督促のインライン化）。
+2. completedAt を用いたリードタイム・月次完了率の時系列 KPI。
+3. `requestInvoiceSend` 等の関数名を実態（finalize）へリネーム（呼び出し元含む安全な範囲で）。
+4. 横展開（会計本体/銀行API/OCR/契約/給与/労務/AI社員本体）は引き続き対象外。

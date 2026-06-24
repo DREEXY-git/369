@@ -40,7 +40,9 @@ export async function calculateEventProfitability(actor: Actor, eventId: string)
 export async function completeEventProject(actor: Actor, eventId: string): Promise<boolean> {
   const event = await findEvent(actor.tenantId, eventId);
   if (!event) return false;
-  await prisma.eventProject.update({ where: { id: eventId }, data: { status: 'completed', loadOutAt: new Date() } });
+  // completedAt=経営上の完了日時（KPIの「今月完了」基準）。loadOutAt=撤去/物流時刻は従来どおり維持。Phase 1-13。
+  const now = new Date();
+  await prisma.eventProject.update({ where: { id: eventId }, data: { status: 'completed', loadOutAt: now, completedAt: now } });
   await emitGrowthEvent({
     tenantId: actor.tenantId,
     type: 'event.completed',

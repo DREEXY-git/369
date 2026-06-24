@@ -245,19 +245,23 @@ export async function requestJournalFinalize(actor: Actor, candidateId: string) 
   return gate;
 }
 
-/** 請求候補を送信するための承認申請（invoice_send は常時承認）。 */
+/**
+ * 請求候補 → 正式 Invoice 化の承認申請（Phase 1-13 で invoice_finalize に意味分離）。
+ * これは「正式化（内部確定）」であり外部送信ではない（外部送信は invoice-send.ts の invoice_send）。
+ * 関数名は後方互換のため据え置き（呼び出し元/UIを壊さない）。
+ */
 export async function requestInvoiceSend(actor: Actor, candidateId: string) {
   const ic = await prisma.invoiceCandidate.findFirst({ where: { id: candidateId, tenantId: actor.tenantId } });
   if (!ic) throw new Error('candidate not found');
   const gate = await requireApprovalForDangerousAction({
     tenantId: actor.tenantId,
-    action: 'invoice_send',
-    title: `請求送信: ${ic.title}（${toNumber(ic.total)}円）`,
+    action: 'invoice_finalize',
+    title: `請求書の正式化: ${ic.title}（${toNumber(ic.total)}円）`,
     targetType: 'InvoiceCandidate',
     targetId: candidateId,
     requestedById: actor.userId,
     riskLevel: 'HIGH',
-    external: true,
+    external: false,
     payloadAfter: { candidateId },
   });
   await prisma.invoiceCandidate.update({ where: { id: candidateId }, data: { status: 'pending_approval', approvalId: gate.approvalId ?? null } });

@@ -36,3 +36,7 @@ test-results/
 .data/
 tmp/
 uploads/
+
+# redis (BullMQ) dump — ローカル開発の副産物。リポジトリに含めない。
+dump.rdb
+*.rdb

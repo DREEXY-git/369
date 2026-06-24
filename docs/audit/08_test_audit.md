@@ -30,3 +30,9 @@
 - 追加 integration（要DB・`pnpm --filter @hokko/db test:integration`）: `p0_foundations.itest.ts`（イベント冪等/クロステナント分離/同意付与→撤回/ポリシー deny 記録）= 4 tests。**14 passed**。
 - カバー: ABAC allow/deny、HR機密拒否、AI不正参照拒否、位置/録音の同意必須、営業時間外拒否、外部送信/エクスポート承認必須、同意撤回ブロック、リテンション失効、冪等防止、Webhook署名/リプレイ。
 - 残: e2e（承認フロー/権限分離の画面操作）、SSRF/XSS/CSRF の自動テスト。
+
+## Phase 1-3 更新（2026-06-24）
+
+- 追加 unit（`policy_rollout.test.ts`）: 承認ゲート(export/external/highAI)、ABAC(invoice deny staff / finance allow admin・owner)、outbox backoff = **+7** → 合計 **92 passed**。
+- 追加 integration（`p1_3_outbox_jobrun.itest.ts`）: JobRun ライフサイクル(2)/Outbox 配送(delivered)/失敗→retry＋WebhookDelivery/同意×ポリシー(location allow・deny) = **+6** → 合計 **20 passed**。
+- 残: e2e（権限分離・承認フロー画面操作）、SSRF/XSS/CSRF。

@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
+import { assertCanViewConfidential, PolicyDenied } from '@/lib/security/policy';
+import { AccessDenied } from '@/components/access-denied';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Table, Th, Td, Badge, Button, Input, Stat, EmptyState } from '@/components/ui';
@@ -22,6 +24,28 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     include: { lineItems: true, payments: { orderBy: { paidAt: 'desc' } }, customer: true, receivable: true },
   });
   if (!invoice) notFound();
+  // ABAC: 請求は財務機密。閲覧可否を判定し機密参照ログを記録。
+  try {
+    await assertCanViewConfidential(user, {
+      dataType: 'invoice',
+      label: 'FINANCIAL_CONFIDENTIAL',
+      entityType: 'Invoice',
+      entityId: invoice.id,
+      purpose: '請求詳細の閲覧',
+    });
+  } catch (e) {
+    if (e instanceof PolicyDenied) {
+      return (
+        <AccessDenied
+          title="請求詳細"
+          reason={e.decision.reason}
+          needsReason={e.decision.requiredSensitiveAccessReason}
+          breadcrumb={[{ label: '請求', href: '/invoices' }]}
+        />
+      );
+    }
+    throw e;
+  }
   const canUpdate = hasPermission(user, 'invoice', 'update');
   const overdue = isOverdue(invoice.dueDate, invoice.status);
   const outstanding = toNumber(invoice.total) - toNumber(invoice.paidAmount);

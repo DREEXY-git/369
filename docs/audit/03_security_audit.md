@@ -48,3 +48,12 @@
 - **承認ゲート**: 危険操作21種を `requiresApproval` で必須化＋承認ライフサイクル関数。
 - **Webhook 署名(HMAC-SHA256)** 生成/検証＋timestampリプレイ防止。
 残: MFA/SSO/SCIM、改ざん検知(ハッシュチェーン)、レート制限、CSP、prompt injection 検出、ファイル検証。
+
+## Phase 1-3 更新（2026-06-24）
+
+- ABAC＋機密参照ログを **invoice/finance/meeting/knowledge** に横展開（拒否は理由表示・500回避）。
+- **危険操作の実経路に承認ゲート適用**（直接実行不可。承認済みのみ executeApprovedAction 経由で実行）。
+- **位置情報閲覧**: 同意＋勤務時間でゲート、LocationAccessLog 記録。
+- **録音閲覧**: 録音同意でゲート、RecordingAccessLog 記録。
+- **worker Outbox 常時処理**（webhook 署名配送・retry・dead-letter）＋ JobRun 監査。
+残: MFA/SSO、改ざん検知、レート制限、CSP、prompt injection 検出、ファイル検証、契約/人事/勤怠 detail への展開（画面本体実装と同時）。

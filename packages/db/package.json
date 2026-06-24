@@ -24,12 +24,12 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@hokko/shared": "workspace:*",
     "@prisma/client": "^6.1.0"
   },
   "devDependencies": {
     "@hokko/ai": "workspace:*",
     "@hokko/integrations": "workspace:*",
-    "@hokko/shared": "workspace:*",
     "@types/bcryptjs": "^2.4.6",
     "bcryptjs": "^2.4.3",
     "dotenv-cli": "^8.0.0",

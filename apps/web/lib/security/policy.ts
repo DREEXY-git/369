@@ -106,6 +106,8 @@ export async function getConsentStatus(
   subject: { userId?: string | null; customerId?: string | null },
   now: Date = new Date(),
 ): Promise<ConsentStatus> {
+  // 対象が特定できない場合は同意を確認できない → missing（厳格側）。
+  if (!subject.userId && !subject.customerId) return 'missing';
   const grants = await prisma.consentGrant.findMany({
     where: {
       tenantId,

@@ -31,3 +31,9 @@
 ## 結論
 
 「Fake でも Real でも動く」基盤は良好。**注入対策・RAG権限フィルタ・承認ゲートの実コード強制・参照ログ**が AI 安全性の最重要欠落。
+
+## Phase 1-3 更新（2026-06-24）
+
+- ナレッジ検索の **AI 参照を DataAccessLog に記録**（機密ラベルでの retrieval フィルタは既存）。
+- **高機密データのAI送信**を承認ゲート必須化（`ai_high_confidential_send`）。
+残: PromptInjectionDetector、PiiMasker の経路適用、AIOutput への citations/confidence/cost 保存、ToolPermissionChecker。

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requireUser } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
+import { writeAIDataAccess } from '@/lib/audit';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Input, Button, EmptyState } from '@/components/ui';
 import { LabelBadge } from '@/components/badges';
@@ -51,6 +52,16 @@ export default async function KnowledgeSearchPage({ searchParams }: { searchPara
     answer = await answerKnowledgeQuestion({
       question: q,
       contexts: hits.map((h) => ({ title: h.title, text: h.text })),
+    });
+
+    // AI によるナレッジ参照を機密参照ログに記録（RBAC/機密ラベルでのフィルタは上で適用済み）。
+    await writeAIDataAccess({
+      tenantId: user.tenantId,
+      actorId: user.userId,
+      actorType: 'user',
+      entityType: 'KnowledgeSearch',
+      label: hits[0]?.label ?? 'INTERNAL',
+      purpose: `ナレッジ検索: ${q.slice(0, 80)}`,
     });
 
     // RetrievalLog / AnswerCitation を保存

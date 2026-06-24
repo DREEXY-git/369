@@ -27,3 +27,11 @@ CASHFLOW_FORECAST / ACCOUNTING_SYNC / OCR_PROCESSING / JOURNAL_SUGGESTION / CONT
 ## 結論
 
 「動く最小ジョブ」はあるが、**本番運用に必要なジョブ基盤（再試行/冪等/監査/失敗追跡）と、要件ジョブの過半が欠落**。Action 側は CRUD/検証/冪等の網羅が課題。
+
+## Phase 1-3 更新（2026-06-24）
+
+- **Worker を本物化**: `OUTBOX_DISPATCH_JOB` を追加（pending/failed 取得→webhook署名配送→retry/指数バックオフ→dead-letter）。起動時に15秒間隔で定期実行。
+- **JobRun 基盤**: `JobRun`/`JobRunLog`/`JobSchedule` ＋ `packages/db` ヘルパ（createJobRun/appendJobRunLog/finishJobRun/failJobRun）。worker/web 共用コア `packages/db/outbox.ts`。
+- **手動実行**: `/admin/jobs` の「Outbox を今すぐ処理」（Redis不要・インライン）。
+- 承認ゲートの代表 server action 群（申請＋承認済み実行）を追加。
+残: 他ジョブの JobRun 化、CASHFLOW/OCR/INVOICE_OVERDUE 等の未実装ジョブ。

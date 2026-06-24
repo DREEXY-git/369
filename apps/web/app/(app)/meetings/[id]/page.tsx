@@ -1,6 +1,8 @@
 import { notFound } from 'next/navigation';
 import { requireUser } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
+import { assertCanViewConfidential, assertCanViewRecording, PolicyDenied } from '@/lib/security/policy';
+import { AccessDenied } from '@/components/access-denied';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, EmptyState } from '@/components/ui';
 import { LabelBadge } from '@/components/badges';
@@ -21,6 +23,40 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
     },
   });
   if (!meeting) notFound();
+  // ABAC: 会議の機密ラベルで閲覧可否を判定（機密参照ログ記録）。
+  try {
+    await assertCanViewConfidential(user, {
+      dataType: 'meeting',
+      label: meeting.label as any,
+      entityType: 'Meeting',
+      entityId: meeting.id,
+      purpose: '議事録の閲覧',
+    });
+  } catch (e) {
+    if (e instanceof PolicyDenied) {
+      return (
+        <AccessDenied
+          title={meeting.title}
+          reason={e.decision.reason}
+          needsReason={e.decision.requiredSensitiveAccessReason}
+          breadcrumb={[{ label: '会議', href: '/meetings' }]}
+        />
+      );
+    }
+    throw e;
+  }
+  // 録音/文字起こしは録音同意がある場合のみ閲覧可（RecordingAccessLog 記録）。
+  let recordingDeniedReason: string | null = null;
+  try {
+    await assertCanViewRecording(user, {
+      meetingId: meeting.id,
+      customerId: meeting.customerId ?? undefined,
+      purpose: '会議の文字起こし閲覧',
+    });
+  } catch (e) {
+    if (e instanceof PolicyDenied) recordingDeniedReason = e.decision.reason;
+    else throw e;
+  }
   const minutes = meeting.minutes[0];
   const segments = meeting.transcripts[0]?.segments ?? [];
 
@@ -72,14 +108,23 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
       </div>
 
       <Card className="mt-4">
-        <CardHeader><CardTitle>発言ログ（話者別）</CardTitle></CardHeader>
+        <CardHeader><CardTitle>発言ログ（話者別・録音由来）</CardTitle></CardHeader>
         <CardContent className="space-y-1 text-sm">
-          {segments.map((s) => (
-            <div key={s.id} className="flex gap-2">
-              <span className="w-16 shrink-0 font-medium text-muted-foreground">{s.speaker}</span>
-              <span>{s.text}</span>
+          {recordingDeniedReason ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+              録音/文字起こしの閲覧には録音同意が必要です（理由: {recordingDeniedReason}）。
+              管理者は「同意管理」で対象の録音同意を登録してください。
             </div>
-          ))}
+          ) : segments.length === 0 ? (
+            <EmptyState title="文字起こしがありません" />
+          ) : (
+            segments.map((s) => (
+              <div key={s.id} className="flex gap-2">
+                <span className="w-16 shrink-0 font-medium text-muted-foreground">{s.speaker}</span>
+                <span>{s.text}</span>
+              </div>
+            ))
+          )}
         </CardContent>
       </Card>
     </div>

@@ -44,6 +44,15 @@ async function main() {
   console.log('🛠  IKEZAKI OS Worker 起動。キュー:', QUEUE_NAME);
   console.log('   対応ジョブ:', JOB_NAMES.join(', '));
 
+  // Outbox を定期処理（イベント連動基盤の Webhook 配送 + retry/dead-letter）。
+  const OUTBOX_INTERVAL_MS = Number(process.env.OUTBOX_INTERVAL_MS || 15000);
+  await queue.add(
+    'OUTBOX_DISPATCH_JOB',
+    { tenantId: 'system', limit: 100 },
+    { repeat: { every: OUTBOX_INTERVAL_MS }, removeOnComplete: 100, removeOnFail: 100 },
+  );
+  console.log(`   OUTBOX_DISPATCH_JOB を ${OUTBOX_INTERVAL_MS}ms 間隔で定期実行します。`);
+
   // 開発時はデモジョブを投入して動作を確認
   if (process.env.NODE_ENV !== 'production') {
     const tenant = await prisma.tenant.findFirst();

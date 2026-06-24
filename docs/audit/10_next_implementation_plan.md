@@ -38,3 +38,13 @@ Phase 1-3（次）:
 3. worker に `OUTBOX_DISPATCH_JOB` を追加し Outbox→Webhook を常時処理＋汎用 `JobRun`（retry/idempotency/audit）。
 4. 位置/録音の「取得・明示・閲覧」機能本体（同意前提）。
 5. e2e/セキュリティ自動テスト拡充。
+
+## Phase 1-3 完了 → Phase 1-4 計画（2026-06-24）
+
+完了: ABAC/機密参照ログを invoice/finance/meeting/knowledge へ横展開、危険操作の承認ゲート実経路（申請＋承認済み実行）、worker `OUTBOX_DISPATCH_JOB`＋JobRun基盤、位置/録音の閲覧スライス（同意・勤務時間ゲート）。unit 92 / integration 20。
+
+Phase 1-4（次）:
+1. AI安全: PromptInjectionDetector / PiiMasker を外部送信・RAG 経路へ適用、AIOutput に citations/confidence/cost 保存。
+2. e2e（Playwright）: 承認フロー、staff が財務/HR を見られない、位置/録音の同意ゲート。セキュリティ自動テスト（SSRF/XSS/CSRF）。
+3. Provider 拡充（Gemini/OCR/Voice の interface+mock）。
+4. その後 Phase 2（会計本体・看板AI見積 等）。各業務 detail 実装時に本ABAC/監査/承認/イベントを標準で組込む。

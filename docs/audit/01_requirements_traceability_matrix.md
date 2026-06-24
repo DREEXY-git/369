@@ -61,3 +61,12 @@
 - **#30 セキュリティ・権限・監査**: 部分 → **強化(部分)**。ABAC Policy Engine(純関数)＋PolicyDecisionLog、機密参照ログ(DataAccessLog 拡張＋専用 Location/Recording)、承認ゲート関数群、同意基盤(ConsentPolicy/ConsentGrant) を実装。顧客詳細に ABAC＋機密参照ログを組込み。
 - 新規管理UI: `/admin/data-access-logs`・`/admin/policy-decisions`・`/admin/events`・`/admin/compliance/consents`。
 - 残: 位置/録音の「機能本体」UI、ABAC の全 detail/edit への横展開。
+
+## Phase 1-3 更新（2026-06-24）
+
+- **#1 連動基盤**: 部分 → **強化**。worker に `OUTBOX_DISPATCH_JOB`（15秒間隔・retry・dead-letter・JobRun・audit）追加。web から手動実行も可（`/admin/jobs`）。
+- **#7 請求 / #5 財務**: Audit列を改善。`invoices/[id]`・`finance` に ABAC（FINANCIAL_CONFIDENTIAL）＋機密参照ログを組込み（staff は拒否）。
+- **#17 従業員位置情報**: 未実装 → **部分**。EmployeeLocationLog ＋ `/admin/location-access`（同意＋勤務時間ゲート、LocationAccessLog 記録、拒否理由表示）。
+- **#18 録音・議事録**: `meetings/[id]` の文字起こしを録音同意ゲート化（RecordingAccessLog）。本体 ABAC（meeting.label）も組込み。
+- **#26 ナレッジ**: 検索に AI 参照ログ（DataAccessLog）追加（機密ラベルフィルタは既存）。
+- **#30 セキュリティ**: 承認ゲートを実経路へ（危険操作5種の申請＋承認済みexport実行）。JobRun 基盤（`/admin/jobs`）。

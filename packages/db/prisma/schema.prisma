@@ -2772,3 +2772,71 @@ model RecordingAccessLog {
 
   @@index([tenantId, createdAt])
 }
+
+// =============================================================================
+// Phase 1-3: JobRun 基盤 / 従業員位置情報（最小縦スライス）
+// =============================================================================
+
+model JobRun {
+  id             String    @id @default(cuid())
+  tenantId       String?
+  jobType        String
+  status         String    @default("pending") // pending|running|succeeded|failed|dead
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  attempts       Int       @default(0)
+  idempotencyKey String?
+  payload        Json?
+  result         Json?
+  error          String?
+  actorId        String?
+  metadata       Json?
+  createdAt      DateTime  @default(now())
+
+  logs JobRunLog[]
+
+  @@index([jobType, status])
+  @@index([tenantId, createdAt])
+  @@index([status, createdAt])
+}
+
+model JobRunLog {
+  id        String   @id @default(cuid())
+  jobRunId  String
+  level     String   @default("info") // info|warn|error
+  message   String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  jobRun JobRun @relation(fields: [jobRunId], references: [id], onDelete: Cascade)
+
+  @@index([jobRunId, createdAt])
+}
+
+model JobSchedule {
+  id          String    @id @default(cuid())
+  jobType     String    @unique
+  everyMs     Int       @default(0)
+  cron        String?
+  active      Boolean   @default(true)
+  description String    @default("")
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+  updatedAt   DateTime  @updatedAt
+}
+
+model EmployeeLocationLog {
+  id                String   @id @default(cuid())
+  tenantId          String
+  userId            String // 従業員
+  lat               Float
+  lng               Float
+  accuracy          Float?
+  address           String   @default("")
+  source            String   @default("gps_punch") // gps_punch | route | manual
+  withinWorkingHours Boolean @default(true)
+  recordedAt        DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  @@index([tenantId, userId, recordedAt])
+}

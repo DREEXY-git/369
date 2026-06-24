@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
+import { assertCanViewConfidential, PolicyDenied } from '@/lib/security/policy';
+import { AccessDenied } from '@/components/access-denied';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Stat, Badge } from '@/components/ui';
@@ -12,6 +14,21 @@ export default async function FinancePage() {
   const user = await requireUser();
   if (!hasPermission(user, 'finance', 'read')) {
     return <div><PageHeader title="財務" /><div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">財務情報の閲覧権限がありません。</div></div>;
+  }
+  // ABAC: 財務は機密ラベル。閲覧可否を判定し機密参照ログを記録。
+  try {
+    await assertCanViewConfidential(user, {
+      dataType: 'finance',
+      label: 'FINANCIAL_CONFIDENTIAL',
+      entityType: 'Finance',
+      entityId: 'summary',
+      purpose: '財務サマリーの閲覧',
+    });
+  } catch (e) {
+    if (e instanceof PolicyDenied) {
+      return <AccessDenied title="財務" reason={e.decision.reason} needsReason={e.decision.requiredSensitiveAccessReason} />;
+    }
+    throw e;
   }
   const t = user.tenantId;
   const [cash, expenses, receivables, loans, dealSum, invoices] = await Promise.all([

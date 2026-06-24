@@ -1,4 +1,4 @@
-import { prisma } from '@hokko/db';
+import { prisma, processOutboxBatch } from '@hokko/db';
 import {
   generateMorningReport,
   analyzeReviews,
@@ -34,6 +34,7 @@ export const JOB_NAMES = [
   'PROFIT_LEAK_DETECTION_JOB',
   'CUSTOMER_INSIGHT_JOB',
   'OUTREACH_REPLY_CLASSIFICATION_JOB',
+  'OUTBOX_DISPATCH_JOB',
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -170,6 +171,12 @@ export const JOB_HANDLERS: Record<JobName, Handler> = {
   LEAD_WEBSITE_SCAN_JOB: async ({ tenantId }) => { await recordRun(tenantId, 'Web解析', 'Webサイト解析ジョブ'); return { ok: true }; },
   KNOWLEDGE_ROLLBACK_JOB: async ({ tenantId }) => { await recordRun(tenantId, 'ナレッジ巻き戻し', '誤学習の巻き戻しジョブ'); return { ok: true }; },
   CUSTOMER_INSIGHT_JOB: async ({ tenantId }) => { await recordRun(tenantId, '顧客インサイト', '顧客インサイト生成ジョブ'); return { ok: true }; },
+
+  // Outbox を全テナント横断で処理（Webhook 配送 + retry/dead-letter + JobRun 記録）。
+  OUTBOX_DISPATCH_JOB: async (data) => {
+    const limit = Number((data as JobData).limit ?? 100);
+    return processOutboxBatch({ limit });
+  },
 };
 
 export async function runJob(name: JobName, data: JobData): Promise<unknown> {

@@ -57,3 +57,10 @@
 - **G-11 ABAC**: ✅ Policy Engine＋`assertCanViewConfidential` 等の assert 群＋PolicyDecisionLog。残: 全 detail/edit への適用、MFA/SSO。
 - **G-04 同意基盤**: ◯ 同意モデル/付与・撤回UI/評価ロジック実装。残: 位置/録音の「取得・機能」本体と「取得中明示」UI。
 - 承認ゲート: ✅ `requiresApproval` を全危険操作に拡張＋`createApprovalRequest`/`executeApprovedAction` 等。残: 各危険操作の実行経路への適用。
+
+## Phase 1-3 更新（2026-06-24）— 解消状況
+
+- **G-01 連動基盤**: ✅ worker `OUTBOX_DISPATCH_JOB` で常時処理化（共用コア `packages/db/outbox.ts`）。残: webhook 配送の死活監視。
+- **G-05 機密参照ログ 横展開**: ✅ customer に加え invoice/finance/meeting(録音)/knowledge へ展開。残: 契約(detail未実装)/人事/勤怠（画面本体が未実装のため Phase 2 で同時実装）。
+- **承認ゲート 実経路**: ✅ export/external/delete/permission/highConfidentialAI の申請アクション＋承認済みexport実行（承認なし実行不可を担保）。
+- **JobRun 基盤**: ✅ JobRun/JobRunLog/JobSchedule ＋ `/admin/jobs`。

@@ -32,6 +32,8 @@ import {
   ShieldCheck,
   Activity,
   FileCheck,
+  ShieldAlert,
+  Cog,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -130,6 +132,9 @@ export const NAV: NavGroup[] = [
       { label: 'ポリシー判定', href: '/admin/policy-decisions', icon: ShieldCheck },
       { label: 'イベント連動', href: '/admin/events', icon: Activity },
       { label: '同意管理', href: '/admin/compliance/consents', icon: FileCheck },
+      { label: '危険操作ゲート', href: '/admin/danger-actions', icon: ShieldAlert },
+      { label: 'ジョブ実行', href: '/admin/jobs', icon: Cog },
+      { label: '位置情報アクセス', href: '/admin/location-access', icon: MapPin },
     ],
   },
 ];

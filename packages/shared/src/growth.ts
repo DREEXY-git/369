@@ -1,7 +1,15 @@
 // Growth Event Ledger の純ロジック（型・カテゴリ・経営インパクト計算）。Phase 1-4。
 // 会社で起きた出来事を「売上・利益・生産性・DX効果」に接続するための分析台帳。
 
-export type GrowthCategory = 'marketing' | 'sales' | 'finance' | 'dx' | 'ai' | 'management' | 'customer';
+export type GrowthCategory =
+  | 'marketing'
+  | 'sales'
+  | 'finance'
+  | 'dx'
+  | 'ai'
+  | 'management'
+  | 'customer'
+  | 'operations';
 
 // 代表的な成長イベント種別（ドット記法 <category>.<entity>.<action>）。
 export const GROWTH_EVENT_TYPES = [
@@ -12,6 +20,8 @@ export const GROWTH_EVENT_TYPES = [
   'marketing.lead.converted',
   'sales.proposal.sent',
   'sales.deal.won',
+  'sales.order.created',
+  'sales.order.fulfilled',
   'finance.invoice.paid',
   'customer.repeat.purchased',
   'customer.reactivated',
@@ -22,6 +32,17 @@ export const GROWTH_EVENT_TYPES = [
   'ai.employee.action.completed',
   'ai.asset.generated',
   'management.decision.recorded',
+  // 運用（在庫/リース/イベント会社/物流）— Operations OS 準備（Phase 1-5）
+  'inventory.stock.received',
+  'inventory.stock.adjusted',
+  'inventory.asset.maintenance',
+  'rental.reservation.created',
+  'rental.reservation.returned',
+  'rental.asset.damaged',
+  'event.project.created',
+  'event.project.completed',
+  'event.proposal.created',
+  'logistics.delivery.completed',
 ] as const;
 
 export type GrowthEventType = (typeof GROWTH_EVENT_TYPES)[number];
@@ -42,6 +63,11 @@ export function growthCategoryOf(type: string): GrowthCategory {
     case 'management':
     case 'customer':
       return head;
+    case 'inventory':
+    case 'rental':
+    case 'event':
+    case 'logistics':
+      return 'operations';
     default:
       return 'management';
   }
@@ -51,6 +77,7 @@ export function growthCategoryOf(type: string): GrowthCategory {
 export function isRevenueRelated(type: string): boolean {
   return (
     type === 'sales.deal.won' ||
+    type === 'sales.order.fulfilled' ||
     type === 'finance.invoice.paid' ||
     type === 'marketing.lead.converted' ||
     type === 'customer.repeat.purchased'

@@ -45,3 +45,21 @@
 - **ToolPermissionChecker** 実装（`checkToolPermission`、AI禁止ツール）。
 - **AIOutput 拡張**: inputHash/outputText/citations/confidence/costEstimate/model/safetyFlags を保存。生成ごとに AIOutput＋AISafetyLog＋DataAccessLog。
 残: 注入検出を RAG/外部送信の全経路へ、PIIマスクを外部送信実行時に自動適用、AIOutput への引用根拠（citations）充実、コスト実測。
+
+## Phase 1-5 更新（2026-06-24）— AI安全の全経路適用
+
+- **共通安全ヘルパ**を新設し全AI経路で標準化（`apps/web/lib/ai-safety-server.ts` / `safe-external-send.ts` / `safe-ai-run.ts`）:
+  - `safeAiInput`（入力の命令注入検出＋AISafetyLog記録。high で生成中止）
+  - `saveAIOutputStandard`（AIOutput を task/purpose/entity/inputHash/output/confidence/cost/model/safetyFlags/citations の統一形式で保存。PII フラグ自動付与）
+  - `assertAiToolAllowed`（AI が外部送信/削除/承認/権限変更/高機密参照/承認済み実行を直接実行不可。違反は AISafetyLog 記録＋例外）
+  - `prepareExternalPayload`（外部送信前 PII マスク済プレビュー＋AISafetyLog(pii_mask)。送信は承認後のみ）
+- **全AI経路へ適用**:
+  - LeadMap: `analyzeLead`（口コミ＝外部）/`generateOutreachForLead`（外向き生成は high で中止）/`classifyReply`（外部返信＝間接注入面）/ bulk。
+  - 会議議事録: 文字起こし（外部由来）に注入検出、AIOutput を標準保存。
+  - コミュニケーション: 外部受信本文に注入検出。
+  - ナレッジ検索: クエリの注入検出（high は回答せず安全注意を表示）。
+- **管理画面**: `/admin/ai-safety`（AISafetyLog、社長/役員/管理者のみ）・`/admin/ai-outputs`（AIOutput、audit:read）。
+- **Provider 準備**: `TextAIProvider`/`OCRProvider`（請求書抽出）/`VoiceProvider`（通話要約）の interface＋Fake を追加（差し替え口）。
+- 方針: 生成（外向き）は high で中止、外部コンテンツの分析/分類は検出＋記録のうえ継続（FakeLLM は決定論で安全）。誤検知で正常業務を止めない。
+- テスト: unit 125 / integration 28（AISafetyLog 各チェック記録・AIOutput 標準保存・テナント分離）。e2e `security.spec.ts`（注入無害化・権限分離）を追加。
+残: PIIマスクの送信実行時自動適用（実送信経路実装と同時）、citations 実データ充実、コスト実測、MFA/改ざん検知/レート制限/CSP。

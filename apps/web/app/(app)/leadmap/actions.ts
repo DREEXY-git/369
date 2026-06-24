@@ -6,7 +6,14 @@ import type { LeadStage } from '@hokko/shared';
 import { classifyOutreachReply } from '@hokko/ai';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
-import { analyzeLead, discoverLeads, generateOutreachForLead } from '@/lib/leadmap';
+import {
+  analyzeLead,
+  discoverLeads,
+  generateOutreachForLead,
+  OutreachGenerationBlockedError,
+} from '@/lib/leadmap';
+import { safeAiInput, saveAIOutputStandard } from '@/lib/ai-safety-server';
+import { prepareExternalPayload } from '@/lib/safe-external-send';
 
 const ADVANCE_ON: Record<string, true> = { interested: true, quote: true, doc: true, later: true, forward: true, appointment: true };
 
@@ -65,7 +72,7 @@ export async function analyzeLeadAction(formData: FormData) {
   const leadId = String(formData.get('leadId') ?? '');
   const salesType = String(formData.get('salesType') ?? 'Web制作');
   if (!hasPermission(user, 'leadmap', 'ai_read')) redirect(`/leadmap/leads/${leadId}?denied=1`);
-  await analyzeLead(user.tenantId, leadId, salesType);
+  await analyzeLead(user.tenantId, leadId, salesType, { userId: user.userId, actorType: 'ai_agent' });
   await writeAudit({
     tenantId: user.tenantId,
     actorId: user.userId,
@@ -87,13 +94,22 @@ export async function generateOutreachAction(formData: FormData) {
   if (!hasPermission(user, 'leadmap', 'create')) redirect(`/leadmap/leads/${leadId}?denied=1`);
   // 分析が無ければ先に分析してから生成
   const hasInsight = await prisma.leadInsight.count({ where: { tenantId: user.tenantId, leadId } });
-  if (hasInsight === 0) await analyzeLead(user.tenantId, leadId, salesType || undefined);
-  const draft = await generateOutreachForLead(user.tenantId, leadId, {
-    salesType: salesType || undefined,
-    senderCompany: 'dreexy',
-    senderName: user.name,
-    createdById: user.userId,
-  });
+  if (hasInsight === 0) {
+    await analyzeLead(user.tenantId, leadId, salesType || undefined, { userId: user.userId, actorType: 'ai_agent' });
+  }
+  let draft;
+  try {
+    draft = await generateOutreachForLead(user.tenantId, leadId, {
+      salesType: salesType || undefined,
+      senderCompany: 'dreexy',
+      senderName: user.name,
+      createdById: user.userId,
+      actorType: 'ai_agent',
+    });
+  } catch (e) {
+    if (e instanceof OutreachGenerationBlockedError) redirect(`/leadmap/leads/${leadId}?blocked=injection`);
+    throw e;
+  }
   await writeAudit({
     tenantId: user.tenantId,
     actorId: user.userId,
@@ -139,6 +155,19 @@ export async function requestOutreachApprovalAction(formData: FormData) {
     include: { lead: true },
   });
   if (!draft) redirect(`/leadmap/leads/${leadId}`);
+
+  // 外部送信前: PII マスク済プレビューを作成し AISafetyLog(pii_mask) に記録（実送信は承認後のみ）。
+  await prepareExternalPayload({
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    channel: draft.channel,
+    subject: draft.subject,
+    body: draft.body,
+    recipient: draft.lead.email ?? undefined,
+    entityType: 'OutreachDraft',
+    entityId: draftId,
+    purpose: 'leadmap_outreach_send',
+  });
 
   await prisma.outreachDraft.update({ where: { id: draftId }, data: { status: 'PENDING_APPROVAL' } });
   await prisma.outreachApproval.create({ data: { tenantId: user.tenantId, draftId, status: 'PENDING' } });
@@ -187,9 +216,35 @@ export async function classifyReplyAction(formData: FormData) {
   });
   if (!draft) redirect(`/leadmap/leads/${leadId}/outreach`);
 
+  // 外部からの返信本文は間接注入の主要面。検出して記録するが分類は継続（FakeLLMは決定論で安全）。
+  const guard = await safeAiInput({
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    actorType: 'ai_agent',
+    purpose: 'leadmap_reply_classification',
+    text: body,
+    entityType: 'OutreachReply',
+    entityId: draftId,
+    detail: 'classifyReply',
+  });
+
   const cls = await classifyOutreachReply(body);
-  await prisma.outreachReply.create({
+  const reply = await prisma.outreachReply.create({
     data: { tenantId: user.tenantId, draftId, body, classification: cls.classification, confidence: cls.confidence },
+  });
+  await saveAIOutputStandard({
+    tenantId: user.tenantId,
+    userId: user.userId,
+    actorType: 'ai_agent',
+    task: 'classifyOutreachReply',
+    purpose: cls.classification,
+    entityType: 'OutreachReply',
+    entityId: reply.id,
+    input: { draftId, body },
+    output: cls,
+    outputText: cls.classification,
+    confidence: cls.confidence,
+    safetyFlags: guard.flags,
   });
 
   let stageNote = '';
@@ -329,7 +384,7 @@ export async function bulkAnalyzeCampaignAction(formData: FormData) {
   let analyzed = 0;
   for (const lead of campaign.leads) {
     try {
-      await analyzeLead(user.tenantId, lead.id, campaign.forSalesType);
+      await analyzeLead(user.tenantId, lead.id, campaign.forSalesType, { userId: user.userId, actorType: 'ai_agent' });
       analyzed++;
     } catch {
       /* 個別失敗はスキップして継続 */
@@ -375,10 +430,11 @@ export async function bulkGenerateOutreachAction(formData: FormData) {
         senderCompany: 'dreexy',
         senderName: user.name,
         createdById: user.userId,
+        actorType: 'ai_agent',
       });
       generated++;
     } catch {
-      /* スキップして継続 */
+      /* スキップ（注入ブロック含む）して継続 */
     }
   }
   await writeAudit({

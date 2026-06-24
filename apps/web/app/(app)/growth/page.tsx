@@ -12,7 +12,7 @@ import { formatJpy, formatDateTime } from '@hokko/shared';
 export const dynamic = 'force-dynamic';
 
 const CAT_LABEL: Record<string, string> = {
-  marketing: 'マーケ', sales: '営業', finance: '財務', dx: 'DX', ai: 'AI', management: '経営', customer: '顧客',
+  marketing: 'マーケ', sales: '営業', finance: '財務', dx: 'DX', ai: 'AI', management: '経営', customer: '顧客', operations: '運用',
 };
 const CAT_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#a855f7', '#94a3b8', '#ef4444'];
 

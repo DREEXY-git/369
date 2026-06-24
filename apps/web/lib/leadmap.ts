@@ -7,6 +7,20 @@ import {
 import { computeLeadScore } from '@hokko/shared';
 import { getMapsProvider } from '@hokko/integrations';
 import { prisma } from './db';
+import { safeAiInput, saveAIOutputStandard, type AiActorType } from './ai-safety-server';
+
+/** 営業メール生成が高リスク注入で中止されたことを表す。bulk ループはスキップ、単発は blocked 表示。 */
+export class OutreachGenerationBlockedError extends Error {
+  constructor() {
+    super('outreach-generation-blocked:injection');
+    this.name = 'OutreachGenerationBlockedError';
+  }
+}
+
+export interface LeadmapAiActor {
+  userId?: string | null;
+  actorType?: AiActorType;
+}
 
 /** キャンペーン条件で営業先を抽出し、リードとして保存する（Demo/Google）。 */
 export async function discoverLeads(opts: {
@@ -108,12 +122,30 @@ export async function discoverLeads(opts: {
 }
 
 /** リードのWeb解析・レビュー分析・営業切り口生成を実行し保存。 */
-export async function analyzeLead(tenantId: string, leadId: string, salesType = 'Web制作') {
+export async function analyzeLead(
+  tenantId: string,
+  leadId: string,
+  salesType = 'Web制作',
+  actor: LeadmapAiActor = {},
+) {
   const lead = await prisma.localBusinessLead.findFirst({
     where: { id: leadId, tenantId },
     include: { reviews: true, websiteScans: true, socialProfiles: true },
   });
   if (!lead) throw new Error('lead not found');
+
+  // 外部由来テキスト（口コミ等）に注入の兆候が無いか検査して記録（分析は継続＝FakeLLMは決定論）。
+  const externalText = [lead.name, ...lead.reviews.map((r) => r.text)].join('\n');
+  const guard = await safeAiInput({
+    tenantId,
+    actorId: actor.userId ?? null,
+    actorType: actor.actorType ?? 'ai_agent',
+    purpose: 'leadmap_lead_analysis',
+    text: externalText,
+    entityType: 'LocalBusinessLead',
+    entityId: leadId,
+    detail: 'analyzeLead',
+  });
 
   const wa = await analyzeWebsiteFindings({
     url: lead.website ?? '',
@@ -153,7 +185,7 @@ export async function analyzeLead(tenantId: string, leadId: string, salesType = 
     reviewSummary: ra.positiveReframe,
     salesType,
   });
-  await prisma.leadInsight.create({
+  const insight = await prisma.leadInsight.create({
     data: {
       tenantId,
       leadId,
@@ -165,6 +197,23 @@ export async function analyzeLead(tenantId: string, leadId: string, salesType = 
       generatedBy: 'FakeLLM',
     },
   });
+
+  // AIOutput を標準保存（根拠/信頼度/安全フラグ）。外部口コミの注入フラグも引き継ぐ。
+  await saveAIOutputStandard({
+    tenantId,
+    userId: actor.userId ?? null,
+    actorType: actor.actorType ?? 'ai_agent',
+    task: 'analyzeLead',
+    purpose: salesType,
+    entityType: 'LeadInsight',
+    entityId: insight.id,
+    input: { leadId, salesType, externalText },
+    output: la,
+    outputText: `${la.angle}\n${la.reasoning}`,
+    confidence: la.confidence,
+    safetyFlags: guard.flags,
+  });
+
   if (lead.stage === 'NEW') {
     await prisma.localBusinessLead.update({ where: { id: leadId }, data: { stage: 'ANALYZED' } });
     await prisma.leadPipelineStageHistory.create({
@@ -178,7 +227,13 @@ export async function analyzeLead(tenantId: string, leadId: string, salesType = 
 export async function generateOutreachForLead(
   tenantId: string,
   leadId: string,
-  opts: { salesType?: string; senderCompany?: string; senderName?: string; createdById?: string },
+  opts: {
+    salesType?: string;
+    senderCompany?: string;
+    senderName?: string;
+    createdById?: string;
+    actorType?: AiActorType;
+  },
 ) {
   const lead = await prisma.localBusinessLead.findFirst({
     where: { id: leadId, tenantId },
@@ -186,6 +241,19 @@ export async function generateOutreachForLead(
   });
   if (!lead) throw new Error('lead not found');
   const insight = lead.insights[0];
+
+  // 生成は外向き文面のため、入力（リード名・切り口）に高リスク注入があれば中止する。
+  const guard = await safeAiInput({
+    tenantId,
+    actorId: opts.createdById ?? null,
+    actorType: opts.actorType ?? 'ai_agent',
+    purpose: 'leadmap_outreach_generation',
+    text: [lead.name, insight?.angle ?? '', insight?.opportunities?.join(' ') ?? ''].join('\n'),
+    entityType: 'LocalBusinessLead',
+    entityId: leadId,
+    detail: 'generateOutreachForLead',
+  });
+  if (guard.blocked) throw new OutreachGenerationBlockedError();
 
   const draft = await generateOutreachDraft({
     leadName: lead.name,
@@ -214,6 +282,22 @@ export async function generateOutreachForLead(
       createdById: opts.createdById ?? null,
     },
   });
+
+  // AIOutput を標準保存（外部送信前のため PII フラグ検出は保存時に自動付与）。
+  await saveAIOutputStandard({
+    tenantId,
+    userId: opts.createdById ?? null,
+    actorType: opts.actorType ?? 'ai_agent',
+    task: 'generateOutreachDraft',
+    purpose: opts.salesType ?? lead.campaign.forSalesType,
+    entityType: 'OutreachDraft',
+    entityId: saved.id,
+    input: { leadId, salesType: opts.salesType },
+    output: draft,
+    outputText: `${draft.subject}\n${draft.body}`,
+    safetyFlags: guard.flags,
+  });
+
   if (['NEW', 'ANALYZED'].includes(lead.stage)) {
     await prisma.localBusinessLead.update({ where: { id: leadId }, data: { stage: 'DRAFTED' } });
   }

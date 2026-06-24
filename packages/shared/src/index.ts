@@ -17,5 +17,6 @@ export * from './retention';
 export * from './events';
 export * from './ai-safety';
 export * from './growth';
+export * from './operations';
 // 注: './webhook' は node:crypto を使うため barrel に含めない（client汚染防止）。
 //     サーバ/ワーカーは '@hokko/shared/webhook' から直接 import する。

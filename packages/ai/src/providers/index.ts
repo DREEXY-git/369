@@ -6,6 +6,7 @@ import { FakeTranscriptionProvider } from './transcription';
 import type { EmbeddingProvider, LLMProvider, TranscriptionProvider } from './types';
 
 export * from './types';
+export * from './multimodal';
 export {
   FakeLLMProvider,
   OpenAICompatibleProvider,

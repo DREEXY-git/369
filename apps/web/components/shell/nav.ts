@@ -36,6 +36,9 @@ import {
   Cog,
   TrendingUp,
   Cpu,
+  Siren,
+  Sparkles,
+  ClipboardCheck,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -140,12 +143,15 @@ export const NAV: NavGroup[] = [
       { label: 'ユーザー・権限', href: '/admin/users', icon: Users },
       { label: '監査ログ', href: '/admin/audit', icon: ScrollText },
       { label: '機密参照ログ', href: '/admin/data-access-logs', icon: Eye },
+      { label: 'AI安全ログ', href: '/admin/ai-safety', icon: Siren },
+      { label: 'AI出力ログ', href: '/admin/ai-outputs', icon: Sparkles },
       { label: 'ポリシー判定', href: '/admin/policy-decisions', icon: ShieldCheck },
       { label: 'イベント連動', href: '/admin/events', icon: Activity },
       { label: '同意管理', href: '/admin/compliance/consents', icon: FileCheck },
       { label: '危険操作ゲート', href: '/admin/danger-actions', icon: ShieldAlert },
       { label: 'ジョブ実行', href: '/admin/jobs', icon: Cog },
       { label: '位置情報アクセス', href: '/admin/location-access', icon: MapPin },
+      { label: 'Operations準備', href: '/admin/operations-readiness', icon: ClipboardCheck },
     ],
   },
 ];

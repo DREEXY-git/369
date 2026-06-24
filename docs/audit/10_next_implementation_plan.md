@@ -58,3 +58,13 @@ Phase 1-5（次）:
 2. e2e（Playwright）＋ セキュリティ自動テスト（SSRF/XSS/CSRF/権限分離）。
 3. Provider 拡充（Gemini/OCR/Voice interface+mock）。
 4. その後 Phase 2: 会計本体 → 看板AI見積 → EC（各業務に Growth/ABAC/承認/イベントを標準組込み）。
+
+## Phase 1-5 完了 → 次の計画（2026-06-24）
+
+完了: 共通安全ヘルパ（`ai-safety-server.ts`/`safe-external-send.ts`/`safe-ai-run.ts`）を新設し、LeadMap（分析/生成/返信/一括）・会議議事録・コミュニケーション受信・ナレッジ検索の全AI経路へ注入検出＋AIOutput標準保存を横展開。外部送信申請に PII マスク済プレビュー。Provider 拡充（Text/OCR/Voice）。管理UI 3画面（ai-safety/ai-outputs/operations-readiness）。Operations OS 準備（operations.ts＋GrowthEvent運用種別＋棚卸しドキュメント、OS本体は未着手）。unit 125 / integration 28、lint/typecheck/build green。
+
+次（Phase 1-6 / Phase 2 候補）:
+1. **会計本体**（仕訳/試算表/決算書UI・確定ロック・OCR→仕訳候補は承認後確定）。OCRProvider を実経路へ。
+2. **Operations OS 本体（Phase 4系）**: 在庫入出庫(StockMovement)/棚卸(Stocktake)/発注(PurchaseOrder)・発注点、リース→搬入→設営→撤去→回収→精算、SalesOrder/Shipment。すべて DB→Action(Zod/RBAC/監査)→UI→承認→DomainEvent/GrowthEvent→Worker→テスト を縦に通す。
+3. 外部送信実行経路の実装時に `prepareExternalPayload` を送信直前へ自動適用＋ `EXTERNAL_SEND_ENABLED` ＋承認。
+4. 残セキュリティ: MFA/SSO、改ざん検知(ハッシュチェーン)、レート制限、CSP、ファイル検証。

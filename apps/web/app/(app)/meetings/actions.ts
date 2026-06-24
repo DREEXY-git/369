@@ -6,6 +6,7 @@ import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
 import { summarizeMeeting, getTranscriptionProvider, getEmbeddingProvider } from '@hokko/ai';
 import { chunkText } from '@hokko/shared';
+import { safeAiInput, saveAIOutputStandard } from '@/lib/ai-safety-server';
 
 export async function uploadMeetingAction(formData: FormData) {
   const user = await requireUser();
@@ -48,6 +49,18 @@ export async function uploadMeetingAction(formData: FormData) {
     },
   });
 
+  // 文字起こしは外部由来テキスト＝間接注入面。検出して記録するが要約は継続（FakeLLMは決定論で安全）。
+  const guard = await safeAiInput({
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    actorType: 'ai_agent',
+    purpose: 'meeting_summarization',
+    text: transcription.text,
+    entityType: 'Meeting',
+    entityId: meeting.id,
+    detail: 'summarizeMeeting',
+  });
+
   // AI議事録生成（FakeLLM でも動作）
   const minutes = await summarizeMeeting({ title, transcript: transcription.text, type });
   await prisma.meetingMinutes.create({
@@ -63,8 +76,19 @@ export async function uploadMeetingAction(formData: FormData) {
       generatedBy: 'FakeLLM',
     },
   });
-  await prisma.aIOutput.create({
-    data: { tenantId: user.tenantId, task: 'summarizeMeeting', entityType: 'Meeting', entityId: meeting.id, output: minutes as any, confidence: 0.7 },
+  await saveAIOutputStandard({
+    tenantId: user.tenantId,
+    userId: user.userId,
+    actorType: 'ai_agent',
+    task: 'summarizeMeeting',
+    purpose: type,
+    entityType: 'Meeting',
+    entityId: meeting.id,
+    input: { meetingId: meeting.id, title, type },
+    output: minutes,
+    outputText: minutes.summaryFull,
+    confidence: 0.7,
+    safetyFlags: guard.flags,
   });
 
   for (const d of minutes.decisions) {

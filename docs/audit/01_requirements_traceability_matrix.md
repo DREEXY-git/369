@@ -77,3 +77,11 @@
 - **#21 自動マーケティング**: 見せかけ → **部分(縦スライス)**。MarketingCampaign 拡張、ContentAsset=MarketingAsset 拡張、AI生成（安全処理付き）→AIOutput→**外部公開は承認申請のみ（直接送信なし）**。`/marketing` 一式。
 - **新規 DX OS**: DXAssessment/DXOpportunity（推定削減時間/コスト/売上インパクト・優先度自動計算）。`/dx` 一式。効果記録で成長台帳へ反映。
 - **#39 AI実行基盤**: PromptInjectionDetector / PiiMasker / ToolPermissionChecker 実装。AIOutput 拡張（userId/purpose/inputHash/outputText/citations/costEstimate/model/safetyFlags）＋AISafetyLog。
+
+## Phase 1-5 更新（2026-06-24）— AI Safety 全経路適用 ＋ Operations OS 準備
+
+- **#26 RAG/ナレッジ**: 検索クエリに注入検出を追加（high は回答せず安全注意）。retrieval は既存の RBAC/機密ラベルフィルタ＋RetrievalLog/AnswerCitation。
+- **#39 AI実行基盤**: 部分 → **共通化**。`safeAiInput`/`saveAIOutputStandard`/`assertAiToolAllowed`/`prepareExternalPayload` を新設し、LeadMap（分析/生成/返信/一括）・会議議事録・コミュニケーション受信・ナレッジ検索の**全AI経路で標準化**。AIOutput を全タスクで統一保存。ToolPermissionChecker をサーバ経路に多重防御で強制。Provider に Text/OCR/Voice interface＋Fake を追加。
+- **管理可視化**: `/admin/ai-safety`（社長/役員/管理者のみ）・`/admin/ai-outputs`（audit:read）・`/admin/operations-readiness`。
+- **Operations OS 準備（本体未着手）**: `operations.ts`（稼働率/可用性/粗利率/運用分類）、GrowthEvent に在庫/リース/イベント/物流/販売の種別＋`operations` カテゴリ。棚卸しは `11_operations_os_readiness.md`。
+- 検証: unit 125 / integration 28、lint/typecheck/build green、e2e security spec 追加（CI実行）。

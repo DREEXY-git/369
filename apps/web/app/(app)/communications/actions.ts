@@ -6,6 +6,7 @@ import { MockCommunicationConnector } from '@hokko/integrations';
 import { classifyBusinessRelevance } from '@hokko/shared';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
+import { safeAiInput } from '@/lib/ai-safety-server';
 
 /** Mockコネクタから取り込み、AIで業務関連性を判定して二段階保存に振り分ける。 */
 export async function ingestMockMessagesAction(formData: FormData) {
@@ -25,6 +26,17 @@ export async function ingestMockMessagesAction(formData: FormData) {
     // 重複取り込みを避ける
     const already = await prisma.businessRelevanceDecision.count({ where: { tenantId: user.tenantId, itemRef: `${provider}:${m.externalId}` } });
     if (already > 0) continue;
+
+    // 外部受信本文は間接注入の主要面。検出して AISafetyLog に記録（取り込み判定は継続）。
+    await safeAiInput({
+      tenantId: user.tenantId,
+      actorId: user.userId,
+      actorType: 'ai_agent',
+      purpose: 'communication_ingestion',
+      text: `${m.subject}\n${m.body}`,
+      entityType: 'CommunicationMessage',
+      detail: provider,
+    });
 
     const domain = m.sender.includes('@') ? m.sender.slice(m.sender.indexOf('@') + 1) : '';
     const knownDomain = customers.some((c) => c.email && c.email.includes(domain) && domain.length > 0);

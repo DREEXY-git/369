@@ -65,3 +65,12 @@
 - **ToolPermissionChecker**: AI は external_send/delete/permission_change/高機密参照/承認済み実行を直接実行不可（承認必須）。
 - Marketing 資産の外部公開は承認ゲート経由のみ（直接送信しない）。
 残: 注入対策の RAG/全AI経路への適用、外部送信時のPIIマスク自動適用、MFA/SSO、改ざん検知、レート制限、CSP。
+
+## Phase 1-5 更新（2026-06-24）
+
+- **prompt injection 検出を全AI経路へ横展開**（ナレッジ検索クエリ・会議文字起こし・外部受信・LeadMap返信/分析/生成）。共通ヘルパ `safeAiInput`/`saveAIOutputStandard`/`assertAiToolAllowed`/`prepareExternalPayload`。
+- **間接注入（indirect injection）面を網羅**: 外部由来テキスト（口コミ・受信メール・営業返信・文字起こし）を検出境界として AISafetyLog に記録。
+- **ToolPermissionChecker の多重防御**を `assertAiToolAllowed` でサーバ経路に強制（AI は外部送信/削除/承認/権限変更/高機密参照を直接実行不可）。
+- **AISafetyLog 管理画面**は社長/役員/管理者のみ（スタッフ/閲覧のみは不可＝権限分離）。AIOutput は audit:read。
+- セキュリティ自動テスト `apps/web/tests/e2e/security.spec.ts`（注入クエリが500を出さず無害化／スタッフは AI安全ログ不可視）を追加。
+残: 外部送信実行時のPIIマスク自動適用、MFA/SSO、改ざん検知(ハッシュチェーン)、レート制限、CSP、ファイル検証。

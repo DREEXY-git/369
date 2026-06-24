@@ -38,8 +38,13 @@ export default async function AdminPage() {
             <Row label="RBAC / 機密ラベル" value={<Badge tone="green">有効</Badge>} />
             <Row label="監査ログ / AI参照ログ" value={<Badge tone="green">有効</Badge>} />
             <Row label="外部LLMマスキング" value={<Badge tone="green">有効</Badge>} />
+            <Row label="AI注入検出 / PIIマスク" value={<Badge tone="green">全AI経路で有効</Badge>} />
             <Row label="AIによる外部送信" value={<Badge tone="red">禁止</Badge>} />
-            <Link href="/admin/audit" className="block pt-1 text-xs text-primary hover:underline">監査ログを見る →</Link>
+            <div className="flex flex-wrap gap-3 pt-1 text-xs">
+              <Link href="/admin/audit" className="text-primary hover:underline">監査ログ →</Link>
+              <Link href="/admin/ai-safety" className="text-primary hover:underline">AI安全ログ →</Link>
+              <Link href="/admin/ai-outputs" className="text-primary hover:underline">AI出力ログ →</Link>
+            </div>
           </CardContent>
         </Card>
 

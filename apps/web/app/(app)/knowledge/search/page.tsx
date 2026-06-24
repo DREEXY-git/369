@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { requireUser } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { writeAIDataAccess } from '@/lib/audit';
+import { safeAiInput } from '@/lib/ai-safety-server';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Input, Button, EmptyState } from '@/components/ui';
 import { LabelBadge } from '@/components/badges';
@@ -24,8 +25,23 @@ export default async function KnowledgeSearchPage({ searchParams }: { searchPara
 
   let answer: Awaited<ReturnType<typeof answerKnowledgeQuestion>> | null = null;
   let hits: { documentId: string; title: string; text: string; label: ConfidentialityLabel; score: number }[] = [];
+  let blocked = false;
 
   if (q) {
+    // 検索クエリの命令注入を検査。high なら回答せず安全注意を表示（ユーザー入力のため遮断が妥当）。
+    const guard = await safeAiInput({
+      tenantId: user.tenantId,
+      actorId: user.userId,
+      actorType: 'user',
+      purpose: 'knowledge_search',
+      text: q,
+      entityType: 'KnowledgeSearch',
+      detail: q.slice(0, 60),
+    });
+    blocked = guard.blocked;
+  }
+
+  if (q && !blocked) {
     const chunks = await prisma.knowledgeChunk.findMany({
       where: { tenantId: user.tenantId, active: true },
       include: { document: true },
@@ -99,7 +115,16 @@ export default async function KnowledgeSearchPage({ searchParams }: { searchPara
         </CardContent>
       </Card>
 
-      {q && answer ? (
+      {blocked ? (
+        <Card className="border-red-300 bg-red-50 dark:bg-red-950/30">
+          <CardContent className="pt-6">
+            <EmptyState
+              title="この検索はAI安全ポリシーによりブロックされました"
+              hint="命令注入（プロンプトインジェクション）の兆候が検出されたため、回答を行いません。通常の業務質問でお試しください。"
+            />
+          </CardContent>
+        </Card>
+      ) : q && answer ? (
         <div className="space-y-4">
           <Card className="border-primary/30 bg-accent/30">
             <CardHeader><CardTitle>🤖 AIの回答（信頼度 {Math.round(answer.confidence * 100)}%）</CardTitle></CardHeader>

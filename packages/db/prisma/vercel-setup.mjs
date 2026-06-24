@@ -25,7 +25,7 @@ const run = (cmd, extraEnv = {}) =>
   execSync(cmd, { stdio: 'inherit', env: { ...process.env, ...extraEnv } });
 
 console.log('[vercel-setup] (1/2) prisma migrate deploy …');
-run('pnpm exec prisma migrate deploy');
+run('pnpm exec prisma migrate deploy', { DATABASE_URL: directUrl });
 
 console.log('[vercel-setup] (2/2) seed (空DBのときのみ) …');
 run('pnpm exec tsx prisma/seed.ts', {

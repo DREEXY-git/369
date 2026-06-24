@@ -46,6 +46,8 @@ import {
   PackageSearch,
   Send,
   PlayCircle,
+  ArrowLeftRight,
+  BookText,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -106,6 +108,9 @@ export const NAV: NavGroup[] = [
     title: '会計・財務',
     items: [
       { label: '財務サマリー', href: '/finance', icon: Wallet },
+      { label: 'Finance Bridge', href: '/finance/bridge', icon: ArrowLeftRight },
+      { label: '仕訳候補', href: '/finance/journal-candidates', icon: BookText },
+      { label: '請求候補', href: '/finance/invoice-candidates', icon: Receipt },
       { label: '資金繰り', href: '/finance/cashflow', icon: CalendarClock },
       { label: '利益漏れ検知', href: '/finance/profit-leaks', icon: TrendingDown },
     ],

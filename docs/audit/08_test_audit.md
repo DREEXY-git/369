@@ -64,3 +64,10 @@
 - 追加 e2e（`operations_exec.spec.ts`）: 棚卸/発注/物流/Operations実行ページ表示、イベント詳細の人員/リスク/物流表示、スタッフは発注金額の機密を閲覧不可。CI/実環境で実行。
 - カバー: 承認後実行の冪等性、危険操作の承認、運用イベントの Growth/Domain 接続、機密（原価/単価/人件費/粗利）の権限分離。
 - 残: e2e 実ブラウザ実行（環境）、棚卸大幅差異の承認後反映導線、SSRF/XSS/CSRF。
+
+## Phase 1-8 更新（2026-06-24）— Finance Bridge
+
+- 追加 unit（`finance_bridge.test.ts`）: financeEventDirection、journalCandidateFor、invoiceCandidateTotals（税計算）、summarizeFinanceEvents（入金/支払見込）、journal_finalize/invoice_send/payment_execute の承認必須、finance.* 成長種別 = **+6** → 合計 **145 passed**。
+- 追加 integration（`p1_8_finance_bridge.itest.ts`）: EventProject→FinanceEvent/JournalCandidate/InvoiceCandidate、PurchaseOrder→FinanceEvent/JournalCandidate、Damage→InvoiceCandidate、Cashflow集計、承認後実行（stocktake_adjust＋二重実行防止/purchase_order_issue）、journal_finalize/invoice_send承認必須、tenant分離 = **+8** → 合計 **52 passed**。
+- 追加 e2e（`finance_bridge.spec.ts`）: /finance/bridge 表示、イベント→ブリッジ作成、仕訳/請求候補一覧、スタッフは機密不可視、operations-actions 統合。CI/実環境で実行。
+- カバー: Operations→Finance の金額フロー、候補（正式と分離）、資金繰り見込み、承認必須、機密の権限分離。

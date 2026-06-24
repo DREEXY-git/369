@@ -90,3 +90,13 @@ Phase 1-5（次）:
 3. **会計連動（Phase 2）**: 発注/イベント原価 → 仕訳候補（OCRProvider 実経路）→ 承認後確定、請求/入金連動、破損請求の請求書化。
 4. **AI 拡張**: 棚卸差異要約・発注理由文・リスク対策案（safeAiInput/saveAIOutputStandard 前提）。
 5. 残セキュリティ: レート制限、CSP、MFA、改ざん検知。
+
+## Phase 1-8 完了 → 次の計画（2026-06-24）
+
+完了: 保守性アーキテクチャ docs（12）＋ `lib/domains/finance/` サービス層確立。承認後実行補完（stocktake_adjust/purchase_order_issue）。Finance Bridge（FinanceEvent/JournalCandidate/InvoiceCandidate）で Operations→Finance を接続: EventProject/PurchaseOrder/DamageLossRecord → 仕訳候補・請求候補・資金繰り予定。`/finance/bridge` 一式。unit 145 / integration 52、6コマンド green。
+
+次（Phase 1-9 / Phase 2 候補）:
+1. **候補→正式化の承認後実行**: requestJournalFinalize 承認後に JournalEntry を posted 化、requestInvoiceSend 承認後に Invoice を正式化（executeApprovedAction）。
+2. **/finance/cashflow と FinanceEvent(cashflow_expected) を統合**（現状並存）。
+3. **会計本体（Phase 2）**: 試算表/決算書、OCR→仕訳候補（OCRProvider 実経路、safeAiInput/saveAIOutputStandard）。
+4. **保守リファクタ**: operations/actions.ts(713行) を lib/domains/operations/* へ段階移設。

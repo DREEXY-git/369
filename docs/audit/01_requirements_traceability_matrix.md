@@ -100,3 +100,12 @@
 - **イベント会社（Phase 4系）**: LogisticsTask（配送/設営/撤去/回収）、EventStaffAssignment（人件費→原価反映）、EventRisk（high/critical 警告）を実装。
 - **#30 セキュリティ・承認**: `executeApprovedAction` 冪等化（二重実行防止）＋ `canExecuteApproval` 純判定。危険操作（大幅棚卸差異/高額発注/破損請求確定/予約強制解除）を承認ゲート→承認後実行。`/admin/operations-actions`。
 - 機密（発注単価/金額/仕入先/原価/人件費/粗利）は財務権限ゲート。新規9モデル＋ApprovalRequest実行フィールド。検証: unit 139 / integration 44、lint/typecheck/build green、e2e spec 追加。
+
+## Phase 1-8 更新（2026-06-24）— 保守性 ＋ Finance Bridge
+
+- **保守性**: `12_maintenance_architecture.md` 新設、`lib/domains/finance/` でサービス層パターン確立（薄いaction）。
+- **#4 会計・財務**: 見せかけ → **部分（候補ブリッジ）**。FinanceEvent（中間台帳）＋JournalCandidate（仕訳候補）＋InvoiceCandidate（請求候補）。正式 JournalEntry/Invoice とは分離。
+- **#5 資金繰り**: FinanceEvent(cashflow_expected) で入金/支払予定を表現（CashFlowItem は作らずモデル数抑制）。/finance/bridge で可視化。
+- **#7 請求・入金**: EventProject/DamageLossRecord → 請求候補。invoice_send は承認対象（申請まで）。
+- **#30 承認**: stocktake_adjust/purchase_order_issue の承認後実行を補完（冪等）。
+- 機密（仕訳候補/原価/粗利/請求候補/税額）は finance 権限ゲート。検証: unit 145 / integration 52、6コマンド green。

@@ -91,3 +91,11 @@
 - **機密の権限分離**: 発注単価/発注金額/仕入先連絡先/案件原価/人件費/粗利は `hasPermission('finance','read')` ゲート。スタッフは発注金額カラム等が非表示。
 - 全 Operations 実行系 action は tenantId＋RBAC＋writeAudit＋GrowthEvent/DomainEvent。
 残: 強制解除/破損請求の請求書連動（次Phase）、レート制限、CSP、MFA、改ざん検知。
+
+## Phase 1-8 更新（2026-06-24）— Finance Bridge
+
+- **正式/候補の分離**: JournalCandidate/InvoiceCandidate を正式 JournalEntry/Invoice と分離し、承認前の下書きが正式データを汚染しない設計（docs/audit/12）。
+- **機密の権限分離**: 仕訳候補/原価/粗利/請求候補/支払予定/入金予定/税額/勘定科目の閲覧は `hasPermission('finance','read')` ゲート＋`writeConfidentialViewLog`（FINANCIAL_CONFIDENTIAL）。スタッフは /finance/bridge 等が不可視。
+- **危険操作の承認**: journal_finalize（仕訳確定）/ invoice_send（請求送信）は `requireApprovalForDangerousAction`（申請まで、正式化は承認後）。承認後実行は executeApprovedAction（冪等）。
+- 全 Finance Bridge は tenantId＋RBAC＋writeAudit＋GrowthEvent/DomainEvent。
+残: 候補→正式化の承認後実行、レート制限、CSP、MFA、改ざん検知。

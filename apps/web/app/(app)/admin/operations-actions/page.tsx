@@ -7,21 +7,27 @@ import {
   executeApprovedInventoryAdjustmentAction,
   executeApprovedForceReleaseAction,
   executeApprovedDamageChargeAction,
+  executeApprovedStocktakeAdjustmentAction,
+  executeApprovedPurchaseOrderIssueAction,
   requestDamageChargeApprovalAction,
 } from './actions';
 
 export const dynamic = 'force-dynamic';
 
-const OPS_ACTIONS = ['inventory_adjust', 'inventory_force_release', 'damage_charge_finalize'];
+const OPS_ACTIONS = ['inventory_adjust', 'inventory_force_release', 'damage_charge_finalize', 'stocktake_adjust', 'purchase_order_issue'];
 const ACTION_LABEL: Record<string, string> = {
   inventory_adjust: '在庫数量の大幅調整',
   inventory_force_release: '予約済み在庫の強制解除',
   damage_charge_finalize: '破損請求の確定',
+  stocktake_adjust: '大幅棚卸差異の反映',
+  purchase_order_issue: '高額発注の確定',
 };
 const MSG: Record<string, string> = {
   adjust: '在庫数量調整を実行しました。',
   release: '予約済み在庫を解除しました。',
   damage: '破損請求を確定しました。',
+  stocktake: '棚卸差異を在庫へ反映しました。',
+  po: '高額発注を確定しました。',
 };
 
 export default async function OperationsActionsPage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
@@ -55,7 +61,11 @@ export default async function OperationsActionsPage({ searchParams }: { searchPa
         ? executeApprovedInventoryAdjustmentAction
         : a.requestedForAction === 'inventory_force_release'
           ? executeApprovedForceReleaseAction
-          : executeApprovedDamageChargeAction;
+          : a.requestedForAction === 'stocktake_adjust'
+            ? executeApprovedStocktakeAdjustmentAction
+            : a.requestedForAction === 'purchase_order_issue'
+              ? executeApprovedPurchaseOrderIssueAction
+              : executeApprovedDamageChargeAction;
     return (
       <form action={action}>
         <input type="hidden" name="approvalId" value={a.id} />

@@ -133,6 +133,84 @@ export async function executeApprovedDamageChargeAction(formData: FormData) {
   redirect('/admin/operations-actions?executed=damage');
 }
 
+/** 承認済みの大幅棚卸差異を在庫へ反映（adjust＋StocktakeLine.reconciled）。 */
+export async function executeApprovedStocktakeAdjustmentAction(formData: FormData) {
+  const user = await requireUser();
+  if (!hasPermission(user, 'inventory', 'update')) redirect('/admin/operations-actions?denied=1');
+  const approvalId = String(formData.get('approvalId') ?? '');
+  const req = await prisma.approvalRequest.findFirst({
+    where: { id: approvalId, tenantId: user.tenantId, requestedForAction: 'stocktake_adjust' },
+  });
+  if (!req) redirect('/admin/operations-actions?error=notfound');
+  const p = payloadOf(req!);
+  const assetId = String(p.assetId ?? '');
+  const lineId = String(p.lineId ?? '');
+  const newQuantity = Number(p.newQuantity);
+  if (!assetId || !Number.isFinite(newQuantity)) redirect('/admin/operations-actions?error=payload');
+
+  const r = await executeApprovedAction(
+    approvalId,
+    async () => {
+      await applyInventoryMovement({
+        tenantId: user.tenantId,
+        actorId: user.userId,
+        assetId,
+        type: 'adjust',
+        setQuantity: newQuantity,
+        note: `承認済み棚卸差異反映（approval=${approvalId}）`,
+      });
+      if (lineId) await prisma.stocktakeLine.updateMany({ where: { id: lineId, tenantId: user.tenantId }, data: { reconciled: true } });
+      return assetId;
+    },
+    { executedById: user.userId },
+  );
+  if (!r.executed) redirect(`/admin/operations-actions?error=${r.reason}`);
+  redirect('/admin/operations-actions?executed=stocktake');
+}
+
+/** 承認済みの高額発注を確定（PurchaseOrder→ordered）。 */
+export async function executeApprovedPurchaseOrderIssueAction(formData: FormData) {
+  const user = await requireUser();
+  if (!hasPermission(user, 'inventory', 'update')) redirect('/admin/operations-actions?denied=1');
+  const approvalId = String(formData.get('approvalId') ?? '');
+  const req = await prisma.approvalRequest.findFirst({
+    where: { id: approvalId, tenantId: user.tenantId, requestedForAction: 'purchase_order_issue' },
+  });
+  if (!req) redirect('/admin/operations-actions?error=notfound');
+  const poId = String(payloadOf(req!).purchaseOrderId ?? req!.entityId);
+
+  const r = await executeApprovedAction(
+    approvalId,
+    async () => {
+      const po = await prisma.purchaseOrder.findFirst({ where: { id: poId, tenantId: user.tenantId } });
+      if (!po) throw new Error('purchase order not found');
+      await prisma.purchaseOrder.update({ where: { id: poId }, data: { status: 'ordered', approvalId } });
+      await writeAudit({
+        tenantId: user.tenantId,
+        actorId: user.userId,
+        action: 'purchase_order_issue',
+        entityType: 'PurchaseOrder',
+        entityId: poId,
+        summary: `高額発注を承認確定: ${po.orderNo}（approval=${approvalId}）`,
+      });
+      await emitGrowthEvent({
+        tenantId: user.tenantId,
+        type: 'inventory.purchase_order.created',
+        title: `発注確定: ${po.orderNo}`,
+        actorId: user.userId,
+        entityType: 'PurchaseOrder',
+        entityId: poId,
+        amount: Number(po.totalAmount),
+        alsoDomainEvent: { domainType: 'PURCHASE_ORDER_APPROVED' as DomainEventType, aggregateType: 'PurchaseOrder', aggregateId: poId },
+      });
+      return poId;
+    },
+    { executedById: user.userId },
+  );
+  if (!r.executed) redirect(`/admin/operations-actions?error=${r.reason}`);
+  redirect('/admin/operations-actions?executed=po');
+}
+
 /** 破損請求の確定を申請（常時承認）。承認後に executeApprovedDamageChargeAction で確定。 */
 export async function requestDamageChargeApprovalAction(formData: FormData) {
   const user = await requireUser();

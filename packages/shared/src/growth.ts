@@ -78,6 +78,14 @@ export const GROWTH_EVENT_TYPES = [
   'logistics.pickup.completed',
   'event.risk.created',
   'event.risk.resolved',
+  // Finance Bridge（Operations→Finance）— Phase 1-8
+  'finance.event.created',
+  'finance.journal_candidate.created',
+  'finance.invoice_candidate.created',
+  'finance.cashflow_expected.created',
+  'finance.purchase_order.bridged',
+  'finance.event_project.bridged',
+  'finance.damage_charge.bridged',
 ] as const;
 
 export type GrowthEventType = (typeof GROWTH_EVENT_TYPES)[number];

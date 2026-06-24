@@ -68,3 +68,8 @@
 
 - Operations 実行管理（棚卸/発注/物流/人員/リスク）は決定論ロジック中心で AI 生成は限定的。Phase 1-6 の `createEventNextProposalAction`（safeAiInput→saveAIOutputStandard）を踏襲。
 - AI 拡張余地（棚卸差異要約/発注理由文/リスク対策案）は安全基盤（safeAiInput/saveAIOutputStandard）前提で次フェーズ。外部送信は引き続き持たない（AI は外部送信ツール不可）。
+
+## Phase 1-8 更新（2026-06-24）
+
+- Finance Bridge は決定論ロジック中心（勘定科目マッピングはルールベース）。AI/OCR 由来の仕訳候補は `aiOutputId` を JournalCandidate に保持できる設計（OCRProvider Fake を将来実経路へ）。
+- 余地: 発注書/領収書 OCR→仕訳候補、原価説明→勘定科目候補（safeAiInput→saveAIOutputStandard 前提）。外部送信は持たない。

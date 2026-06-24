@@ -941,6 +941,77 @@ model JournalEntryLine {
   @@index([tenantId])
 }
 
+// ===== Finance Bridge（Operations→Finance の境界）— Phase 1-8 =====
+// 設計判断は docs/audit/12_maintenance_architecture.md を参照。
+// FinanceEvent: お金の動きの中間台帳（GrowthEvent=分析・DomainEvent=連携とは別レイヤ）。
+model FinanceEvent {
+  id          String    @id @default(cuid())
+  tenantId    String
+  type        String // event_revenue | event_cost | purchase_order | purchase_order_received | damage_charge | invoice_candidate | payment_expected | payment_received | journal_candidate | cashflow_expected
+  sourceType  String    @default("")
+  sourceId    String?
+  direction   String    @default("neutral") // inflow | outflow | neutral
+  amount      Decimal   @default(0) @db.Decimal(16, 2)
+  currency    String    @default("JPY")
+  occurredAt  DateTime  @default(now())
+  dueAt       DateTime?
+  status      String    @default("draft") // draft | pending_approval | approved | posted | ignored
+  description String    @default("")
+  payload     Json?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId, type])
+  @@index([tenantId, status])
+  @@index([tenantId, dueAt])
+}
+
+// JournalCandidate: 仕訳候補（正式 JournalEntry とは分離。承認後に posted 化）。
+model JournalCandidate {
+  id             String   @id @default(cuid())
+  tenantId       String
+  sourceType     String   @default("")
+  sourceId       String?
+  debitAccount   String
+  creditAccount  String
+  amount         Decimal  @default(0) @db.Decimal(16, 2)
+  taxAmount      Decimal  @default(0) @db.Decimal(16, 2)
+  description    String   @default("")
+  status         String   @default("draft") // draft | pending_approval | approved | posted | rejected
+  confidence     Float    @default(0.6)
+  aiOutputId     String?
+  approvalId     String?
+  journalEntryId String? // posted 化したら正式 JournalEntry にリンク
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([tenantId, status])
+}
+
+// InvoiceCandidate: 請求候補（正式 Invoice とは分離。承認後に正式請求書化）。
+model InvoiceCandidate {
+  id          String    @id @default(cuid())
+  tenantId    String
+  customerId  String?
+  sourceType  String    @default("")
+  sourceId    String?
+  title       String    @default("")
+  subtotal    Decimal   @default(0) @db.Decimal(16, 2)
+  taxAmount   Decimal   @default(0) @db.Decimal(16, 2)
+  total       Decimal   @default(0) @db.Decimal(16, 2)
+  dueAt       DateTime?
+  status      String    @default("draft") // draft | pending_approval | approved | sent | rejected
+  approvalId  String?
+  invoiceId   String? // 正式請求書化したらリンク
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId, status])
+}
+
 model Expense {
   id        String   @id @default(cuid())
   tenantId  String

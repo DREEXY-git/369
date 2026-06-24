@@ -177,3 +177,116 @@ export function detectProfitLeaks(input: ProfitLeakInput): ProfitLeakFinding[] {
 
   return findings.sort((a, b) => b.impactJpy - a.impactJpy);
 }
+
+// ============ Finance Bridge（Operations→Finance）純ロジック — Phase 1-8 ============
+// 設計は docs/audit/12_maintenance_architecture.md を参照。DB非依存。
+
+export type FinanceEventType =
+  | 'event_revenue'
+  | 'event_cost'
+  | 'purchase_order'
+  | 'purchase_order_received'
+  | 'damage_charge'
+  | 'invoice_candidate'
+  | 'payment_expected'
+  | 'payment_received'
+  | 'journal_candidate'
+  | 'cashflow_expected';
+
+export type FinanceDirection = 'inflow' | 'outflow' | 'neutral';
+
+/**
+ * FinanceEvent 種別の既定のキャッシュ方向。
+ * cashflow_expected / journal_candidate は文脈依存のため neutral（呼び出し側で明示）。
+ */
+export function financeEventDirection(type: FinanceEventType): FinanceDirection {
+  switch (type) {
+    case 'event_revenue':
+    case 'damage_charge':
+    case 'invoice_candidate':
+    case 'payment_expected':
+    case 'payment_received':
+      return 'inflow';
+    case 'event_cost':
+    case 'purchase_order':
+    case 'purchase_order_received':
+      return 'outflow';
+    default:
+      return 'neutral';
+  }
+}
+
+export type JournalKind = 'revenue' | 'cost' | 'purchase' | 'damage';
+
+export interface JournalCandidateMap {
+  debitAccount: string;
+  creditAccount: string;
+  description: string;
+}
+
+/** 仕訳候補の借方/貸方マッピング（簡易・日本の一般的勘定科目）。 */
+export function journalCandidateFor(kind: JournalKind): JournalCandidateMap {
+  switch (kind) {
+    case 'revenue':
+      return { debitAccount: '売掛金', creditAccount: '売上高', description: 'イベント売上' };
+    case 'cost':
+      return { debitAccount: '売上原価', creditAccount: '未払金', description: 'イベント原価' };
+    case 'purchase':
+      return { debitAccount: '仕入', creditAccount: '買掛金', description: '発注' };
+    case 'damage':
+      return { debitAccount: '売掛金', creditAccount: '雑収入', description: '破損請求' };
+  }
+}
+
+export const DEFAULT_TAX_RATE = 0.1; // 消費税10%（既定）
+
+export interface InvoiceCandidateTotals {
+  subtotal: number;
+  taxAmount: number;
+  total: number;
+}
+
+/** 税抜金額から税額・税込合計を算出（端数は四捨五入）。 */
+export function invoiceCandidateTotals(subtotal: number, taxRate: number = DEFAULT_TAX_RATE): InvoiceCandidateTotals {
+  const base = Math.max(0, subtotal);
+  const taxAmount = Math.round(base * taxRate);
+  return { subtotal: base, taxAmount, total: base + taxAmount };
+}
+
+export interface FinanceEventLike {
+  type: string;
+  direction: string;
+  amount: number;
+  status: string;
+}
+
+export interface FinanceBridgeSummary {
+  total: number;
+  inflowExpected: number;
+  outflowExpected: number;
+  netExpected: number;
+  byType: Record<string, number>;
+}
+
+// 予定として集計する状態（確定前の見込み）。
+const EXPECTED_STATUSES = new Set(['draft', 'pending_approval', 'approved']);
+
+/** FinanceEvent 群を資金繰り見込み（入金/支払予定）として集計。 */
+export function summarizeFinanceEvents(events: FinanceEventLike[]): FinanceBridgeSummary {
+  const byType: Record<string, number> = {};
+  let inflowExpected = 0;
+  let outflowExpected = 0;
+  for (const e of events) {
+    byType[e.type] = (byType[e.type] ?? 0) + 1;
+    if (!EXPECTED_STATUSES.has(e.status)) continue;
+    if (e.direction === 'inflow') inflowExpected += Math.max(0, e.amount);
+    else if (e.direction === 'outflow') outflowExpected += Math.max(0, e.amount);
+  }
+  return {
+    total: events.length,
+    inflowExpected,
+    outflowExpected,
+    netExpected: inflowExpected - outflowExpected,
+    byType,
+  };
+}

@@ -57,3 +57,11 @@
 - **録音閲覧**: 録音同意でゲート、RecordingAccessLog 記録。
 - **worker Outbox 常時処理**（webhook 署名配送・retry・dead-letter）＋ JobRun 監査。
 残: MFA/SSO、改ざん検知、レート制限、CSP、prompt injection 検出、ファイル検証、契約/人事/勤怠 detail への展開（画面本体実装と同時）。
+
+## Phase 1-4 更新（2026-06-24）
+
+- **prompt injection 検出**: `detectPromptInjection`（ルールベース・日英）をマーケ資産生成経路に適用。high で生成中止＋AISafetyLog。
+- **PII マスキング**: `maskPii`（氏名/メール/電話/住所＋銀行口座/マイナンバー）。外部送信前マスクの関数・テスト・適用経路を整備。
+- **ToolPermissionChecker**: AI は external_send/delete/permission_change/高機密参照/承認済み実行を直接実行不可（承認必須）。
+- Marketing 資産の外部公開は承認ゲート経由のみ（直接送信しない）。
+残: 注入対策の RAG/全AI経路への適用、外部送信時のPIIマスク自動適用、MFA/SSO、改ざん検知、レート制限、CSP。

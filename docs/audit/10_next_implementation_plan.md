@@ -48,3 +48,13 @@ Phase 1-4（次）:
 2. e2e（Playwright）: 承認フロー、staff が財務/HR を見られない、位置/録音の同意ゲート。セキュリティ自動テスト（SSRF/XSS/CSRF）。
 3. Provider 拡充（Gemini/OCR/Voice の interface+mock）。
 4. その後 Phase 2（会計本体・看板AI見積 等）。各業務 detail 実装時に本ABAC/監査/承認/イベントを標準で組込む。
+
+## Phase 1-4 完了 → Phase 1-5 計画（2026-06-24）
+
+完了: Growth Event Ledger（GrowthEvent）、Marketing OS（Campaign/Asset/AI生成・承認）、DX OS（Assessment/Opportunity/効果記録）、AI安全基盤（PromptInjection/PiiMasker/ToolPermissionChecker/AIOutput拡張/AISafetyLog）。/growth・/marketing・/dx 計12画面。unit 111 / integration 24。
+
+Phase 1-5（次）:
+1. AI安全の全経路適用: ナレッジ/外部送信/AIエージェント実行に detectPromptInjection＋maskPii＋checkToolPermission を組込み、AIOutput を全AIタスクで保存。
+2. e2e（Playwright）＋ セキュリティ自動テスト（SSRF/XSS/CSRF/権限分離）。
+3. Provider 拡充（Gemini/OCR/Voice interface+mock）。
+4. その後 Phase 2: 会計本体 → 看板AI見積 → EC（各業務に Growth/ABAC/承認/イベントを標準組込み）。

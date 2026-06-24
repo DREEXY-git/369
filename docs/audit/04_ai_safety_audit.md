@@ -37,3 +37,11 @@
 - ナレッジ検索の **AI 参照を DataAccessLog に記録**（機密ラベルでの retrieval フィルタは既存）。
 - **高機密データのAI送信**を承認ゲート必須化（`ai_high_confidential_send`）。
 残: PromptInjectionDetector、PiiMasker の経路適用、AIOutput への citations/confidence/cost 保存、ToolPermissionChecker。
+
+## Phase 1-4 更新（2026-06-24）
+
+- **PromptInjectionDetector** 実装（`detectPromptInjection` / `runSafetyChecks`）。
+- **PiiMasker** 実装（`maskPii` / `containsPii`、masking.ts 拡張）。
+- **ToolPermissionChecker** 実装（`checkToolPermission`、AI禁止ツール）。
+- **AIOutput 拡張**: inputHash/outputText/citations/confidence/costEstimate/model/safetyFlags を保存。生成ごとに AIOutput＋AISafetyLog＋DataAccessLog。
+残: 注入検出を RAG/外部送信の全経路へ、PIIマスクを外部送信実行時に自動適用、AIOutput への引用根拠（citations）充実、コスト実測。

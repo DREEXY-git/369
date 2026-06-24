@@ -36,3 +36,9 @@
 - 追加 unit（`policy_rollout.test.ts`）: 承認ゲート(export/external/highAI)、ABAC(invoice deny staff / finance allow admin・owner)、outbox backoff = **+7** → 合計 **92 passed**。
 - 追加 integration（`p1_3_outbox_jobrun.itest.ts`）: JobRun ライフサイクル(2)/Outbox 配送(delivered)/失敗→retry＋WebhookDelivery/同意×ポリシー(location allow・deny) = **+6** → 合計 **20 passed**。
 - 残: e2e（権限分離・承認フロー画面操作）、SSRF/XSS/CSRF。
+
+## Phase 1-4 更新（2026-06-24）
+
+- 追加 unit: ai-safety(11: injection/pii/toolperm/runSafetyChecks)、growth(5: 型/カテゴリ/DXインパクト/集計)、growth_marketing(3: 権限/承認非送信/優先度) = **+19** → 合計 **111 passed**。
+- 追加 integration（`p1_4_growth.itest.ts`）: 成長台帳記録＋集計、テナント分離、DX診断→改善機会(優先度計算)、マーケ資産→承認(非送信) = **+4** → 合計 **24 passed**。
+- カバー: 命令注入検出、PIIマスク、AIツール権限、DXインパクト計算、成長集計、承認なし送信不可、tenant分離。

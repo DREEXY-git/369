@@ -70,3 +70,10 @@
 - **#18 録音・議事録**: `meetings/[id]` の文字起こしを録音同意ゲート化（RecordingAccessLog）。本体 ABAC（meeting.label）も組込み。
 - **#26 ナレッジ**: 検索に AI 参照ログ（DataAccessLog）追加（機密ラベルフィルタは既存）。
 - **#30 セキュリティ**: 承認ゲートを実経路へ（危険操作5種の申請＋承認済みexport実行）。JobRun 基盤（`/admin/jobs`）。
+
+## Phase 1-4 更新（2026-06-24）— Growth Infrastructure
+
+- **新規 Growth OS**: GrowthEvent（成長イベント台帳）。会社の出来事を 売上/利益/工数削減/コスト削減/売上インパクト に接続。`/growth`・`/growth/events`。DomainEvent（システム）とは別レイヤ。重要イベントは emitDomainEvent→Outbox→worker にも連動。
+- **#21 自動マーケティング**: 見せかけ → **部分(縦スライス)**。MarketingCampaign 拡張、ContentAsset=MarketingAsset 拡張、AI生成（安全処理付き）→AIOutput→**外部公開は承認申請のみ（直接送信なし）**。`/marketing` 一式。
+- **新規 DX OS**: DXAssessment/DXOpportunity（推定削減時間/コスト/売上インパクト・優先度自動計算）。`/dx` 一式。効果記録で成長台帳へ反映。
+- **#39 AI実行基盤**: PromptInjectionDetector / PiiMasker / ToolPermissionChecker 実装。AIOutput 拡張（userId/purpose/inputHash/outputText/citations/costEstimate/model/safetyFlags）＋AISafetyLog。

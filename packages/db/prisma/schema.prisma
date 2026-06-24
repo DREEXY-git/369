@@ -1383,18 +1383,27 @@ model DynamicPricingSuggestion {
 // ============================ マーケティング ==================================
 
 model MarketingCampaign {
-  id        String   @id @default(cuid())
-  tenantId  String
-  name      String
-  channel   String // seo | sns | ads | meo | line | mail
-  status    String   @default("active")
-  budget    Decimal  @default(0) @db.Decimal(14, 2)
-  spent     Decimal  @default(0) @db.Decimal(14, 2)
-  createdAt DateTime @default(now())
+  id          String    @id @default(cuid())
+  tenantId    String
+  name        String
+  channel     String // seo | sns | ads | meo | line | mail
+  status      String    @default("active")
+  purpose     String    @default("") // 集客 | 認知 | リピート | 休眠掘り起こし ...
+  target      String    @default("") // ターゲット顧客像
+  budget      Decimal   @default(0) @db.Decimal(14, 2)
+  spent       Decimal   @default(0) @db.Decimal(14, 2)
+  periodStart DateTime?
+  periodEnd   DateTime?
+  kpiPlan     Json? // 想定KPI（leads/cv/roi 等）
+  kpiActual   Json? // 実績KPI
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
 
   metrics CampaignMetric[]
 
   @@index([tenantId])
+  @@index([tenantId, status])
 }
 
 model CampaignMetric {
@@ -1412,17 +1421,27 @@ model CampaignMetric {
   @@index([tenantId])
 }
 
+// ContentAsset は Marketing OS の「MarketingAsset（AI生成マーケ資産）」として拡張利用する。
 model ContentAsset {
-  id        String   @id @default(cuid())
-  tenantId  String
-  type      String // article | lp | sns | ad | mail
-  title     String
-  body      String   @default("")
-  status    String   @default("draft")
-  generatedByAi Boolean @default(false)
-  createdAt DateTime @default(now())
+  id             String               @id @default(cuid())
+  tenantId       String
+  campaignId     String?
+  type           String // article | lp | sns | ad | mail | line | sales_doc | review_request | reactivation | proposal_outline
+  title          String
+  body           String               @default("")
+  status         String               @default("draft") // draft | pending_approval | approved | rejected
+  approvalStatus String               @default("none") // none | pending | approved | rejected
+  generatedByAi  Boolean              @default(false)
+  aiOutputId     String?
+  safetyFlag     Boolean              @default(false) // 安全チェックで要注意
+  label          ConfidentialityLabel @default(INTERNAL)
+  createdById    String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @default(now()) @updatedAt
 
   @@index([tenantId])
+  @@index([tenantId, campaignId])
+  @@index([tenantId, approvalStatus])
 }
 
 model Inquiry {
@@ -1841,16 +1860,25 @@ model LLMCallLog {
 }
 
 model AIOutput {
-  id        String   @id @default(cuid())
-  tenantId  String
-  task      String
-  entityType String?
-  entityId  String?
-  output    Json
-  confidence Float   @default(0.6)
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  tenantId     String
+  userId       String?
+  task         String
+  purpose      String   @default("")
+  entityType   String?
+  entityId     String?
+  model        String   @default("fake")
+  inputHash    String?
+  output       Json
+  outputText   String   @default("")
+  citations    Json?
+  confidence   Float    @default(0.6)
+  costEstimate Float    @default(0)
+  safetyFlags  String[]
+  createdAt    DateTime @default(now())
 
   @@index([tenantId, task])
+  @@index([tenantId, createdAt])
 }
 
 model AIRecommendation {
@@ -2839,4 +2867,98 @@ model EmployeeLocationLog {
   createdAt         DateTime @default(now())
 
   @@index([tenantId, userId, recordedAt])
+}
+
+// =============================================================================
+// Phase 1-4: Growth Infrastructure（成長イベント台帳 / Marketing OS / DX OS / AI安全）
+//  - GrowthEvent は「経営成長イベント台帳」。DomainEvent（システムイベント）とは別物。
+//  - 会社の出来事を 売上/利益/工数削減/コスト削減/売上インパクト に接続する。
+// =============================================================================
+
+model GrowthEvent {
+  id           String   @id @default(cuid())
+  tenantId     String
+  type         String // marketing.campaign.created | sales.deal.won | dx.automation.completed ...
+  category     String // marketing | sales | finance | dx | ai | management | customer
+  title        String
+  description  String   @default("")
+  actorId      String?
+  actorType    String   @default("user")
+  entityType   String?
+  entityId     String?
+  // 経営指標への接続
+  amount        Decimal? @db.Decimal(16, 2)
+  currency      String   @default("JPY")
+  revenueImpact Decimal? @db.Decimal(16, 2)
+  costSaving    Decimal? @db.Decimal(16, 2)
+  timeSavingMinutes Int?
+  metric       Json?
+  payload      Json?
+  domainEventId String?
+  occurredAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, occurredAt])
+  @@index([tenantId, category])
+  @@index([tenantId, type])
+}
+
+model DXAssessment {
+  id          String   @id @default(cuid())
+  tenantId    String
+  title       String
+  department  String   @default("")
+  summary     String   @default("")
+  findings    Json? // 非効率/属人化/重複/紙業務/Excel依存/人手不足/AI化余地 のリスト
+  status      String   @default("draft") // draft | reviewed | completed
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  opportunities DXOpportunity[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+}
+
+model DXOpportunity {
+  id                        String   @id @default(cuid())
+  tenantId                  String
+  assessmentId              String?
+  title                     String
+  problem                   String   @default("")
+  solution                  String   @default("")
+  estimatedTimeSavingMinutes Int     @default(0)
+  estimatedCostSaving       Decimal  @default(0) @db.Decimal(14, 2)
+  estimatedRevenueImpact    Decimal  @default(0) @db.Decimal(14, 2)
+  difficulty                String   @default("medium") // low | medium | high
+  priority                  Int      @default(0)
+  status                    String   @default("identified") // identified | planned | in_progress | done | dropped
+  createdById               String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @default(now()) @updatedAt
+
+  assessment DXAssessment? @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@index([tenantId, priority])
+}
+
+model AISafetyLog {
+  id        String   @id @default(cuid())
+  tenantId  String
+  actorId   String?
+  actorType String   @default("user")
+  purpose   String   @default("")
+  check     String // injection | pii_mask | tool_permission
+  flagged   Boolean  @default(false)
+  severity  String   @default("none")
+  patterns  String[]
+  detail    String   @default("")
+  entityType String?
+  entityId  String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, check])
 }

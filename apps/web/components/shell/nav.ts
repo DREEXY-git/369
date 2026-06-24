@@ -34,6 +34,8 @@ import {
   FileCheck,
   ShieldAlert,
   Cog,
+  TrendingUp,
+  Cpu,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -53,6 +55,15 @@ export const NAV: NavGroup[] = [
       { label: 'AI朝礼レポート', href: '/reports/morning', icon: Sunrise },
       { label: 'アラート', href: '/alerts', icon: AlertTriangle },
       { label: '承認待ち', href: '/approvals', icon: CheckSquare },
+    ],
+  },
+  {
+    title: 'Growth・DX OS',
+    items: [
+      { label: '成長ダッシュボード', href: '/growth', icon: TrendingUp },
+      { label: '成長イベント台帳', href: '/growth/events', icon: Activity },
+      { label: 'Marketing OS', href: '/marketing', icon: Megaphone },
+      { label: 'DX OS', href: '/dx', icon: Cpu },
     ],
   },
   {

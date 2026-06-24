@@ -1,9 +1,11 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
+import { getGoldenPathExecutiveDashboardData } from '@/lib/domains/operations/golden-path-dashboard';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Stat, Badge, EmptyState } from '@/components/ui';
+import { GoldenPathKpiGrid, AttentionList } from '@/components/golden-path-kpi';
 import { SeverityBadge, DEAL_STAGE_LABEL } from '@/components/badges';
 import { formatJpy, formatDate, SEVERITY_TONE } from '@hokko/shared';
 
@@ -12,6 +14,7 @@ export const dynamic = 'force-dynamic';
 export default async function CeoDashboard() {
   const user = await requireUser();
   const t = user.tenantId;
+  const canViewFinance = hasPermission(user, 'finance', 'read');
 
   const [
     dealAgg,
@@ -28,6 +31,7 @@ export default async function CeoDashboard() {
     cashLow,
     complaints,
     dailyReports,
+    gpDashboard,
   ] = await Promise.all([
     prisma.deal.aggregate({ where: { tenantId: t, stage: { not: 'LOST' } }, _sum: { amount: true, cost: true } }),
     prisma.deal.groupBy({ by: ['stage'], where: { tenantId: t }, _count: true, _sum: { amount: true } }),
@@ -43,6 +47,7 @@ export default async function CeoDashboard() {
     prisma.cashflowForecastLine.findMany({ where: { tenantId: t }, orderBy: { balance: 'asc' }, take: 1 }),
     prisma.customerComplaint.count({ where: { tenantId: t, status: 'open' } }),
     prisma.dailyReport.findMany({ where: { tenantId: t }, orderBy: { createdAt: 'desc' }, take: 3 }),
+    getGoldenPathExecutiveDashboardData(t, canViewFinance),
   ]);
 
   const pipeline = toNumber(dealAgg._sum.amount);
@@ -212,6 +217,23 @@ export default async function CeoDashboard() {
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      {/* プランニングホッコー Golden Path（経営 KPI）— Phase 1-12。既存 Deal 中心 KPI は変更せず末尾に追加。 */}
+      <div className="mt-6 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">🗺️ プランニングホッコー Golden Path（経営KPI）</h2>
+          <Link href="/planning-hokko" className="text-sm text-primary hover:underline">プランニングホッコー画面で詳しく見る →</Link>
+        </div>
+        <GoldenPathKpiGrid overall={gpDashboard.overall} financeVisible={gpDashboard.financeVisible} />
+        <Card>
+          <CardHeader>
+            <CardTitle>🚨 今すぐ見るべき案件（優先度順）</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <AttentionList items={gpDashboard.attention} financeVisible={gpDashboard.financeVisible} />
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

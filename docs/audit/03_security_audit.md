@@ -121,3 +121,10 @@
 - 案件詳細の Golden Path カードは ABAC を維持: 原価・粗利・低粗利警告・請求/資金繰りリンクは `finance:read` 権限時のみ表示。Finance Bridge ボタンは `finance:create` 必須。スタッフは原価・粗利・金額を不可視。
 - `bridgeEventToFinanceAction` は finance:create を強制し、業務ロジックは lib に集約（action は薄い）。bridge は冪等で重複台帳生成なし。
 - 既知の可読性課題（残）: 「候補→正式化」承認と「正式Invoice外部送信」承認がともに ApprovalRequest.action='invoice_send'。実行は payload(candidateId/invoiceId)で識別し誤実行は findFirst 不整合で安全に弾くが、将来 `invoice_finalize` 分離が望ましい（P2）。外部送信は引き続き承認後＋prepareExternalPayload＋EXTERNAL_SEND_ENABLED ゲート。AIは送信主体不可。
+
+## Phase 1-12 更新（2026-06-24）— 経営KPIの機密分離と planning-hokko ゲート是正
+
+- 経営ダッシュボード（/dashboard/ceo・/planning-hokko）の Golden Path KPI は、売上/原価/粗利/未回収/延滞/入金済/入金・支払予定/低粗利を `finance:read` ゲート。**UIで隠すだけでなく `redactExecutiveFinance` で lib のデータ整形段階で null 化**し、finance 由来の attention 理由（延滞/未回収/低粗利）も除外（深層防御＝サーバから STAFF へ金額が渡らない）。
+- **是正（軽微なセキュリティ修正）**: 従来 `/planning-hokko` は売上/原価/粗利を無ゲートで表示しており STAFF も金額を閲覧できた → 本Phaseで `canViewFinance` 分岐＋redact を追加し機密漏れを解消。event detail（Phase 1-11 で既にゲート済み）と整合。
+- 集約クエリは全て tenantId スコープ＋バッチ取得（per-event 個別クエリ無し）。クロステナント遮断は `p1_12_executive_dashboard.itest`（tenant分離）で検証。
+- 新規の外部送信・承認・削除権限は追加していない（読み取り・集計のみ）。AIロール権限は不変。

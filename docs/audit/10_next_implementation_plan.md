@@ -142,3 +142,14 @@ Phase 1-11 完了後、機能追加の前に本番足場固めを実施。詳細
 - main 上で 6 検証 green、本番ビルド成果物の HTTP スモーク＋RBAC 認可ガード良好（§17）。
 - 利用者がライブ本番（Vercel `main` ソース）を実機確認: 最新 Production Deployment Ready／build・migrate・engine・runtime エラーなし／本番 URL スモーク＋RBAC OK（§18）。
 - → **Release Stabilization Gate 完了。次 Phase（1-12 候補）に着手可能。** 新機能・新規 DB モデルはゲート外の別タスクで実施。
+
+## Phase 1-12 完了 → 次の計画（2026-06-24）
+
+完了: **Golden Path KPI Executive Dashboard**。純ロジック `packages/shared/src/golden-path-dashboard.ts`（`summarizeExecutiveDashboard`/`redactExecutiveFinance`）＋ web 集約 lib `apps/web/lib/domains/operations/golden-path-dashboard.ts`（バッチ取得＋Map突合で N+1 回避）＋表示部品 `components/golden-path-kpi.tsx`（`GoldenPathKpiGrid`/`AttentionList`）。`/dashboard/ceo`（既存 Deal 中心 KPI 無改変で末尾に GP セクション追加）・`/planning-hokko`（KPI/attention 強化＋金額表示に finance ゲート是正）・`/operations/events/[id]`（経営ダッシュボード往復導線）。新規DBモデルなし。unit 186 / integration 73、6コマンド green。
+
+次（Phase 1-13 / Phase 2 候補）:
+1. `EventProject.completedAt`（or 完了 DomainEvent）で「今月完了/リードタイム」を正確化（現状は eventDate 当月＋status=completed の代理）。
+2. 「今すぐ見るべき案件」→是正アクション（請求送信/督促/リスク対応）へのディープリンク。
+3. 規模拡大に備えた KPI 集計のキャッシュ/集計テーブル化（現状はリクエスト毎 force-dynamic）。
+4. 承認種別 `invoice_finalize`／`invoice_send` 分離（可読性・監査性）。
+5. 横展開（会計本体/銀行API/OCR/契約/給与/労務/AI社員本体）は引き続き対象外。

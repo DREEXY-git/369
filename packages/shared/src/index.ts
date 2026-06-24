@@ -19,5 +19,6 @@ export * from './ai-safety';
 export * from './growth';
 export * from './operations';
 export * from './golden-path';
+export * from './golden-path-dashboard';
 // 注: './webhook' は node:crypto を使うため barrel に含めない（client汚染防止）。
 //     サーバ/ワーカーは '@hokko/shared/webhook' から直接 import する。

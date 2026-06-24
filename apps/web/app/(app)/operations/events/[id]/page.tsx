@@ -148,6 +148,14 @@ export default async function EventDetailPage({ params, searchParams }: { params
                 {canViewFinance ? <Link href="/finance/cashflow" className="text-primary hover:underline">資金繰りを見る →</Link> : null}
               </div>
             ) : null}
+
+            {/* この案件 ←→ 経営ダッシュボードの往復導線（Phase 1-12） */}
+            <div className="mt-3 flex flex-wrap items-center gap-3 border-t pt-3 text-xs">
+              <span className="text-muted-foreground">経営ダッシュボードで全体を見る:</span>
+              <Link href="/planning-hokko" className="text-primary hover:underline">プランニングホッコー →</Link>
+              <Link href="/dashboard/ceo" className="text-primary hover:underline">社長コックピット →</Link>
+              {canViewFinance ? <Link href="/finance/cashflow" className="text-primary hover:underline">資金繰り →</Link> : null}
+            </div>
           </CardContent>
         </Card>
       ) : null}

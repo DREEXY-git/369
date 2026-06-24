@@ -137,3 +137,16 @@
 | 新規DBモデルを増やさない | 既存 EventProject×FinanceEvent×InvoiceCandidate×Invoice 連結 | 新規migrationなし |
 
 詳細監査: `13_planning_hokko_golden_path.md`。
+
+## Phase 1-12（2026-06-24）— Golden Path KPI Executive Dashboard
+
+| 要件 | 実装 | テスト |
+|---|---|---|
+| 案件横断 Golden Path KPI の経営集約（ステップ20完成） | `summarizeExecutiveDashboard` ＋ `getGoldenPathExecutiveDashboardData`（バッチ取得・N+1回避） | golden_path_dashboard.test / p1_12_executive_dashboard.itest |
+| 「今すぐ見るべき案件」優先度付け（低粗利/未回収/高リスク/承認待ち/物流/Bridge未接続） | `EXEC_ATTENTION_WEIGHT` の重み合計でスコア化 | golden_path_dashboard.test（優先度）|
+| 経営KPIの finance 機密ゲート（STAFF 金額不可視） | `redactExecutiveFinance`（lib段階で null 化・UI非依存） | golden_path_dashboard.test（redact）/ p1_12（STAFF redact）/ executive_dashboard.spec |
+| CEO Dashboard を壊さず KPI 追加 | /dashboard/ceo 末尾に GP セクション（Deal中心KPI無改変） | executive_dashboard.spec |
+| planning-hokko の金額表示に finance ゲート（是正） | canViewFinance 分岐＋redact | executive_dashboard.spec（STAFF不可視）|
+| 新規DBモデルを増やさない | 既存モデルのみ連結（migration なし） | 新規 migration なし |
+
+詳細監査: `13_planning_hokko_golden_path.md` §Phase 1-12。

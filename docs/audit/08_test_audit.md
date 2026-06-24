@@ -91,3 +91,10 @@
 - integration: **67**（+3）。`p1_11_golden_path.itest.ts`（顧客→案件→…→入金→回収の next action 前進、bridge冪等＝InvoiceCandidate重複なし、tenant分離）。
 - e2e: `planning_hokko_golden_path.spec.ts`（入口→案件詳細遷移、Golden Pathカード表示、財務機密のスタッフ不可視）。サンドボックスではchromium DL不可のためCI/実環境実行。
 - 6検証コマンド: db:generate / typecheck / test(168) / lint / build / integration(67) すべて green。
+
+## Phase 1-12 更新（2026-06-24）
+
+- unit: **186**（+18）。`golden_path_dashboard.test.ts`（進行中平均進捗・今月開催/完了[completedAt代理]・未回収/入金集計・cashflowTight・低粗利/延滞/高リスク/物流遅延/承認/未送信 検知・「今すぐ見るべき案件」優先度・finance redact 可視性）。
+- integration: **73**（+6）。`p1_12_executive_dashboard.itest.ts`（複数EventProject集計・未回収[invoice+payment+receivable+financeEvent]横断・低粗利/高リスク/物流遅延/承認待ち検出・tenant分離・STAFF相当 redact）。
+- e2e: `executive_dashboard.spec.ts`（CEO に GP KPI 表示・planning-hokko 平均進捗/次の一手・event→dashboard 導線・STAFF は金額不可視）。サンドボックスは chromium DL 不可のため CI/実環境で実行。
+- 6検証コマンド: db:generate / typecheck / test(186) / lint / build / integration(73) すべて green。

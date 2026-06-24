@@ -168,6 +168,13 @@ export async function bridgeEventProjectToFinance(actor: Actor, eventId: string)
     include: { costs: true },
   });
   if (!event) throw new Error('event not found');
+  // 冪等: 既にブリッジ済みなら二重生成しない（event detail / bridge 画面どちらから来ても安全）。
+  const existing = await prisma.invoiceCandidate.findFirst({
+    where: { tenantId: actor.tenantId, sourceType: 'EventProject', sourceId: eventId },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  });
+  if (existing) return { invoiceCandidateId: existing.id, alreadyBridged: true };
   const revenue = toNumber(event.revenue);
   const cost = Math.max(toNumber(event.cost), event.costs.reduce((s, c) => s + toNumber(c.amount), 0));
   const dueAt = defaultDue();
@@ -181,7 +188,7 @@ export async function bridgeEventProjectToFinance(actor: Actor, eventId: string)
 
   await writeAudit({ tenantId: actor.tenantId, actorId: actor.userId, action: 'finance_bridge', entityType: 'EventProject', entityId: eventId, summary: `イベント案件をFinanceへブリッジ: ${event.name}（売上${revenue}/原価${cost}）` });
   await emitGrowthEvent({ tenantId: actor.tenantId, type: 'finance.event_project.bridged', title: `Financeブリッジ: ${event.name}`, actorId: actor.userId, entityType: 'EventProject', entityId: eventId, alsoDomainEvent: { domainType: 'EVENT_PROJECT_FINANCE_BRIDGED' as DomainEventType, aggregateType: 'EventProject', aggregateId: eventId } });
-  return { invoiceCandidateId: ic.id };
+  return { invoiceCandidateId: ic.id, alreadyBridged: false };
 }
 
 /** 発注 → 買掛の FinanceEvent・仕訳候補・支払予定。 */

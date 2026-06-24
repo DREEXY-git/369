@@ -24,6 +24,7 @@ import {
   createEventRisk,
   updateEventRiskStatus,
 } from '@/lib/domains/operations/events';
+import { bridgeEventProjectToFinance } from '@/lib/domains/finance/finance-bridge';
 import { applyInventoryMovement } from '@/lib/operations';
 
 // ============================ 在庫移動 ============================
@@ -513,6 +514,19 @@ export async function completeEventProjectAction(formData: FormData) {
   await completeEventProject({ tenantId: user.tenantId, userId: user.userId }, eventId);
   revalidatePath(`/operations/events/${eventId}`);
   redirect(`/operations/events/${eventId}?completed=1`);
+}
+
+/** イベント案件を Finance へブリッジ（売上/原価/請求候補/仕訳候補/入金予定を生成）。冪等。
+ *  業務ロジックは lib/domains/finance/finance-bridge.ts。Golden Path: 現場→会計の橋渡し。 */
+export async function bridgeEventToFinanceAction(formData: FormData) {
+  const user = await requireUser();
+  if (!hasPermission(user, 'finance', 'create')) redirect('/operations/events?denied=1');
+  const eventId = String(formData.get('eventId') ?? '');
+  if (!eventId) redirect('/operations/events?error=input');
+  const res = await bridgeEventProjectToFinance({ tenantId: user.tenantId, userId: user.userId }, eventId);
+  revalidatePath(`/operations/events/${eventId}`);
+  revalidatePath('/finance/bridge');
+  redirect(`/operations/events/${eventId}?bridged=${res.alreadyBridged ? 'already' : '1'}`);
 }
 
 // 決定論の次回提案生成（FakeLLM 相当。外部送信なし・必ず下書き）。

@@ -115,3 +115,9 @@
 - **正式化と送信の分離**: issue（ISSUED）と send（SENT）を別経路に。
 - 機密（請求金額/入金履歴/売掛金/未回収/入金・支払予定/資金繰り/顧客メール/送信本文）は finance/invoice 権限ゲート＋writeConfidentialViewLog。/invoices/[id] は既存 ABAC 維持。
 残: 支払実行ゲート、レート制限、CSP、MFA、改ざん検知。
+
+## Phase 1-11 更新（2026-06-24）— Golden Path の機密分離
+
+- 案件詳細の Golden Path カードは ABAC を維持: 原価・粗利・低粗利警告・請求/資金繰りリンクは `finance:read` 権限時のみ表示。Finance Bridge ボタンは `finance:create` 必須。スタッフは原価・粗利・金額を不可視。
+- `bridgeEventToFinanceAction` は finance:create を強制し、業務ロジックは lib に集約（action は薄い）。bridge は冪等で重複台帳生成なし。
+- 既知の可読性課題（残）: 「候補→正式化」承認と「正式Invoice外部送信」承認がともに ApprovalRequest.action='invoice_send'。実行は payload(candidateId/invoiceId)で識別し誤実行は findFirst 不整合で安全に弾くが、将来 `invoice_finalize` 分離が望ましい（P2）。外部送信は引き続き承認後＋prepareExternalPayload＋EXTERNAL_SEND_ENABLED ゲート。AIは送信主体不可。

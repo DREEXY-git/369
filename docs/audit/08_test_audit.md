@@ -84,3 +84,10 @@
 - 追加 unit（`finance_payment.test.ts`）: invoiceOutstanding/invoiceStatusAfterPayment/receivableStatusAfterPayment、canSendInvoice/isInvoiceSent（二重送信防止）、summarizeCashflowActualVsExpected（予定/実績・支払超過警告）、invoice_send承認必須、新event型 = **+9** → 合計 **160 passed**。
 - 追加 integration（`p1_10_invoice_payment.itest.ts`）: 送信承認→SENT＋**二重送信防止（atomic claim）**、一部→全額入金で Invoice(PARTIALLY_PAID/PAID)/Receivable(open/collected)/FinanceEvent(payment_received)連動、cashflow実績集計、invoice_send承認必須、tenant分離 = **+6** → 合計 **64 passed**。
 - 追加 e2e（`invoice_payment.spec.ts`）: 請求詳細の送信/入金カード、資金繰りの予定vs実績、スタッフ機密不可視。CI/実環境で実行。
+
+## Phase 1-11 更新（2026-06-24）
+
+- unit: **168**（+8）。`golden_path.test.ts`（ステップ状態計算・次アクション前進・低粗利警告・全額回収）。
+- integration: **67**（+3）。`p1_11_golden_path.itest.ts`（顧客→案件→…→入金→回収の next action 前進、bridge冪等＝InvoiceCandidate重複なし、tenant分離）。
+- e2e: `planning_hokko_golden_path.spec.ts`（入口→案件詳細遷移、Golden Pathカード表示、財務機密のスタッフ不可視）。サンドボックスではchromium DL不可のためCI/実環境実行。
+- 6検証コマンド: db:generate / typecheck / test(168) / lint / build / integration(67) すべて green。

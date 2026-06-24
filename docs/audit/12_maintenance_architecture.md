@@ -148,3 +148,12 @@ DamageLossRecord(破損)   ─┘              └─→ InvoiceCandidate(請求
 - **外部送信ゲート**: `lib/domains/finance/invoice-send.ts`。送信前に `prepareExternalPayload`（PIIマスク）、`assertAiToolAllowed`（AI送信禁止）、承認後 `executeApprovedAction`（冪等）。
 - **保守リファクタ継続**: `lib/domains/operations/events.ts` を新設し、イベント原価/売上/粗利/完了/人員/リスクのロジックを移設。`operations/actions.ts` を 713→626 行に削減（全 event action が6行構成）。
 - 既存リファクタ（procurement/stocktake）と合わせ、operations の lib/domains 化が進行中（残: inventory/lease/logistics）。
+
+## Phase 1-11 更新（2026-06-24）— Golden Path 可視化（横展開せず継ぎ目を接続）
+
+- 一方向レイヤを踏襲して Golden Path を追加（UI→action→lib/domains→shared、新規DBモデルなし）:
+  - 純ロジック `packages/shared/src/golden-path.ts`（`computeGoldenPath`）= 事実(件数/金額/status)→現在地・次アクション・進捗・低粗利警告。UI/DB非依存・unit対象。
+  - 集約クエリ `apps/web/lib/domains/operations/golden-path.ts`（`getEventGoldenPathStatus`）= EventProject×FinanceEvent×InvoiceCandidate×Invoice を横断集約。
+  - 薄い action `bridgeEventToFinanceAction`（認証→finance権限→lib→redirect）。
+- `bridgeEventProjectToFinance` を**冪等化**（既存 InvoiceCandidate(sourceType=EventProject) 検出で二重生成防止）。/finance/bridge と event detail の双方から安全に呼べる。
+- データ分類は不変: 候補(InvoiceCandidate/JournalCandidate)・正式(Invoice)・実績(Payment/FinanceEvent posted)・ブリッジ(FinanceEvent)・分析(GrowthEvent) を混ぜない。

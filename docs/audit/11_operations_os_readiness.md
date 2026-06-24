@@ -169,3 +169,10 @@ Operations の発注確定/入庫（procurement.ts）と棚卸差異反映（sto
 ## Phase 1-10 追記（2026-06-24）— 保守リファクタ
 
 イベント案件の業務ロジック（原価/売上/粗利/完了/人員/リスク）を `lib/domains/operations/events.ts` へ切り出し、operations/actions.ts を 713→626 行に削減。procurement.ts/stocktake.ts と合わせ lib/domains/operations 化が進行（残: inventory/lease/logistics）。
+
+## Phase 1-11 更新（2026-06-24）— Planning Hokko Golden Path
+
+- 案件詳細 `/operations/events/[id]` に「Golden Path — 現在地と次の一手」カードを追加（進捗バー/次アクション/Finance Bridge ボタン/請求候補・請求書・資金繰りリンク/顧客表示/低粗利警告）。
+- 現場（顧客→案件→商品/物流/人員/原価/売上/粗利）から会計（Finance Bridge→請求候補→正式請求書→送信→入金→資金繰り）までを案件詳細起点で一本化。
+- `/planning-hokko` 入口から案件詳細へ遷移（カードリンク＋次の一手導線）。
+- 残: 経営ダッシュボードの案件横断KPI集約（ステップ20）、リース/在庫予約と商品割当の統合（ステップ4）。詳細は `13_planning_hokko_golden_path.md`。

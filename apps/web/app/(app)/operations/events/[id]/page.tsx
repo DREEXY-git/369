@@ -1,8 +1,10 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { writeConfidentialViewLog } from '@/lib/audit';
+import { getEventGoldenPathStatus } from '@/lib/domains/operations/golden-path';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Table, Th, Td, Badge, Stat, Input, Select, Button, EmptyState } from '@/components/ui';
 import { formatJpy, formatDate, eventProfitMargin, isHighSeverityRisk, RISK_TYPE_LABEL, LOGISTICS_TASK_LABEL, isLogisticsTaskType, type ConfidentialityLabel } from '@hokko/shared';
@@ -16,16 +18,25 @@ import {
   assignEventStaffAction,
   createEventRiskAction,
   updateEventRiskStatusAction,
+  bridgeEventToFinanceAction,
 } from '../../actions';
 import { createEventLogisticsTasksAction } from '../../logistics/actions';
 
 export const dynamic = 'force-dynamic';
 
-export default async function EventDetailPage({ params }: { params: Promise<{ id: string }> }) {
+// Golden Path 各ステップの状態を示す小さな点。
+function StepDot({ status }: { status: 'done' | 'current' | 'todo' | 'optional' }) {
+  const tone = status === 'done' ? 'bg-emerald-500' : status === 'current' ? 'bg-blue-500 ring-2 ring-blue-200' : status === 'optional' ? 'bg-slate-300' : 'bg-slate-200';
+  return <span className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${tone}`} />;
+}
+
+export default async function EventDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string>> }) {
   const user = await requireUser();
   const { id } = await params;
+  const sp = await searchParams;
   const canEdit = hasPermission(user, 'inventory', 'update');
   const canViewFinance = hasPermission(user, 'finance', 'read');
+  const canCreateFinance = hasPermission(user, 'finance', 'create');
 
   const event = await prisma.eventProject.findFirst({
     where: { id, tenantId: user.tenantId },
@@ -64,14 +75,82 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
     ? await prisma.productAsset.findMany({ where: { tenantId: user.tenantId }, select: { id: true, name: true, status: true }, orderBy: { name: 'asc' }, take: 200 })
     : [];
 
+  // Golden Path（現在地と次の一手）。会計連携の進捗を横断集約。
+  const gp = await getEventGoldenPathStatus(user.tenantId, event!.id);
+
   return (
     <div>
       <PageHeader
         title={event!.name}
-        description={`${event!.venue ?? '会場未定'} ／ ${event!.eventDate ? formatDate(event!.eventDate) : '日程未定'}`}
+        description={`${event!.venue ?? '会場未定'} ／ ${event!.eventDate ? formatDate(event!.eventDate) : '日程未定'}${gp?.customerName ? ` ／ 顧客: ${gp.customerName}` : ''}`}
         breadcrumb={[{ label: 'Operations', href: '/operations' }, { label: 'イベント案件', href: '/operations/events' }, { label: event!.name, href: '#' }]}
         action={<Badge tone={event!.status === 'completed' ? 'green' : 'blue'}>{event!.status}</Badge>}
       />
+
+      {sp.bridged === '1' ? <div className="mb-3 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Finance へブリッジしました（請求候補・仕訳候補・入金予定を作成）。</div> : null}
+      {sp.bridged === 'already' ? <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">この案件は既にブリッジ済みです（重複作成は行いませんでした）。</div> : null}
+
+      {/* Golden Path: 現在地と次の一手（プランニングホッコー業務フロー） */}
+      {gp ? (
+        <Card className="mb-4 border-blue-100">
+          <CardHeader><CardTitle>Golden Path — 現在地と次の一手</CardTitle></CardHeader>
+          <CardContent>
+            <div className="mb-3 flex items-center gap-3">
+              <div className="h-2 flex-1 rounded-full bg-secondary">
+                <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${gp.result.percent}%` }} />
+              </div>
+              <span className="whitespace-nowrap text-sm font-medium">{gp.result.doneCount}/{gp.result.totalCount}（{gp.result.percent}%）</span>
+            </div>
+
+            {canViewFinance && gp.result.lowMarginWarning ? (
+              <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">⚠️ 粗利率 {gp.result.marginPercent}% — 薄利です。原価・売上・人員配置を見直してください。</div>
+            ) : null}
+
+            {gp.result.nextActionKey ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-blue-50 px-3 py-2">
+                <div className="text-sm text-blue-900">次の一手: <strong>{gp.result.nextActionLabel}</strong></div>
+                <div>
+                  {gp.result.nextActionKey === 'bridge' ? (
+                    canCreateFinance ? (
+                      <form action={bridgeEventToFinanceAction}>
+                        <input type="hidden" name="eventId" value={event!.id} />
+                        <Button type="submit">Finance Bridge へ進む</Button>
+                      </form>
+                    ) : <span className="text-xs text-muted-foreground">財務担当がブリッジを行います</span>
+                  ) : gp.result.nextActionKey === 'formalize' ? (
+                    canViewFinance ? <Link href="/finance/invoice-candidates"><Button variant="outline">請求候補で正式化</Button></Link> : <span className="text-xs text-muted-foreground">財務担当が請求処理を進めます</span>
+                  ) : (gp.result.nextActionKey === 'send' || gp.result.nextActionKey === 'payment' || gp.result.nextActionKey === 'collected') && gp.invoiceId ? (
+                    canViewFinance ? <Link href={`/invoices/${gp.invoiceId}`}><Button variant="outline">請求書を開く</Button></Link> : <span className="text-xs text-muted-foreground">財務担当が請求処理を進めます</span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">下のフォームから登録してください</span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">✅ Golden Path 完了 — 請求・入金・回収まで到達しました。</div>
+            )}
+
+            <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 md:grid-cols-3">
+              {gp.result.steps.map((s) => (
+                <div key={s.key} className="flex items-center gap-1.5 text-xs">
+                  <StepDot status={s.status} />
+                  <span className={s.status === 'done' ? 'text-muted-foreground' : s.status === 'current' ? 'font-semibold text-blue-700' : 'text-foreground'}>
+                    {s.label}{s.optional ? '（任意）' : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {gp.bridged ? (
+              <div className="mt-3 flex flex-wrap gap-3 text-xs">
+                {canViewFinance ? <Link href="/finance/invoice-candidates" className="text-primary hover:underline">請求候補を見る →</Link> : null}
+                {canViewFinance && gp.invoiceId ? <Link href={`/invoices/${gp.invoiceId}`} className="text-primary hover:underline">請求書を見る →</Link> : null}
+                {canViewFinance ? <Link href="/finance/cashflow" className="text-primary hover:underline">資金繰りを見る →</Link> : null}
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* 粗利サマリー（財務権限のみ） */}
       {canViewFinance ? (

@@ -125,3 +125,15 @@
 - **#30 承認**: invoice_send を requireApprovalForDangerousAction→executeApprovedAction（冪等・二重送信防止）。
 - **保守性**: lib/domains/operations/events.ts へ移設（actions 713→626行）。**新規DBモデルなし**。
 - 検証: unit 160 / integration 64、6コマンド green。機密は finance/invoice 権限ゲート。
+
+## Phase 1-11 — Planning Hokko Golden Path トレーサビリティ（2026-06-24）
+
+| 要件 | 実装 | テスト |
+|---|---|---|
+| 案件の現在地・次の一手の可視化 | computeGoldenPath / getEventGoldenPathStatus / event detail カード | golden_path.test.ts / p1_11_golden_path.itest.ts |
+| 現場→会計の継ぎ目接続（案件→Finance Bridge） | bridgeEventToFinanceAction（冪等） | p1_11（bridge冪等・next action前進） |
+| 低粗利の警告 | computeGoldenPath.lowMarginWarning（財務権限で表示） | golden_path.test.ts |
+| 財務機密のスタッフ不可視 | event detail の canViewFinance 分岐 | planning_hokko_golden_path.spec.ts（e2e） |
+| 新規DBモデルを増やさない | 既存 EventProject×FinanceEvent×InvoiceCandidate×Invoice 連結 | 新規migrationなし |
+
+詳細監査: `13_planning_hokko_golden_path.md`。

@@ -120,3 +120,11 @@ Phase 1-5（次）:
 2. **保守リファクタ継続**: operations/actions.ts の inventory/lease/logistics を lib/domains/operations へ。
 3. **会計本体（Phase 2）**: 試算表/決算書UI（JournalEntry集計）、OCR→仕訳候補（OCRProvider実経路＋safeAiInput）。
 4. **資金繰り統合の完了**: cashflowForecast を FinanceEvent ベースへ寄せる。
+
+## Phase 1-12 候補（Phase 1-11 完了後）
+
+1. 経営ダッシュボード（/dashboard/ceo or /operations）へ Golden Path KPI 集約: 進行中案件の進捗％・粗利・未回収・資金繰り影響・承認待ち（ステップ20の完成）。
+2. リース予約/在庫予約と案件商品割当の統合（ステップ4の継ぎ目解消）。
+3. デモ seed 強化: 入金前/入金済の両案件・承認待ちを含む現実的シナリオ。
+4. 承認種別の分離: 候補正式化=`invoice_finalize`、正式請求書外部送信=`invoice_send`（可読性/監査性）。
+（横展開（会計本体/銀行API/OCR/契約/給与/労務/AI社員本体）は引き続き対象外）

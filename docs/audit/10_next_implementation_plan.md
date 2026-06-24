@@ -128,3 +128,10 @@ Phase 1-5（次）:
 3. デモ seed 強化: 入金前/入金済の両案件・承認待ちを含む現実的シナリオ。
 4. 承認種別の分離: 候補正式化=`invoice_finalize`、正式請求書外部送信=`invoice_send`（可読性/監査性）。
 （横展開（会計本体/銀行API/OCR/契約/給与/労務/AI社員本体）は引き続き対象外）
+
+## Release Stabilization Gate（2026-06-24・Phase 1-12 着手前）
+Phase 1-11 完了後、機能追加の前に本番足場固めを実施。詳細は **`14_release_stabilization.md`**。
+- 6 検証 green / secret 無し / 旧名称「369」再混入無し（docs歴史記述のみ）。
+- 安定化追加修正: `/admin/users` の RBAC 認可ガード追加、追跡されていた `dump.rdb` を除外。
+- **`main` ブランチが未存在**（本ブランチがデフォルト）。main 化は新規 main 作成＋利用者判断（既定/Vercel Production の切替）後に実施。
+- → **Phase 1-12 は main 確定後に着手**（本ゲートでは新機能ゼロ）。

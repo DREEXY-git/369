@@ -1,0 +1,142 @@
+# 14 — Release Stabilization Gate（本番足場固め）
+
+Phase 1-12 の新機能には進まず、Phase 1-11 までの実装＋本番デプロイ安定化を
+**安全に main 化（リリース基盤として確定）** するための監査記録。
+
+- 実施日: 2026-06-24
+- 担当観点: SaaS アーキテクト / DevOps / SRE / セキュリティ監査 / QA
+- 方針: **新機能ゼロ**。監査 →（安全なら）取り込み → 再検証 → 記録。
+
+---
+
+## 1. 今回の目的
+機能を増やす前に、稼働中ブランチを安全にリリース基盤へ取り込み、本番運用の足場を固める。
+Phase 1-12（Golden Path KPI / 経営ダッシュボード新機能 / リース在庫予約 / 承認種別分離 /
+会計本体 / OCR / AI社員本体 / 契約 / 労務 / 銀行API）は**対象外**。
+
+## 2. 対象ブランチ
+- 開発/対象: `claude/friendly-dijkstra-un6l9t`
+- **重要事実: `main` ブランチはローカルにも origin にも存在しない。**
+  本ブランチがリポジトリの **デフォルトブランチ**（remote HEAD が指す）であり、
+  Vercel 本番デプロイもこのブランチから行われている。
+  → 「main へ merge」する対象が無いため、main 化は **新規 main 作成**になる（§13）。
+
+## 3. main との差分
+`main` が存在しないため差分計測は N/A。
+現行 HEAD（ゲート開始時）= `9dee42e` = `8164ae1`(Phase 1-11) + 安定化修正5件。
+
+## 4. 本番デプロイ安定化修正5件の確認結果
+| # | 修正 | commit | ファイル | 妥当性 |
+|---|------|--------|----------|--------|
+| 1 | 接続文字列の検証・原因明示(P1013) | `0d6eb85` | `packages/db/prisma/vercel-setup.mjs` | URL構造を伏字で出力。`@`個数/ポート検証。良 |
+| 2 | migrate を直接接続(5432)で実行 | `d525809` | 同上 | `migrate deploy` を `DATABASE_URL=DIRECT_URL` で実行＝pgbouncer回避。良 |
+| 3 | lint/typecheck を migrate から分離 | `4e860c7` | `apps/web/package.json`/`packages/db/package.json`/`vercel-setup.mjs` | `prelint`/`pretypecheck`= generate のみ。migrate/seed は web `prebuild`(VERCEL時のみ)。良 |
+| 4 | 実行時プーラーに `pgbouncer=true` 自動付与 | `f69133e` | `packages/db/src/client.ts` | port 6543 かつ未指定時のみ付与。5432/ローカルは素通し。良 |
+| 5 | Prisma エンジンを関数バンドルへ同梱 | `9dee42e` | `apps/web/next.config.mjs` | `outputFileTracingRoot`＋`outputFileTracingIncludes`。engine-not-found 解消 |
+
+関連: `7f8c7a7`（ログイン/実行時例外を理由付き表示・生500回避）, `97d3e61`（pnpm-lock 同期）。
+
+### env 依存・再発防止の検証
+- vercel-setup は `if(!VERCEL) exit0` ＋ `SKIP_DB_SETUP=1` で local/CI/プレビューを保護。
+- `lint`/`typecheck` は **DB 非依存**（generate のみ）。本番/開発/CI で壊れない。
+- 修正5は **ローカルビルド成果物で実証**: `.next/server` の **112 個の関数トレース(.nft.json)**
+  に `libquery_engine-*.so.node` を確認（login ルート含む）。Vercel では `rhel-openssl-3.0.x` 版が同梱される。
+
+## 5. env 設計（本番=Vercel / Supabase）
+| 変数 | 用途 | 本番値の指針 |
+|------|------|--------------|
+| `DATABASE_URL` | 実行時クエリ（プール） | Supabase Transaction pooler `:6543` + `?pgbouncer=true`（未付与でもコードが自動付与） |
+| `DIRECT_URL` | migrate/seed（直接） | Supabase Session pooler `:5432` |
+| `SESSION_SECRET` | セッションJWT署名(HS256) | **16文字以上の高エントロピー必須**（未設定だと開発用フォールバックになる→本番厳禁） |
+| `EXTERNAL_SEND_ENABLED` | 外部送信マスタースイッチ | 既定 `false`。実送信は人間承認時のみ |
+| `MAIL_PROVIDER` / `MAIL_FROM` / `SMTP_*` | メール | 既定 `log`。本番は smtp/sendgrid/resend |
+| `LLM_PROVIDER` / `*_API_KEY` | LLM | 未設定なら `fake` に自動フォールバック |
+| `NEXT_PUBLIC_MAPS_PROVIDER` | 地図 | 既定 `demo`（非Google地図） |
+| `REDIS_URL` / `S3_*` | worker/ストレージ | worker 稼働時に必要 |
+
+注: 認証は **`SESSION_SECRET`**（`JWT_SECRET` ではない）。Cookie名 `ikezaki_session`。
+
+## 6. migration 設計
+- 適用済み 7 件（`init` → `p0_foundations` → `p1_3` → `p1_4` → `p1_6` → `p1_7` → `p1_8`）。
+  Phase 1-9/1-10/1-11 は既存スキーマ上の純ロジック/UIで**新規マイグレーション無し**。
+- ローカル `app369`（195テーブル）と本番 Supabase の適用集合が**一致**。
+- `migrate deploy` は **DIRECT_URL(5432)** を使用（pgbouncer のトランザクションモード回避）。
+- 破壊操作なし（deploy は未適用分のみ適用）。
+
+## 7. seed 方針
+- `vercel-setup` は `SEED_ONLY_IF_EMPTY=1` で実行 → **既存データがあれば完全スキップ（非破壊）**。
+  本番再デプロイのログで「既存データを検出したためシードをスキップ」を実証済み。
+- ローカル `pnpm db:seed` は TRUNCATE+再生成（開発用途のみ）。本番では到達しない。
+- seed は `tenantId` スコープでデモテナントに投入。マルチテナント分離を維持。
+
+## 8. Vercel / Supabase 注意点
+- ビルドの `prebuild` でのみ migrate/seed（generate→vercel-setup）。lint/typecheck には足さない。
+- Prisma エンジンはモノレポで取りこぼされるため `outputFileTracingIncludes` で明示同梱（修正5）。
+- `next start` スクリプトはポート **3000 ハードコード**（ローカル検証時は `next start -p <port>` で回避）。
+- ビルド時メモリ: 広域グロブはトレース収集で OOM 誘発。`@prisma+client@*` に限定済み。
+
+## 9. ローカル検証結果（最終・全修正反映後）
+| # | コマンド | 結果 |
+|---|----------|------|
+| 1 | `pnpm db:generate` | ✅ |
+| 2 | `pnpm typecheck` | ✅ web/worker/db |
+| 3 | `pnpm test`(unit) | ✅ 20ファイル / **168 passed** |
+| 4 | `pnpm lint` | ✅ exit 0 |
+| 5 | `pnpm build` | ✅ 成功（BUILD_ID生成・トレースにエンジン同梱を実証） |
+| 6 | `pnpm --filter @hokko/db test:integration` | ✅ 11ファイル / **67 passed**（本番同一の7マイグレ済DB） |
+
+※ 統合テスト中の `prisma:error` は「重複 idempotencyKey を拒否する」ことを検証する**意図的な期待エラー**（テストは pass）。
+※ E2E(Playwright) はサンドボックスのブラウザDL制約で未実行 → 代替として下記 HTTP スモークを実施。
+
+## 10. 本番スモークテスト（HTTP・署名Cookie / ローカル本番ビルド）
+ローカルで本番ビルド成果物を起動し、署名済 `ikezaki_session` Cookie で検証。
+| 観点 | 結果 |
+|------|------|
+| `/login` 表示 | ✅ 200 |
+| 未認証で保護ページ | ✅ `/dashboard`,`/planning-hokko`,`/finance/bridge`,`/approvals` → 307（/loginへ誘導） |
+| OWNER ダッシュボード | ✅ `/dashboard`,`/dashboard/ceo` 200 |
+| OWNER Golden Path | ✅ `/planning-hokko`,`/operations/events` 200 |
+| OWNER Finance | ✅ `/finance/bridge`,`/finance/invoice-candidates`,`/finance/cashflow` 200 |
+| OWNER 承認/LeadMap/顧客 | ✅ `/approvals`,`/leadmap/leads`,`/customers` 200 |
+| RBAC: STAFF が `/admin/users` | ✅ 修正後は「閲覧権限がありません」（**データ非表示**） |
+| RBAC: STAFF が機密admin | ✅ `data-access-logs`/`danger-actions`/`audit` で拒否表示 |
+| 外部送信 | ✅ `EXTERNAL_SEND_ENABLED=false` 既定（実送信は承認時のみ） |
+
+### 本番（Vercel）側
+- 認証 → ログイン → ダッシュボードは利用者により本番URLで確認済み。
+- migrate(7件) / seed(初回) / build は本番ログで成功確認済み。
+- ※ Vercel ランタイムログの継続監視は手動確認が必要。
+
+## 11. 禁止ファイル・秘密情報チェック結果
+- トラッキング中の `.env`/`.env.local`/`.env.production`/`.next`/`node_modules`/`*.tsbuildinfo`: **無し**。
+- `.env.example` はプレースホルダのみ（実シークレット無し）。`.env`/`.env.local` は `.gitignore` 済。
+- 接続文字列/Supabaseホスト/`sb_secret`/`service_role`/`JWT_SECRET`/Vercel token: **トラッキング対象に混入無し**。
+- **検出: `dump.rdb`（Redisダンプ）が追跡されていた → 本ゲートで untrack＋`.gitignore` 追加（`dump.rdb`,`*.rdb`）。**
+  - ※ サンドボックスの `.env` はローカル `localhost:5432/app369` を指し、本番資格情報は含まれていなかった（本番資格は Vercel のみ）。
+
+## 12. 旧名称「369」再混入チェック結果
+- `apps/`・`packages/` のコード: **0 件**（リネーム完了済み）。
+- `docs/audit/` 内 8 件は **「369→IKEZAKI OS」移行を説明する歴史的記述**であり再混入ではない → 修正不要。
+- リポジトリ名 `369` / DB名 `app369` はインフラ識別子の許容例外。
+
+## 13. main 取り込み判断
+- **コード品質判定: GO（取り込み可）** — 6検証 green / secret無し / 禁止ファイル解消 / RBAC欠陥修正 / スモーク良好。
+- **ただし `main` が存在しない**ため、利用者の想定した `git merge main` は実行不能。
+  取り込み＝「検証済みコミットから **新規 `main` を作成して push**」となる。
+  併せて以下は**運用上の意思決定が必要（本ゲートでは未実施）**:
+  - GitHub デフォルトブランチを `main` に切替えるか。
+  - Vercel の Production Branch を `main` に切替えるか（現状は `claude/friendly-dijkstra-un6l9t`）。
+- → main 作成の実行可否は利用者の承認後に行う。
+
+## 14. 残リスク
+- `main`/デフォルトブランチ/Vercel Production Branch の整合は未確定（§13）。
+- E2E(Playwright) はサンドボックス制約で未実行（HTTP スモークで代替）。
+- Vercel Native Checks の TypeCheck（隔離 install）が別系統で失敗する事象あり（本ビルドは成功・公開はブロックしない）。
+- ローカル `next start` のポート 3000 ハードコード（運用影響なし、検証時の注意）。
+- Vercel ランタイムログの継続監視は手動。
+
+## 15. 次にやること
+1. 利用者承認のうえ `main` を検証済みコミットから作成・push（必要ならデフォルト/Vercel Production も切替）。
+2. main push 後、Vercel 本番デプロイのログ（build/migrate/engine/auth/runtime error）を確認。
+3. Vercel Native Checks の TypeCheck 失敗（隔離 install）の解消は別タスクで。
+4. 以降の機能開発（Phase 1-12 候補）は main 確定後に着手。

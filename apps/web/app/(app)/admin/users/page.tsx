@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { ROLE_LABEL } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
@@ -10,6 +10,18 @@ export const dynamic = 'force-dynamic';
 
 export default async function AdminUsersPage() {
   const user = await requireUser();
+  // 認可ガード: ユーザー/RBAC 管理は管理職以上のみ（兄弟 admin ページと整合）。
+  // STAFF / DEPARTMENT_MANAGER / AI / 外部ロールは admin:read を持たないため遮断する。
+  if (!hasPermission(user, 'admin', 'read')) {
+    return (
+      <div>
+        <PageHeader title="ユーザー・権限" description="ユーザーとロール（RBAC）を管理します。" />
+        <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          閲覧権限がありません（社長・役員・管理者のみ）。
+        </div>
+      </div>
+    );
+  }
   const [users, roles] = await Promise.all([
     prisma.user.findMany({ where: { tenantId: user.tenantId }, include: { userRoles: { include: { role: true } } }, orderBy: { createdAt: 'asc' } }),
     prisma.role.findMany({ where: { tenantId: user.tenantId }, orderBy: { key: 'asc' } }),

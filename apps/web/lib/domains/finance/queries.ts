@@ -44,10 +44,22 @@ export async function getFinanceBridgeDashboardData(tenantId: string) {
   };
 }
 
+// 候補に紐づく承認の状態（承認済みかつ未実行なら正式化ボタンを出す）。
+async function approvalStatusMap(tenantId: string, approvalIds: (string | null)[]) {
+  const ids = approvalIds.filter((x): x is string => !!x);
+  if (ids.length === 0) return {} as Record<string, { status: string; executedAt: Date | null }>;
+  const rows = await prisma.approvalRequest.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, status: true, executedAt: true } });
+  return Object.fromEntries(rows.map((r) => [r.id, { status: r.status, executedAt: r.executedAt }]));
+}
+
 export async function getJournalCandidateListData(tenantId: string) {
-  return prisma.journalCandidate.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 200 });
+  const candidates = await prisma.journalCandidate.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 200 });
+  const approvalById = await approvalStatusMap(tenantId, candidates.map((c) => c.approvalId));
+  return { candidates, approvalById };
 }
 
 export async function getInvoiceCandidateListData(tenantId: string) {
-  return prisma.invoiceCandidate.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 200 });
+  const candidates = await prisma.invoiceCandidate.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 200 });
+  const approvalById = await approvalStatusMap(tenantId, candidates.map((c) => c.approvalId));
+  return { candidates, approvalById };
 }

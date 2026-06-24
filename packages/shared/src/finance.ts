@@ -290,3 +290,46 @@ export function summarizeFinanceEvents(events: FinanceEventLike[]): FinanceBridg
     byType,
   };
 }
+
+// ============ 候補→正式化（Candidate Formalization）純ロジック — Phase 1-9 ============
+
+export interface JournalEntryLineDraft {
+  account: string; // 勘定科目名
+  debit: number;
+  credit: number;
+}
+
+/** 借方/貸方の勘定科目名と金額から複式の2行を生成（借方=amount / 貸方=amount）。 */
+export function journalEntryLinesFor(debitAccount: string, creditAccount: string, amount: number): JournalEntryLineDraft[] {
+  const a = Math.max(0, amount);
+  return [
+    { account: debitAccount, debit: a, credit: 0 },
+    { account: creditAccount, debit: 0, credit: a },
+  ];
+}
+
+/** 仕訳が借方=貸方でバランスしているか（複式の整合性）。 */
+export function isBalancedJournal(lines: JournalEntryLineDraft[]): boolean {
+  const debit = lines.reduce((s, l) => s + l.debit, 0);
+  const credit = lines.reduce((s, l) => s + l.credit, 0);
+  return debit === credit && debit > 0;
+}
+
+/** 仕訳候補を正式化してよいか（金額>0・借方/貸方の勘定科目あり）。 */
+export function canFormalizeJournal(input: { amount: number; debitAccount: string; creditAccount: string }): boolean {
+  return input.amount > 0 && input.debitAccount.trim().length > 0 && input.creditAccount.trim().length > 0;
+}
+
+// 勘定科目名 → 種別（asset/liability/equity/revenue/expense）の簡易推定（Account 自動作成時の type 用）。
+// 注: 「売上原価」が「売上」(revenue)に誤マッチしないよう expense を revenue より先に判定する。
+const ACCOUNT_TYPE_HINTS: { re: RegExp; type: string }[] = [
+  { re: /売掛金|現金|預金|未収/, type: 'asset' },
+  { re: /買掛金|未払|借入/, type: 'liability' },
+  { re: /原価|仕入|費|経費|給与/, type: 'expense' },
+  { re: /売上|収入/, type: 'revenue' },
+];
+
+export function inferAccountType(name: string): string {
+  for (const h of ACCOUNT_TYPE_HINTS) if (h.re.test(name)) return h.type;
+  return 'asset';
+}

@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
+import { prisma } from '@/lib/db';
+import { executeApprovedAction } from '@/lib/approval';
 import {
   bridgeEventProjectToFinance,
   bridgePurchaseOrderToFinance,
@@ -10,6 +12,7 @@ import {
   requestJournalFinalize,
   requestInvoiceSend,
 } from '@/lib/domains/finance/finance-bridge';
+import { finalizeJournalCandidate, finalizeInvoiceCandidate } from '@/lib/domains/finance/formalize';
 
 // Server Action は薄く（認証→権限→取得→検証→lib呼び出し→redirect）。ロジックは finance-bridge.ts。
 
@@ -61,4 +64,62 @@ export async function requestInvoiceSendApprovalAction(formData: FormData) {
   await requestInvoiceSend({ tenantId: user.tenantId, userId: user.userId }, candidateId);
   revalidatePath('/finance/invoice-candidates');
   redirect('/finance/invoice-candidates?requested=1');
+}
+
+// ===== 候補→正式化（承認後実行・二重実行防止）— Phase 1-9 =====
+
+/** 承認済み仕訳候補を正式 JournalEntry へ変換。 */
+export async function executeApprovedJournalFinalizeAction(formData: FormData) {
+  const user = await requireUser();
+  if (!hasPermission(user, 'finance', 'create')) redirect('/finance/journal-candidates?denied=1');
+  const approvalId = String(formData.get('approvalId') ?? '');
+  const req = await prisma.approvalRequest.findFirst({ where: { id: approvalId, tenantId: user.tenantId, requestedForAction: 'journal_finalize' } });
+  if (!req) redirect('/finance/journal-candidates?error=notfound');
+  const candidateId = String((req!.payloadAfter as { candidateId?: string } | null)?.candidateId ?? req!.entityId);
+
+  let reason: string | undefined;
+  try {
+    const r = await executeApprovedAction(
+      approvalId,
+      async () => {
+        const res = await finalizeJournalCandidate({ tenantId: user.tenantId, userId: user.userId }, candidateId);
+        if (!res.ok) throw new Error(res.reason ?? 'formalize-failed');
+        return res;
+      },
+      { executedById: user.userId },
+    );
+    if (!r.executed) reason = r.reason;
+  } catch (e) {
+    reason = e instanceof Error ? e.message : 'error';
+  }
+  if (reason) redirect(`/finance/journal-candidates?error=${encodeURIComponent(reason)}`);
+  redirect('/finance/journal-candidates?posted=1');
+}
+
+/** 承認済み請求候補を正式 Invoice/Receivable へ変換（外部送信なし）。 */
+export async function executeApprovedInvoiceSendAction(formData: FormData) {
+  const user = await requireUser();
+  if (!hasPermission(user, 'finance', 'create')) redirect('/finance/invoice-candidates?denied=1');
+  const approvalId = String(formData.get('approvalId') ?? '');
+  const req = await prisma.approvalRequest.findFirst({ where: { id: approvalId, tenantId: user.tenantId, requestedForAction: 'invoice_send' } });
+  if (!req) redirect('/finance/invoice-candidates?error=notfound');
+  const candidateId = String((req!.payloadAfter as { candidateId?: string } | null)?.candidateId ?? req!.entityId);
+
+  let reason: string | undefined;
+  try {
+    const r = await executeApprovedAction(
+      approvalId,
+      async () => {
+        const res = await finalizeInvoiceCandidate({ tenantId: user.tenantId, userId: user.userId }, candidateId);
+        if (!res.ok) throw new Error(res.reason ?? 'formalize-failed');
+        return res;
+      },
+      { executedById: user.userId },
+    );
+    if (!r.executed) reason = r.reason;
+  } catch (e) {
+    reason = e instanceof Error ? e.message : 'error';
+  }
+  if (reason) redirect(`/finance/invoice-candidates?error=${encodeURIComponent(reason)}`);
+  redirect('/finance/invoice-candidates?formalized=1');
 }

@@ -64,6 +64,10 @@ export const DOMAIN_EVENT_TYPES = [
   'PURCHASE_ORDER_FINANCE_BRIDGED',
   'EVENT_PROJECT_FINANCE_BRIDGED',
   'DAMAGE_CHARGE_FINANCE_BRIDGED',
+  // 候補→正式化（Candidate Formalization）— Phase 1-9
+  'JOURNAL_ENTRY_POSTED',
+  'INVOICE_FORMALIZED',
+  'RECEIVABLE_CREATED',
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];

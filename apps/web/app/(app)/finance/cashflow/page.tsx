@@ -2,8 +2,9 @@ import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
-import { Card, CardContent, Table, Th, Td, Badge, Stat, EmptyState } from '@/components/ui';
-import { formatJpy, formatDate } from '@hokko/shared';
+import { Card, CardContent, CardHeader, CardTitle, Table, Th, Td, Badge, Stat, EmptyState } from '@/components/ui';
+import { formatJpy, formatDate, formatDateTime } from '@hokko/shared';
+import { getCashflowBridgeData } from '@/lib/domains/finance/cashflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +22,8 @@ export default async function CashflowPage() {
   const minBalance = lines.length ? Math.min(...lines.map((l) => toNumber(l.balance))) : 0;
   const shortage = lines.find((l) => toNumber(l.balance) < 0);
   const maxBalance = lines.length ? Math.max(...lines.map((l) => toNumber(l.balance)), 1) : 1;
+  // Operations 由来の入金/支払予定（FinanceEvent cashflow_expected）を非破壊で接続。
+  const bridge = await getCashflowBridgeData(user.tenantId);
 
   return (
     <div>
@@ -61,6 +64,37 @@ export default async function CashflowPage() {
                     </tr>
                   );
                 })}
+              </tbody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Operations 由来の入金/支払予定（Finance Bridge）。既存予測は非破壊で並存。 */}
+      <Card className="mt-4">
+        <CardHeader><CardTitle>現場由来の入金・支払予定（Finance Bridge）</CardTitle></CardHeader>
+        <CardContent>
+          <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-3">
+            <Stat label="今月の入金予定" value={formatJpy(bridge.monthInflow)} tone="emerald" />
+            <Stat label="今月の支払予定" value={formatJpy(bridge.monthOutflow)} tone="amber" />
+            <Stat label="差引予定（全期間）" value={formatJpy(bridge.netExpected)} tone={bridge.netExpected >= 0 ? 'emerald' : 'red'} />
+          </div>
+          {bridge.events.length === 0 ? (
+            <EmptyState title="Finance Bridge 由来の予定はありません" hint="/finance/bridge から案件・発注・破損請求を接続します。" />
+          ) : (
+            <Table>
+              <thead><tr><Th>予定日</Th><Th>区分</Th><Th>金額</Th><Th>由来</Th><Th>状態</Th><Th>摘要</Th></tr></thead>
+              <tbody>
+                {bridge.events.map((e) => (
+                  <tr key={e.id}>
+                    <Td className="whitespace-nowrap text-xs">{e.dueAt ? formatDate(e.dueAt) : formatDateTime(e.createdAt)}</Td>
+                    <Td className="text-xs"><Badge tone={e.direction === 'inflow' ? 'green' : 'amber'}>{e.direction === 'inflow' ? '入金' : '支払'}</Badge></Td>
+                    <Td className="text-xs">{formatJpy(toNumber(e.amount))}</Td>
+                    <Td className="text-xs text-muted-foreground">{e.sourceType}</Td>
+                    <Td className="text-xs">{e.status}</Td>
+                    <Td className="text-xs text-muted-foreground">{e.description}</Td>
+                  </tr>
+                ))}
               </tbody>
             </Table>
           )}

@@ -86,6 +86,10 @@ export const GROWTH_EVENT_TYPES = [
   'finance.purchase_order.bridged',
   'finance.event_project.bridged',
   'finance.damage_charge.bridged',
+  // 候補→正式化（Candidate Formalization）— Phase 1-9
+  'finance.journal_entry.posted',
+  'finance.invoice.formalized',
+  'finance.receivable.created',
 ] as const;
 
 export type GrowthEventType = (typeof GROWTH_EVENT_TYPES)[number];

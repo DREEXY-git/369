@@ -71,3 +71,10 @@
 - 追加 integration（`p1_8_finance_bridge.itest.ts`）: EventProject→FinanceEvent/JournalCandidate/InvoiceCandidate、PurchaseOrder→FinanceEvent/JournalCandidate、Damage→InvoiceCandidate、Cashflow集計、承認後実行（stocktake_adjust＋二重実行防止/purchase_order_issue）、journal_finalize/invoice_send承認必須、tenant分離 = **+8** → 合計 **52 passed**。
 - 追加 e2e（`finance_bridge.spec.ts`）: /finance/bridge 表示、イベント→ブリッジ作成、仕訳/請求候補一覧、スタッフは機密不可視、operations-actions 統合。CI/実環境で実行。
 - カバー: Operations→Finance の金額フロー、候補（正式と分離）、資金繰り見込み、承認必須、機密の権限分離。
+
+## Phase 1-9 更新（2026-06-24）— 候補→正式化
+
+- 追加 unit（`finance_formalize.test.ts`）: journalEntryLinesFor/isBalancedJournal/canFormalizeJournal、inferAccountType（売上原価=expense の優先順位）、invoice totals、新 growth/domain 種別 = **+6** → 合計 **151 passed**。
+- 追加 integration（`p1_9_finance_formalize.itest.ts`）: JournalCandidate→JournalEntry(複式balance)＋posted/journalEntryId、**二重実行防止（claim＋status guard）**、InvoiceCandidate→Invoice(ISSUED)/LineItem/Receivable＋sent/invoiceId、cashflow集計、journal_finalize/invoice_send承認必須、tenant分離 = **+6** → 合計 **58 passed**。
+- 追加 e2e（`finance_formalize.spec.ts`）: /finance/cashflow の Bridge予定セクション、候補一覧の正式化導線、スタッフ機密不可視。CI/実環境で実行。
+- カバー: 候補→正式の複式整合・冪等・権限分離・資金繰り接続。

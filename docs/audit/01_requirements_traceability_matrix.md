@@ -109,3 +109,11 @@
 - **#7 請求・入金**: EventProject/DamageLossRecord → 請求候補。invoice_send は承認対象（申請まで）。
 - **#30 承認**: stocktake_adjust/purchase_order_issue の承認後実行を補完（冪等）。
 - 機密（仕訳候補/原価/粗利/請求候補/税額）は finance 権限ゲート。検証: unit 145 / integration 52、6コマンド green。
+
+## Phase 1-9 更新（2026-06-24）— 候補→正式化 ＋ CashFlow接続
+
+- **#4 会計**: 部分（候補）→ **部分（正式化導線）**。承認済み JournalCandidate→正式 JournalEntry/JournalEntryLine（Account自動解決・複式balance）。冪等・承認後実行。
+- **#7 請求・入金**: 承認済み InvoiceCandidate→正式 Invoice(ISSUED)/InvoiceLineItem/Receivable。外部送信は次Phase。
+- **#5 資金繰り**: /finance/cashflow に FinanceEvent(cashflow_expected) を非破壊接続（入金/支払予定）。
+- **保守性**: lib/domains/operations/procurement.ts・stocktake.ts へ切り出し（action薄化）。**新規DBモデルなし**。
+- 検証: unit 151 / integration 58、6コマンド green。機密は finance 権限ゲート。

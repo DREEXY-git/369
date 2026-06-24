@@ -73,3 +73,8 @@
 
 - Finance Bridge は決定論ロジック中心（勘定科目マッピングはルールベース）。AI/OCR 由来の仕訳候補は `aiOutputId` を JournalCandidate に保持できる設計（OCRProvider Fake を将来実経路へ）。
 - 余地: 発注書/領収書 OCR→仕訳候補、原価説明→勘定科目候補（safeAiInput→saveAIOutputStandard 前提）。外部送信は持たない。
+
+## Phase 1-9 更新（2026-06-24）
+
+- 候補→正式化は決定論（勘定科目自動解決はルールベース inferAccountType）。AI/OCR は不使用。
+- JournalCandidate.aiOutputId は AI/OCR 由来の仕訳候補に紐付け可能なまま維持（OCR→仕訳候補は次Phaseで safeAiInput/saveAIOutputStandard 経由）。外部送信は持たない。

@@ -131,3 +131,11 @@ DamageLossRecord(破損)   ─┘              └─→ InvoiceCandidate(請求
 | 1-8 | `FinanceEvent` | ブリッジ台帳 | GrowthEvent=分析・DomainEvent=連携で、direction/dueAt/status/posted を持つ「お金の動きの台帳」が無い |
 | 1-8 | `JournalCandidate` | 仕訳候補 | JournalEntry は正式（確定）。承認前の status/confidence/aiOutputId を持つ候補は分離が安全 |
 | 1-8 | `InvoiceCandidate` | 請求候補 | Invoice は正式（number/receivable/payments）。Operations由来の下書きを混ぜず分離 |
+
+## Phase 1-9 追記（2026-06-24）— 候補→正式化＋保守リファクタ第一歩
+
+- **新規DBモデルなし**（Phase 1-9 原則を遵守）。正式化は既存 JournalEntry/JournalEntryLine/Account / Invoice/InvoiceLineItem/Receivable を活用。
+- **正式/候補の境界を1ファイルに集約**: `lib/domains/finance/formalize.ts` のみが候補→正式変換を行う。candidate.status（posted/sent）で冪等（再変換不可）。
+- **保守リファクタ第一歩**: `lib/domains/operations/procurement.ts`（confirmPurchaseOrder/receivePurchaseOrder）と `lib/domains/operations/stocktake.ts`（reconcileStocktakeLine）を新設し、対応 action を「6行構成」へ薄くした（behavior 不変）。
+- **今後の分割パターン**: operations/actions.ts(713行) も同様に `lib/domains/operations/{inventory,events,logistics}.ts` へ段階移設する（次Phase以降）。
+- 非破壊接続: `/finance/cashflow` に FinanceEvent(cashflow_expected) セクションを**既存予測を壊さず**追加（`lib/domains/finance/cashflow.ts`）。

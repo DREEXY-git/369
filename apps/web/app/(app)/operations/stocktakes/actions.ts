@@ -1,12 +1,11 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { stocktakeDifference, isLargeStocktakeDifference, type DomainEventType } from '@hokko/shared';
+import { stocktakeDifference, type DomainEventType } from '@hokko/shared';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
 import { emitGrowthEvent } from '@/lib/growth';
-import { requireApprovalForDangerousAction } from '@/lib/approval';
-import { applyInventoryMovement } from '@/lib/operations';
+import { reconcileStocktakeLine } from '@/lib/domains/operations/stocktake';
 
 /** 棚卸を作成。対象ロケーション（または全在庫）の各商品にライン（帳簿数）を自動生成。 */
 export async function createStocktakeAction(formData: FormData) {
@@ -62,41 +61,14 @@ export async function recordStocktakeCountAction(formData: FormData) {
   redirect(`/operations/stocktakes/${line!.stocktakeId}`);
 }
 
-/** 差異を在庫へ反映。大幅差異は承認申請（直接反映しない）。小差異は即 adjust。 */
+/** 差異を在庫へ反映。業務ロジックは lib/domains/operations/stocktake.ts。 */
 export async function reconcileStocktakeLineAction(formData: FormData) {
   const user = await requireUser();
   if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/stocktakes?denied=1');
   const lineId = String(formData.get('lineId') ?? '');
-  const line = await prisma.stocktakeLine.findFirst({ where: { id: lineId, tenantId: user.tenantId }, include: { asset: true } });
-  if (!line || line!.countedQuantity == null || line!.reconciled) redirect('/operations/stocktakes');
-  const counted = line!.countedQuantity!;
-  const diff = line!.difference;
-
-  if (isLargeStocktakeDifference(diff)) {
-    await requireApprovalForDangerousAction({
-      tenantId: user.tenantId,
-      action: 'stocktake_adjust',
-      title: `大幅棚卸差異の反映: ${line!.asset.name}（差異 ${diff >= 0 ? '+' : ''}${diff}）`,
-      targetType: 'StocktakeLine',
-      targetId: lineId,
-      requestedById: user.userId,
-      riskLevel: 'HIGH',
-      amount: diff,
-      payloadAfter: { assetId: line!.assetId, newQuantity: counted, lineId },
-    });
-    redirect(`/operations/stocktakes/${line!.stocktakeId}?pending=adjust`);
-  }
-
-  await applyInventoryMovement({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    assetId: line!.assetId,
-    type: 'adjust',
-    setQuantity: counted,
-    note: `棚卸差異反映（${diff >= 0 ? '+' : ''}${diff}）`,
-  });
-  await prisma.stocktakeLine.update({ where: { id: lineId }, data: { reconciled: true } });
-  redirect(`/operations/stocktakes/${line!.stocktakeId}?reconciled=1`);
+  const res = await reconcileStocktakeLine({ tenantId: user.tenantId, userId: user.userId }, lineId);
+  if (res.status === 'skip') redirect('/operations/stocktakes');
+  redirect(`/operations/stocktakes/${res.stocktakeId}?${res.status === 'pending_approval' ? 'pending=adjust' : 'reconciled=1'}`);
 }
 
 /** 棚卸を完了（reconciled）。 */

@@ -99,3 +99,11 @@
 - **危険操作の承認**: journal_finalize（仕訳確定）/ invoice_send（請求送信）は `requireApprovalForDangerousAction`（申請まで、正式化は承認後）。承認後実行は executeApprovedAction（冪等）。
 - 全 Finance Bridge は tenantId＋RBAC＋writeAudit＋GrowthEvent/DomainEvent。
 残: 候補→正式化の承認後実行、レート制限、CSP、MFA、改ざん検知。
+
+## Phase 1-9 更新（2026-06-24）— 候補→正式化
+
+- **正式/候補の境界を formalize.ts に集約**: 候補→正式変換はここだけ。candidate.status（posted/sent）＋executeApprovedAction の executedAt クレームで**二重作成を防止**（正式仕訳/請求書の重複作成を防ぐ）。
+- **承認後のみ正式化**: journal_finalize/invoice_send 承認後に executeApprovedAction 経由でのみ JournalEntry/Invoice/Receivable を作成。金額≤0・勘定空は拒否。
+- **外部送信しない**: 正式 Invoice は status=ISSUED（内部）。外部送信は次Phase（prepareExternalPayload＋送信ゲート）。
+- 機密（仕訳候補/正式仕訳/勘定科目/税額/請求/売掛金/入金・支払予定）は finance 権限ゲート＋writeConfidentialViewLog。
+残: 請求の外部送信ゲート、入金消込、レート制限、CSP、MFA、改ざん検知。

@@ -1,6 +1,7 @@
-// FinanceEvent(cashflow_expected) を /finance/cashflow へ接続する集計（既存表示は非破壊）。Phase 1-9。
+// FinanceEvent(cashflow_expected) を /finance/cashflow へ接続する集計（既存表示は非破壊）。Phase 1-9〜1-10。
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
+import { summarizeCashflowActualVsExpected, type CashflowActualExpected } from '@hokko/shared';
 
 const EXPECTED = ['draft', 'pending_approval', 'approved'];
 
@@ -50,4 +51,28 @@ export async function getCashflowBridgeData(tenantId: string): Promise<CashflowB
     monthInflow,
     monthOutflow,
   };
+}
+
+export interface CashflowUnifiedData {
+  summary: CashflowActualExpected;
+  recentActuals: Awaited<ReturnType<typeof prisma.financeEvent.findMany>>;
+  recentInflowActual: number;
+  recentOutflowActual: number;
+}
+
+/** 予定（draft/pending/approved）と実績（posted）を入金/支払別に統合集計（直近30日実績付き）。Phase 1-10。 */
+export async function getCashflowUnifiedData(tenantId: string): Promise<CashflowUnifiedData> {
+  const events = await prisma.financeEvent.findMany({
+    where: { tenantId, type: { in: ['cashflow_expected', 'payment_expected', 'payment_received'] } },
+    orderBy: { occurredAt: 'desc' },
+    take: 300,
+  });
+  const summary = summarizeCashflowActualVsExpected(
+    events.map((e) => ({ type: e.type, direction: e.direction, amount: toNumber(e.amount), status: e.status })),
+  );
+  const since = new Date(Date.now() - 30 * 86_400_000);
+  const recentActuals = events.filter((e) => e.status === 'posted' && e.occurredAt >= since);
+  const recentInflowActual = recentActuals.filter((e) => e.direction === 'inflow').reduce((s, e) => s + toNumber(e.amount), 0);
+  const recentOutflowActual = recentActuals.filter((e) => e.direction === 'outflow').reduce((s, e) => s + toNumber(e.amount), 0);
+  return { summary, recentActuals: recentActuals.slice(0, 20), recentInflowActual, recentOutflowActual };
 }

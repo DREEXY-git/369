@@ -333,3 +333,84 @@ export function inferAccountType(name: string): string {
   for (const h of ACCOUNT_TYPE_HINTS) if (h.re.test(name)) return h.type;
   return 'asset';
 }
+
+// ============ 請求送信・入金消込（Invoice Send / Payment Reconciliation）純ロジック — Phase 1-10 ============
+
+/** 未回収額（税込合計 − 入金済）。負にはしない。 */
+export function invoiceOutstanding(total: number, paidAmount: number): number {
+  return Math.max(0, total - paidAmount);
+}
+
+/** 入金後の Invoice ステータス（total 以上 → PAID、未満かつ入金あり → PARTIALLY_PAID）。 */
+export function invoiceStatusAfterPayment(total: number, paidAmount: number): 'PAID' | 'PARTIALLY_PAID' {
+  return paidAmount >= total ? 'PAID' : 'PARTIALLY_PAID';
+}
+
+/** 入金後の Receivable ステータス（全額入金 → collected、それ以外 → open）。 */
+export function receivableStatusAfterPayment(total: number, paidAmount: number): 'collected' | 'open' {
+  return paidAmount >= total ? 'collected' : 'open';
+}
+
+// 送信可能な Invoice ステータス（正式化済みだが未送信）。
+const SENDABLE_INVOICE_STATUSES = new Set(['DRAFT', 'ISSUED']);
+
+/** 外部送信してよい Invoice か（DRAFT/ISSUED のみ。SENT以降は二重送信不可）。 */
+export function canSendInvoice(status: string): boolean {
+  return SENDABLE_INVOICE_STATUSES.has(status);
+}
+
+/** 既に送信済み（以降）の Invoice か（二重送信防止）。 */
+export function isInvoiceSent(status: string): boolean {
+  return !SENDABLE_INVOICE_STATUSES.has(status) && status !== 'VOID';
+}
+
+export interface CashflowActualExpected {
+  inflowExpected: number;
+  outflowExpected: number;
+  inflowActual: number;
+  outflowActual: number;
+  netExpected: number;
+  netActual: number;
+  byStatus: Record<string, number>;
+  paymentShortfallWarning: boolean; // 支払予定が入金予定を上回る
+}
+
+// 予定として数える状態（確定前の見込み）／実績として数える状態（posted）。
+const CF_EXPECTED_STATUSES = new Set(['draft', 'pending_approval', 'approved']);
+// 資金繰りの対象とする FinanceEvent 種別（予定/実績の金額イベント）。
+const CF_FLOW_TYPES = new Set(['cashflow_expected', 'payment_expected', 'payment_received']);
+
+/** FinanceEvent を「予定 vs 実績」で入金/支払別に集計（資金繰り統合用）。 */
+export function summarizeCashflowActualVsExpected(
+  events: { type: string; direction: string; amount: number; status: string }[],
+): CashflowActualExpected {
+  const byStatus: Record<string, number> = {};
+  let inflowExpected = 0;
+  let outflowExpected = 0;
+  let inflowActual = 0;
+  let outflowActual = 0;
+  for (const e of events) {
+    byStatus[e.status] = (byStatus[e.status] ?? 0) + 1;
+    if (!CF_FLOW_TYPES.has(e.type)) continue;
+    const amt = Math.max(0, e.amount);
+    const isActual = e.status === 'posted';
+    const isExpected = CF_EXPECTED_STATUSES.has(e.status);
+    if (e.direction === 'inflow') {
+      if (isActual) inflowActual += amt;
+      else if (isExpected) inflowExpected += amt;
+    } else if (e.direction === 'outflow') {
+      if (isActual) outflowActual += amt;
+      else if (isExpected) outflowExpected += amt;
+    }
+  }
+  return {
+    inflowExpected,
+    outflowExpected,
+    inflowActual,
+    outflowActual,
+    netExpected: inflowExpected - outflowExpected,
+    netActual: inflowActual - outflowActual,
+    byStatus,
+    paymentShortfallWarning: outflowExpected > inflowExpected,
+  };
+}

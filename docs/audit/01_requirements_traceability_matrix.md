@@ -117,3 +117,11 @@
 - **#5 資金繰り**: /finance/cashflow に FinanceEvent(cashflow_expected) を非破壊接続（入金/支払予定）。
 - **保守性**: lib/domains/operations/procurement.ts・stocktake.ts へ切り出し（action薄化）。**新規DBモデルなし**。
 - 検証: unit 151 / integration 58、6コマンド green。機密は finance 権限ゲート。
+
+## Phase 1-10 更新（2026-06-24）— 請求送信＋入金消込＋資金繰り統合
+
+- **#7 請求・入金・債権**: 部分 → **強化**。正式 Invoice の送信ゲート（承認後SENT・prepareExternalPayload・AI送信禁止）、入金消込（Payment→Invoice/Receivable/FinanceEvent連動）、売掛回収。
+- **#5 資金繰り**: /finance/cashflow に 予定 vs 実績（FinanceEvent posted=実績）を非破壊統合＋支払超過警告。
+- **#30 承認**: invoice_send を requireApprovalForDangerousAction→executeApprovedAction（冪等・二重送信防止）。
+- **保守性**: lib/domains/operations/events.ts へ移設（actions 713→626行）。**新規DBモデルなし**。
+- 検証: unit 160 / integration 64、6コマンド green。機密は finance/invoice 権限ゲート。

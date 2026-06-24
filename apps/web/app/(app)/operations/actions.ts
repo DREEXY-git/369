@@ -16,9 +16,15 @@ import { emitGrowthEvent } from '@/lib/growth';
 import { requireApprovalForDangerousAction } from '@/lib/approval';
 import { safeAiInput, saveAIOutputStandard } from '@/lib/ai-safety-server';
 import {
-  applyInventoryMovement,
-  recordEventProfitabilitySnapshot,
-} from '@/lib/operations';
+  recordEventCost,
+  recordEventRevenue,
+  calculateEventProfitability,
+  completeEventProject,
+  assignEventStaff,
+  createEventRisk,
+  updateEventRiskStatus,
+} from '@/lib/domains/operations/events';
+import { applyInventoryMovement } from '@/lib/operations';
 
 // ============================ 在庫移動 ============================
 
@@ -476,17 +482,7 @@ export async function recordEventCostAction(formData: FormData) {
   const eventId = String(formData.get('eventId') ?? '');
   const category = String(formData.get('category') ?? '').trim() || 'その他';
   const amount = Math.max(0, Number(formData.get('amount') ?? 0) || 0);
-  const event = await prisma.eventProject.findFirst({ where: { id: eventId, tenantId: user.tenantId } });
-  if (!event) redirect('/operations/events');
-  await prisma.eventCost.create({ data: { tenantId: user.tenantId, eventId, category, amount } });
-  await writeAudit({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    action: 'create',
-    entityType: 'EventCost',
-    entityId: eventId,
-    summary: `イベント原価を記録: ${event!.name} / ${category} ${amount}円`,
-  });
+  await recordEventCost({ tenantId: user.tenantId, userId: user.userId }, eventId, category, amount);
   revalidatePath(`/operations/events/${eventId}`);
   redirect(`/operations/events/${eventId}?cost=1`);
 }
@@ -496,17 +492,7 @@ export async function recordEventRevenueAction(formData: FormData) {
   if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
   const eventId = String(formData.get('eventId') ?? '');
   const revenue = Math.max(0, Number(formData.get('revenue') ?? 0) || 0);
-  const event = await prisma.eventProject.findFirst({ where: { id: eventId, tenantId: user.tenantId } });
-  if (!event) redirect('/operations/events');
-  await prisma.eventProject.update({ where: { id: eventId }, data: { revenue } });
-  await writeAudit({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    action: 'update',
-    entityType: 'EventProject',
-    entityId: eventId,
-    summary: `イベント売上を記録: ${event!.name} ${revenue}円`,
-  });
+  await recordEventRevenue({ tenantId: user.tenantId, userId: user.userId }, eventId, revenue);
   revalidatePath(`/operations/events/${eventId}`);
   redirect(`/operations/events/${eventId}?revenue=1`);
 }
@@ -515,9 +501,7 @@ export async function calculateEventProfitabilityAction(formData: FormData) {
   const user = await requireUser();
   if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
   const eventId = String(formData.get('eventId') ?? '');
-  const event = await prisma.eventProject.findFirst({ where: { id: eventId, tenantId: user.tenantId } });
-  if (!event) redirect('/operations/events');
-  await recordEventProfitabilitySnapshot({ tenantId: user.tenantId, eventId, actorId: user.userId });
+  await calculateEventProfitability({ tenantId: user.tenantId, userId: user.userId }, eventId);
   revalidatePath(`/operations/events/${eventId}`);
   redirect(`/operations/events/${eventId}?profit=1`);
 }
@@ -526,22 +510,7 @@ export async function completeEventProjectAction(formData: FormData) {
   const user = await requireUser();
   if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
   const eventId = String(formData.get('eventId') ?? '');
-  const event = await prisma.eventProject.findFirst({ where: { id: eventId, tenantId: user.tenantId } });
-  if (!event) redirect('/operations/events');
-  await prisma.eventProject.update({ where: { id: eventId }, data: { status: 'completed', loadOutAt: new Date() } });
-  await emitGrowthEvent({
-    tenantId: user.tenantId,
-    type: 'event.completed',
-    title: `イベント完了: ${event!.name}`,
-    actorId: user.userId,
-    entityType: 'EventProject',
-    entityId: eventId,
-    alsoDomainEvent: {
-      domainType: 'EVENT_PROJECT_COMPLETED' as DomainEventType,
-      aggregateType: 'EventProject',
-      aggregateId: eventId,
-    },
-  });
+  await completeEventProject({ tenantId: user.tenantId, userId: user.userId }, eventId);
   revalidatePath(`/operations/events/${eventId}`);
   redirect(`/operations/events/${eventId}?completed=1`);
 }
@@ -620,34 +589,7 @@ export async function assignEventStaffAction(formData: FormData) {
   const name = String(formData.get('name') ?? '').trim() || '担当者';
   const role = String(formData.get('role') ?? 'staff');
   const cost = Math.max(0, Number(formData.get('cost') ?? 0) || 0);
-  const event = await prisma.eventProject.findFirst({ where: { id: eventId, tenantId: user.tenantId } });
-  if (!event) redirect('/operations/events');
-
-  const assignment = await prisma.eventStaffAssignment.create({
-    data: { tenantId: user.tenantId, eventId, name, role, cost, costRecorded: cost > 0 },
-  });
-  // 人件費を原価へ反映（粗利に直結）。
-  if (cost > 0) {
-    await prisma.eventCost.create({ data: { tenantId: user.tenantId, eventId, category: `人件費(${role})`, amount: cost } });
-  }
-  await writeAudit({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    action: 'create',
-    entityType: 'EventStaffAssignment',
-    entityId: assignment.id,
-    summary: `人員配置: ${name}（${role}・${cost}円）→ ${event!.name}`,
-  });
-  await emitGrowthEvent({
-    tenantId: user.tenantId,
-    type: 'event.staff.assigned',
-    title: `人員配置: ${name} → ${event!.name}`,
-    actorId: user.userId,
-    entityType: 'EventProject',
-    entityId: eventId,
-    metric: { cost, role },
-    alsoDomainEvent: { domainType: 'EVENT_STAFF_ASSIGNED' as DomainEventType, aggregateType: 'EventProject', aggregateId: eventId },
-  });
+  await assignEventStaff({ tenantId: user.tenantId, userId: user.userId }, eventId, name, role, cost);
   revalidatePath(`/operations/events/${eventId}`);
   redirect(`/operations/events/${eventId}?staff=1`);
 }
@@ -658,33 +600,16 @@ export async function createEventRiskAction(formData: FormData) {
   const user = await requireUser();
   if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
   const eventId = String(formData.get('eventId') ?? '');
-  const type = String(formData.get('type') ?? 'other');
-  const severity = String(formData.get('severity') ?? 'medium');
-  const description = String(formData.get('description') ?? '').trim();
-  const mitigation = String(formData.get('mitigation') ?? '').trim();
-  const event = await prisma.eventProject.findFirst({ where: { id: eventId, tenantId: user.tenantId } });
-  if (!event) redirect('/operations/events');
-
-  const risk = await prisma.eventRisk.create({
-    data: { tenantId: user.tenantId, eventId, type, severity, description, mitigation, status: 'open' },
-  });
-  await writeAudit({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    action: 'create',
-    entityType: 'EventRisk',
-    entityId: risk.id,
-    summary: `リスク登録: ${type}/${severity} — ${description.slice(0, 40)}`,
-  });
-  await emitGrowthEvent({
-    tenantId: user.tenantId,
-    type: 'event.risk.created',
-    title: `リスク登録(${severity}): ${event!.name}`,
-    actorId: user.userId,
-    entityType: 'EventRisk',
-    entityId: risk.id,
-    alsoDomainEvent: { domainType: 'EVENT_RISK_CREATED' as DomainEventType, aggregateType: 'EventProject', aggregateId: eventId },
-  });
+  await createEventRisk(
+    { tenantId: user.tenantId, userId: user.userId },
+    {
+      eventId,
+      type: String(formData.get('type') ?? 'other'),
+      severity: String(formData.get('severity') ?? 'medium'),
+      description: String(formData.get('description') ?? '').trim(),
+      mitigation: String(formData.get('mitigation') ?? '').trim(),
+    },
+  );
   revalidatePath(`/operations/events/${eventId}`);
   redirect(`/operations/events/${eventId}?risk=1`);
 }
@@ -694,20 +619,8 @@ export async function updateEventRiskStatusAction(formData: FormData) {
   if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
   const riskId = String(formData.get('riskId') ?? '');
   const status = String(formData.get('status') ?? 'open');
-  const risk = await prisma.eventRisk.findFirst({ where: { id: riskId, tenantId: user.tenantId } });
-  if (!risk) redirect('/operations/events');
-  await prisma.eventRisk.update({ where: { id: riskId }, data: { status } });
-  if (status === 'resolved') {
-    await emitGrowthEvent({
-      tenantId: user.tenantId,
-      type: 'event.risk.resolved',
-      title: `リスク解消: ${risk!.type}`,
-      actorId: user.userId,
-      entityType: 'EventRisk',
-      entityId: riskId,
-      alsoDomainEvent: { domainType: 'EVENT_RISK_RESOLVED' as DomainEventType, aggregateType: 'EventProject', aggregateId: risk!.eventId },
-    });
-  }
-  revalidatePath(`/operations/events/${risk!.eventId}`);
-  redirect(`/operations/events/${risk!.eventId}?risk=updated`);
+  const eventId = await updateEventRiskStatus({ tenantId: user.tenantId, userId: user.userId }, riskId, status);
+  if (!eventId) redirect('/operations/events');
+  revalidatePath(`/operations/events/${eventId}`);
+  redirect(`/operations/events/${eventId}?risk=updated`);
 }

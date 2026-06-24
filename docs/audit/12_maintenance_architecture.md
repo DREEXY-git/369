@@ -139,3 +139,12 @@ DamageLossRecord(破損)   ─┘              └─→ InvoiceCandidate(請求
 - **保守リファクタ第一歩**: `lib/domains/operations/procurement.ts`（confirmPurchaseOrder/receivePurchaseOrder）と `lib/domains/operations/stocktake.ts`（reconcileStocktakeLine）を新設し、対応 action を「6行構成」へ薄くした（behavior 不変）。
 - **今後の分割パターン**: operations/actions.ts(713行) も同様に `lib/domains/operations/{inventory,events,logistics}.ts` へ段階移設する（次Phase以降）。
 - 非破壊接続: `/finance/cashflow` に FinanceEvent(cashflow_expected) セクションを**既存予測を壊さず**追加（`lib/domains/finance/cashflow.ts`）。
+
+## Phase 1-10 追記（2026-06-24）— 請求送信ゲート＋入金消込＋保守リファクタ継続
+
+- **新規DBモデルなし**。送信=Invoice.status(SENT)＋AuditLog、入金=Payment＋Receivable、予定/実績=FinanceEvent(payment_expected/payment_received) で表現。
+- **正式化と送信を分離**: `issueInvoiceAction`(DRAFT→ISSUED＋Receivable) と送信(`requestInvoiceExternalSend`→承認→`executeInvoiceExternalSend`)を別 action・別 lib に分離。
+- **予定 vs 実績の区別**: FinanceEvent.status='posted' を「実績」、draft/pending_approval/approved を「予定」として集計（`summarizeCashflowActualVsExpected`）。
+- **外部送信ゲート**: `lib/domains/finance/invoice-send.ts`。送信前に `prepareExternalPayload`（PIIマスク）、`assertAiToolAllowed`（AI送信禁止）、承認後 `executeApprovedAction`（冪等）。
+- **保守リファクタ継続**: `lib/domains/operations/events.ts` を新設し、イベント原価/売上/粗利/完了/人員/リスクのロジックを移設。`operations/actions.ts` を 713→626 行に削減（全 event action が6行構成）。
+- 既存リファクタ（procurement/stocktake）と合わせ、operations の lib/domains 化が進行中（残: inventory/lease/logistics）。

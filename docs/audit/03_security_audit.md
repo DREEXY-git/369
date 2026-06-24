@@ -107,3 +107,11 @@
 - **外部送信しない**: 正式 Invoice は status=ISSUED（内部）。外部送信は次Phase（prepareExternalPayload＋送信ゲート）。
 - 機密（仕訳候補/正式仕訳/勘定科目/税額/請求/売掛金/入金・支払予定）は finance 権限ゲート＋writeConfidentialViewLog。
 残: 請求の外部送信ゲート、入金消込、レート制限、CSP、MFA、改ざん検知。
+
+## Phase 1-10 更新（2026-06-24）— 請求送信ゲート＋入金消込
+
+- **外部送信は承認後のみ**: Invoice送信は `invoice_send` 承認→`executeApprovedAction`（冪等）でのみ実行。送信前に `prepareExternalPayload`（PIIマスク・AISafetyLog）、`assertAiToolAllowed`（AI外部送信を構造的に禁止）。`EXTERNAL_SEND_ENABLED=false` の既定では実送信せず監査のみ。
+- **二重送信防止**: Invoice.status(SENT以降は canSendInvoice=false)＋executeApprovedAction の executedAt クレーム。
+- **正式化と送信の分離**: issue（ISSUED）と send（SENT）を別経路に。
+- 機密（請求金額/入金履歴/売掛金/未回収/入金・支払予定/資金繰り/顧客メール/送信本文）は finance/invoice 権限ゲート＋writeConfidentialViewLog。/invoices/[id] は既存 ABAC 維持。
+残: 支払実行ゲート、レート制限、CSP、MFA、改ざん検知。

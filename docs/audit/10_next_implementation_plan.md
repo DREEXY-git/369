@@ -110,3 +110,13 @@ Phase 1-5（次）:
 2. **保守リファクタ継続**: operations/actions.ts を lib/domains/operations/{inventory,events,logistics}.ts へ段階移設。
 3. **会計本体（Phase 2）**: 試算表/決算書UI（JournalEntry集計）、OCR→仕訳候補（OCRProvider 実経路＋safeAiInput）。
 4. **資金繰り統合**: cashflowForecast を FinanceEvent ベースへ寄せる。
+
+## Phase 1-10 完了 → 次の計画（2026-06-24）
+
+完了: 請求送信ゲート（承認後SENT・冪等・prepareExternalPayload・assertAiToolAllowed）、入金消込（Payment/Invoice/Receivable/FinanceEvent連動）、資金繰り 予定vs実績の統合（非破壊）。保守リファクタ（lib/domains/operations/events.ts、actions 713→626行）。新規DBモデルなし。unit 160 / integration 64、6コマンド green。
+
+次（Phase 1-11 / Phase 2 候補）:
+1. **支払実行ゲート**: 買掛(PurchaseOrder/payment_expected outflow)の支払を payment_execute 承認後に実行→FinanceEvent payment_received(outflow posted)で支払実績化。
+2. **保守リファクタ継続**: operations/actions.ts の inventory/lease/logistics を lib/domains/operations へ。
+3. **会計本体（Phase 2）**: 試算表/決算書UI（JournalEntry集計）、OCR→仕訳候補（OCRProvider実経路＋safeAiInput）。
+4. **資金繰り統合の完了**: cashflowForecast を FinanceEvent ベースへ寄せる。

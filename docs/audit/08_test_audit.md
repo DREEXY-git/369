@@ -78,3 +78,9 @@
 - 追加 integration（`p1_9_finance_formalize.itest.ts`）: JournalCandidate→JournalEntry(複式balance)＋posted/journalEntryId、**二重実行防止（claim＋status guard）**、InvoiceCandidate→Invoice(ISSUED)/LineItem/Receivable＋sent/invoiceId、cashflow集計、journal_finalize/invoice_send承認必須、tenant分離 = **+6** → 合計 **58 passed**。
 - 追加 e2e（`finance_formalize.spec.ts`）: /finance/cashflow の Bridge予定セクション、候補一覧の正式化導線、スタッフ機密不可視。CI/実環境で実行。
 - カバー: 候補→正式の複式整合・冪等・権限分離・資金繰り接続。
+
+## Phase 1-10 更新（2026-06-24）— 請求送信＋入金消込
+
+- 追加 unit（`finance_payment.test.ts`）: invoiceOutstanding/invoiceStatusAfterPayment/receivableStatusAfterPayment、canSendInvoice/isInvoiceSent（二重送信防止）、summarizeCashflowActualVsExpected（予定/実績・支払超過警告）、invoice_send承認必須、新event型 = **+9** → 合計 **160 passed**。
+- 追加 integration（`p1_10_invoice_payment.itest.ts`）: 送信承認→SENT＋**二重送信防止（atomic claim）**、一部→全額入金で Invoice(PARTIALLY_PAID/PAID)/Receivable(open/collected)/FinanceEvent(payment_received)連動、cashflow実績集計、invoice_send承認必須、tenant分離 = **+6** → 合計 **64 passed**。
+- 追加 e2e（`invoice_payment.spec.ts`）: 請求詳細の送信/入金カード、資金繰りの予定vs実績、スタッフ機密不可視。CI/実環境で実行。

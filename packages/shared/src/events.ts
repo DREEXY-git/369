@@ -68,6 +68,10 @@ export const DOMAIN_EVENT_TYPES = [
   'JOURNAL_ENTRY_POSTED',
   'INVOICE_FORMALIZED',
   'RECEIVABLE_CREATED',
+  // 請求送信・入金消込（Invoice Send / Payment Reconciliation）— Phase 1-10
+  'INVOICE_SENT',
+  'RECEIVABLE_COLLECTED',
+  'CASHFLOW_ACTUAL_RECORDED',
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];

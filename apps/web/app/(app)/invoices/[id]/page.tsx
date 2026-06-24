@@ -7,8 +7,13 @@ import { AccessDenied } from '@/components/access-denied';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Table, Th, Td, Badge, Button, Input, Stat, EmptyState } from '@/components/ui';
-import { issueInvoiceAction, recordPaymentAction } from '../actions';
-import { formatJpy, formatDate, isOverdue } from '@hokko/shared';
+import {
+  issueInvoiceAction,
+  recordPaymentAction,
+  requestInvoiceExternalSendApprovalAction,
+  executeApprovedInvoiceExternalSendAction,
+} from '../actions';
+import { formatJpy, formatDate, formatDateTime, isOverdue, canSendInvoice } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +54,18 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const canUpdate = hasPermission(user, 'invoice', 'update');
   const overdue = isOverdue(invoice.dueDate, invoice.status);
   const outstanding = toNumber(invoice.total) - toNumber(invoice.paidAmount);
+
+  // 送信承認の状態（承認済みかつ未実行なら送信実行可能）と関連 FinanceEvent。
+  const [sendApproval, financeEvents] = await Promise.all([
+    prisma.approvalRequest.findFirst({
+      where: { tenantId: user.tenantId, entityType: 'Invoice', entityId: invoice.id, requestedForAction: 'invoice_send' },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.financeEvent.findMany({ where: { tenantId: user.tenantId, sourceType: 'Invoice', sourceId: invoice.id }, orderBy: { createdAt: 'desc' }, take: 10 }),
+  ]);
+  const canSend = canSendInvoice(invoice.status);
+  const sendApproved = sendApproval?.status === 'APPROVED' && !sendApproval.executedAt;
+  const sendPending = sendApproval?.status === 'PENDING';
 
   return (
     <div>
@@ -110,6 +127,28 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             </Card>
           ) : null}
 
+          <Card>
+            <CardHeader><CardTitle>外部送信（承認必須）</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              {!canSend ? (
+                <Badge tone="green">送信済み（{invoice.status}）</Badge>
+              ) : sendApproved ? (
+                <form action={executeApprovedInvoiceExternalSendAction}>
+                  <input type="hidden" name="approvalId" value={sendApproval!.id} />
+                  <Button type="submit" className="w-full" disabled={!canUpdate}>承認済み — 請求書を送信</Button>
+                </form>
+              ) : sendPending ? (
+                <Badge tone="amber">送信承認待ち（/approvals）</Badge>
+              ) : (
+                <form action={requestInvoiceExternalSendApprovalAction}>
+                  <input type="hidden" name="id" value={invoice.id} />
+                  <Button type="submit" variant="outline" className="w-full" disabled={!canUpdate || invoice.status === 'DRAFT'}>送信を申請（承認後に送信）</Button>
+                </form>
+              )}
+              <p className="text-[11px] text-muted-foreground">送信は承認後のみ。送信前にPIIマスク。AIは直接送信しません。{invoice.status === 'DRAFT' ? '（先に発行してください）' : ''}</p>
+            </CardContent>
+          </Card>
+
           {invoice.status !== 'PAID' && invoice.status !== 'DRAFT' ? (
             <Card>
               <CardHeader><CardTitle>入金記録</CardTitle></CardHeader>
@@ -138,6 +177,20 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               <CardContent className="text-sm">
                 <Badge tone={invoice.receivable.status === 'collected' ? 'green' : overdue ? 'red' : 'amber'}>{invoice.receivable.status}</Badge>
                 <div className="mt-1 text-xs text-muted-foreground">期日: {formatDate(invoice.receivable.dueDate)}</div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {financeEvents.length > 0 ? (
+            <Card>
+              <CardHeader><CardTitle>関連 FinanceEvent</CardTitle></CardHeader>
+              <CardContent className="space-y-1 text-xs">
+                {financeEvents.map((e) => (
+                  <div key={e.id} className="flex items-center justify-between">
+                    <span><Badge tone={e.direction === 'inflow' ? 'green' : e.direction === 'outflow' ? 'amber' : 'slate'}>{e.type}</Badge> <span className="text-muted-foreground">{e.status}</span></span>
+                    <span className="text-muted-foreground">{formatJpy(toNumber(e.amount))} / {formatDateTime(e.createdAt)}</span>
+                  </div>
+                ))}
               </CardContent>
             </Card>
           ) : null}

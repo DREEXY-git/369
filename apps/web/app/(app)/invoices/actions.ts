@@ -4,6 +4,9 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
+import { executeApprovedAction } from '@/lib/approval';
+import { requestInvoiceExternalSend, executeInvoiceExternalSend } from '@/lib/domains/finance/invoice-send';
+import { recordInvoicePayment } from '@/lib/domains/finance/payments';
 
 interface LineInput {
   name: string;
@@ -63,12 +66,12 @@ export async function createInvoiceAction(formData: FormData) {
   redirect(`/invoices/${invoice.id}`);
 }
 
-/** 発行＝送付は危険操作。送付承認(ApprovalRequest)を作り、売掛(Receivable)を起票。 */
+/** 発行: DRAFT→ISSUED ＋ 売掛(Receivable)起票。送信は別アクション（正式化と送信を分離）。 */
 export async function issueInvoiceAction(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get('id') ?? '');
   if (!hasPermission(user, 'invoice', 'update')) redirect(`/invoices/${id}?denied=1`);
-  const inv = await prisma.invoice.findFirst({ where: { id, tenantId: user.tenantId }, include: { customer: true } });
+  const inv = await prisma.invoice.findFirst({ where: { id, tenantId: user.tenantId } });
   if (!inv || inv.status !== 'DRAFT') redirect(`/invoices/${id}`);
 
   await prisma.invoice.update({ where: { id }, data: { status: 'ISSUED', issueDate: new Date() } });
@@ -77,41 +80,57 @@ export async function issueInvoiceAction(formData: FormData) {
     create: { tenantId: user.tenantId, invoiceId: id, amount: inv.total, dueDate: inv.dueDate, status: 'open' },
     update: { amount: inv.total, dueDate: inv.dueDate },
   });
-  await prisma.approvalRequest.create({
-    data: {
-      tenantId: user.tenantId,
-      type: 'invoice_send',
-      title: `請求書送付承認: ${inv.number}`,
-      summary: `${inv.customer?.name ?? ''} 宛 ${Number(inv.total).toLocaleString()}円`,
-      entityType: 'Invoice',
-      entityId: id,
-      requestedById: user.userId,
-      assigneeRole: 'DEPARTMENT_MANAGER',
-      riskLevel: 'MEDIUM',
-      status: 'PENDING',
-    },
-  });
-  await writeAudit({ tenantId: user.tenantId, actorId: user.userId, action: 'update', entityType: 'Invoice', entityId: id, summary: `請求書 ${inv.number} を発行（送付承認を申請）` });
+  await writeAudit({ tenantId: user.tenantId, actorId: user.userId, action: 'update', entityType: 'Invoice', entityId: id, summary: `請求書 ${inv.number} を発行（売掛起票）` });
   revalidatePath(`/invoices/${id}`);
-  revalidatePath('/approvals');
-  redirect(`/invoices/${id}`);
+  redirect(`/invoices/${id}?issued=1`);
 }
 
-/** 入金記録。回収管理（Receivable）も更新。 */
+/** 請求書の外部送信を申請（承認後送信）。業務ロジックは lib/domains/finance/invoice-send.ts。 */
+export async function requestInvoiceExternalSendApprovalAction(formData: FormData) {
+  const user = await requireUser();
+  const id = String(formData.get('id') ?? '');
+  if (!hasPermission(user, 'invoice', 'update')) redirect(`/invoices/${id}?denied=1`);
+  const res = await requestInvoiceExternalSend({ tenantId: user.tenantId, userId: user.userId }, id);
+  revalidatePath(`/invoices/${id}`);
+  revalidatePath('/approvals');
+  redirect(res.ok ? `/invoices/${id}?send_requested=1` : `/invoices/${id}?error=${res.reason}`);
+}
+
+/** 承認済み請求書を外部送信（→SENT）。業務ロジックは invoice-send.ts。二重実行防止は executeApprovedAction。 */
+export async function executeApprovedInvoiceExternalSendAction(formData: FormData) {
+  const user = await requireUser();
+  if (!hasPermission(user, 'invoice', 'update')) redirect('/invoices?denied=1');
+  const approvalId = String(formData.get('approvalId') ?? '');
+  const req = await prisma.approvalRequest.findFirst({ where: { id: approvalId, tenantId: user.tenantId, requestedForAction: 'invoice_send' } });
+  if (!req) redirect('/invoices?error=notfound');
+  const invoiceId = String((req!.payloadAfter as { invoiceId?: string } | null)?.invoiceId ?? req!.entityId);
+
+  let reason: string | undefined;
+  try {
+    const r = await executeApprovedAction(
+      approvalId,
+      async () => {
+        const res = await executeInvoiceExternalSend({ tenantId: user.tenantId, userId: user.userId }, invoiceId);
+        if (!res.ok) throw new Error(res.reason ?? 'send-failed');
+        return res;
+      },
+      { executedById: user.userId },
+    );
+    if (!r.executed) reason = r.reason;
+  } catch (e) {
+    reason = e instanceof Error ? e.message : 'error';
+  }
+  redirect(reason ? `/invoices/${invoiceId}?error=${encodeURIComponent(reason)}` : `/invoices/${invoiceId}?sent=1`);
+}
+
+/** 入金記録。業務ロジックは lib/domains/finance/payments.ts（Invoice/Payment/Receivable/FinanceEvent連動）。 */
 export async function recordPaymentAction(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get('id') ?? '');
   if (!hasPermission(user, 'invoice', 'update')) redirect(`/invoices/${id}?denied=1`);
   const amount = Math.max(0, Number(formData.get('amount') ?? 0) || 0);
-  const inv = await prisma.invoice.findFirst({ where: { id, tenantId: user.tenantId } });
-  if (!inv || amount <= 0) redirect(`/invoices/${id}`);
-
-  await prisma.payment.create({ data: { tenantId: user.tenantId, invoiceId: id, amount, method: String(formData.get('method') ?? 'bank') } });
-  const paid = Number(inv.paidAmount) + amount;
-  const fullyPaid = paid >= Number(inv.total);
-  await prisma.invoice.update({ where: { id }, data: { paidAmount: paid, status: fullyPaid ? 'PAID' : 'PARTIALLY_PAID' } });
-  await prisma.receivable.updateMany({ where: { invoiceId: id }, data: { status: fullyPaid ? 'collected' : 'open' } });
-  await writeAudit({ tenantId: user.tenantId, actorId: user.userId, action: 'update', entityType: 'Invoice', entityId: id, summary: `入金記録 ${amount.toLocaleString()}円（${fullyPaid ? '全額入金' : '一部入金'}）` });
+  const method = String(formData.get('method') ?? 'bank');
+  const res = await recordInvoicePayment({ tenantId: user.tenantId, userId: user.userId }, id, amount, method);
   revalidatePath(`/invoices/${id}`);
-  redirect(`/invoices/${id}`);
+  redirect(res.ok ? `/invoices/${id}?paid=1` : `/invoices/${id}?error=${res.reason}`);
 }

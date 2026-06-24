@@ -78,3 +78,8 @@
 
 - 候補→正式化は決定論（勘定科目自動解決はルールベース inferAccountType）。AI/OCR は不使用。
 - JournalCandidate.aiOutputId は AI/OCR 由来の仕訳候補に紐付け可能なまま維持（OCR→仕訳候補は次Phaseで safeAiInput/saveAIOutputStandard 経由）。外部送信は持たない。
+
+## Phase 1-10 更新（2026-06-24）
+
+- 請求書の外部送信に Phase 1-5 安全基盤を適用: `prepareExternalPayload`（送信前PIIマスク）＋`assertAiToolAllowed`（AIは external_send 不可・多重防御）。AI/OCR の新規利用なし（決定論中心）。
+- AIが請求送信の主体になれないことをサーバ経路で強制（人間承認後に人間/システムが送信）。

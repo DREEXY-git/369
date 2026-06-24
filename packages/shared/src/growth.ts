@@ -90,6 +90,11 @@ export const GROWTH_EVENT_TYPES = [
   'finance.journal_entry.posted',
   'finance.invoice.formalized',
   'finance.receivable.created',
+  // 請求送信・入金消込 — Phase 1-10
+  'finance.invoice.sent',
+  'finance.payment.received',
+  'finance.receivable.collected',
+  'finance.cashflow.actual_recorded',
 ] as const;
 
 export type GrowthEventType = (typeof GROWTH_EVENT_TYPES)[number];

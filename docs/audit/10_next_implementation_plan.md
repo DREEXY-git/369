@@ -135,3 +135,10 @@ Phase 1-11 完了後、機能追加の前に本番足場固めを実施。詳細
 - 安定化追加修正: `/admin/users` の RBAC 認可ガード追加、追跡されていた `dump.rdb` を除外。
 - **`main` ブランチが未存在**（本ブランチがデフォルト）。main 化は新規 main 作成＋利用者判断（既定/Vercel Production の切替）後に実施。
 - → **Phase 1-12 は main 確定後に着手**（本ゲートでは新機能ゼロ）。
+
+## Release Stabilization Gate 完了 → 次 Phase 着手可能（2026-06-24）
+本番足場固め（`14_release_stabilization.md` §1–§18）を**完全クローズ**。
+- `main` を検証済み系列から確定し、GitHub default branch・Vercel Production Branch を `main` へ切替。
+- main 上で 6 検証 green、本番ビルド成果物の HTTP スモーク＋RBAC 認可ガード良好（§17）。
+- 利用者がライブ本番（Vercel `main` ソース）を実機確認: 最新 Production Deployment Ready／build・migrate・engine・runtime エラーなし／本番 URL スモーク＋RBAC OK（§18）。
+- → **Release Stabilization Gate 完了。次 Phase（1-12 候補）に着手可能。** 新機能・新規 DB モデルはゲート外の別タスクで実施。

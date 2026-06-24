@@ -17,6 +17,7 @@
     "seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
     "vercel-setup": "node prisma/vercel-setup.mjs",
     "reset": "dotenv -e ../../.env -- prisma migrate reset --force",
+    "pretypecheck": "prisma generate",
     "typecheck": "tsc --noEmit",
     "test:integration": "dotenv -e ../../.env -- vitest run --config vitest.integration.config.ts"
   },

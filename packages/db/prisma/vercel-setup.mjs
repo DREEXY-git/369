@@ -14,6 +14,13 @@ if (!process.env.VERCEL) {
   process.exit(0);
 }
 
+// 明示的なオプトアウト。プレビュー/チェック等で DB を変更したくない場合に
+// SKIP_DB_SETUP=1 を設定すると migrate/seed を行わずビルドだけ通す。
+if (process.env.SKIP_DB_SETUP === '1') {
+  console.log('[vercel-setup] SKIP_DB_SETUP=1 のため migrate/seed をスキップします（ビルドは継続）。');
+  process.exit(0);
+}
+
 // "postgresql://USERINFO@HOST:PORT/DB?..." の "USERINFO@HOST:PORT" 部分を取り出す。
 function authorityOf(raw) {
   const afterScheme = raw.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');

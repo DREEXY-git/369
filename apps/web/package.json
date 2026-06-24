@@ -8,7 +8,9 @@
     "prebuild": "pnpm --filter @hokko/db generate && pnpm --filter @hokko/db vercel-setup",
     "build": "next build",
     "start": "next start -p 3000",
+    "prelint": "pnpm --filter @hokko/db generate",
     "lint": "next lint",
+    "pretypecheck": "pnpm --filter @hokko/db generate",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

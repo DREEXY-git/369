@@ -84,3 +84,4 @@ pnpm test:e2e                               # Playwright（要 chromium）
 - Playwright のブラウザDLは本サンドボックスのネットワークでは失敗する。代わりに署名Cookieを使ったHTTPスモークで主要画面の200を確認済み。
 - `prisma migrate reset`（= `pnpm db:reset`）は Claude Code 実行を検知して**安全ガードで拒否**される。クリーンに再投入したい時は `pnpm db:seed`（内部で `TRUNCATE ... CASCADE` してから再生成）を使う。通常のユーザー環境では `db:reset` も動作する。
 - 機能拡張は「動く薄い縦切り」で。巨大な未完成より、CRUD+権限+監査+デモデータの一気通貫を優先。
+- **Vercel デプロイ/チェックの責務分離**: `lint`/`typecheck` は **`prisma generate` のみ**前段で実行し（`prelint`/`pretypecheck`）、`prisma migrate deploy`/`vercel-setup` は実行しない。DB スキーマ反映（migrate/seed）は **`build` の `prebuild`（= generate + vercel-setup）でのみ**実行し、`vercel-setup.mjs` は `VERCEL` 未設定または `SKIP_DB_SETUP=1` でスキップする。typecheck は `@hokko/db` 経由で `@prisma/client` 型に依存するため、生成済みクライアントが無い環境（Vercel Native Checks の隔離 install で postinstall が走らない等）でも落ちないよう pre フックで generate を保証している。**lint/typecheck に migrate/seed を足さない。**

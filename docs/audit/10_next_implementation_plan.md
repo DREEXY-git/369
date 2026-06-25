@@ -163,3 +163,7 @@ Phase 1-11 完了後、機能追加の前に本番足場固めを実施。詳細
 2. completedAt を用いたリードタイム・月次完了率の時系列 KPI。
 3. `requestInvoiceSend` 等の関数名を実態（finalize）へリネーム（呼び出し元含む安全な範囲で）。
 4. 横展開（会計本体/銀行API/OCR/契約/給与/労務/AI社員本体）は引き続き対象外。
+
+### Phase 1-13 本番確認完了（2026-06-24）
+利用者が Vercel 本番（`main` / `246e2be`）を実機確認: Deployment Ready／build・`migrate deploy`・`completedAt` migration・engine・runtime すべてエラーなし／本番 URL スモーク（KPI・今すぐ見るべき案件・是正アクション・アンカー遷移・OWNER finance 表示／STAFF 非表示）OK。詳細は `14_release_stabilization.md` §20。
+→ **Phase 1-13 本番反映完了。次 Phase（1-14 候補）に着手可能。** 新機能・新規 DB モデル・大規模リファクタはゲート外の別タスクで。

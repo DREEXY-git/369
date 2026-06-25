@@ -177,3 +177,8 @@ Phase 1-11 完了後、機能追加の前に本番足場固めを実施。詳細
 2. completedAt を用いたリードタイム・月次完了率の時系列 KPI。
 3. 関数名リネーム（requestInvoiceSend→finalize 系）。
 4. 横展開（会計本体/銀行API/OCR/契約/給与/労務/AI社員本体）は引き続き対象外。
+
+### Phase 1-14 本番確認完了（2026-06-24）
+利用者が Vercel 本番（`main` / `8b71d07`）を実機確認: Deployment Ready／build 成功／schema 変更なし・migrate pending なし／engine・runtime エラーなし／本番 URL スモーク（物流完了ボタン→案件詳細へ戻り status=done 反映・リスク解消ボタン・invoice 送信承認申請/承認待ち/承認済み送信/入金記録・延滞ヒント・OWNER finance 表示／STAFF 非表示・外部送信ゲート維持・督促メール未実装のまま）OK。詳細は `14_release_stabilization.md` §21。
+→ **Phase 1-14 本番反映完了。次 Phase に進める状態。ただし次 Phase は利用者確認後に着手。**
+次候補: ①督促（dunning）の承認付きドラフト＋送信申請（実送信は承認後）／②completedAt を用いたリードタイム KPI／③関数名リネーム（requestInvoiceSend→finalize 系）。横展開は引き続き対象外。

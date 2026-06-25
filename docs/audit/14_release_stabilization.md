@@ -274,3 +274,39 @@ Phase 1-13（Golden Path Action Deep Links ＋ `EventProject.completedAt` ＋ Ap
 - **Phase 1-13 本番反映 完了（GO）**。`completedAt` の追加 migration が本番で安全に適用され、是正アクション導線・アンカー遷移・finance 権限制御（OWNER 表示／STAFF 非表示）が実機で期待どおり動作。
 - build / migrate / engine / runtime いずれもエラーなし。本番ソース＝`main`（`246e2be`）。
 - → **Phase 1-14 以降の機能開発に着手可能**（別タスク。本記録は本番確認のみ）。
+
+## 21. Phase 1-14 本番デプロイ確認完了（利用者確認・2026-06-24）
+Phase 1-14（Golden Path Inline Corrective Actions）を main へ push 後、利用者が本番（`main` ソース）を実機確認した結果を記録する。
+**今回は schema 変更なし＝migration なし**（pending なし）。
+
+### 21.1 Vercel Production Deployment
+| 項目 | 確認結果 |
+|------|----------|
+| Commit | **`8b71d07`** |
+| Branch | **`main`** |
+| Status | **Ready** |
+| Build | **成功** |
+| Prisma `migrate deploy` | **pending なし / schema 変更なし** |
+| Prisma engine error | **なし** |
+| Runtime error | **なし** |
+
+### 21.2 本番 URL スモーク（実ブラウザ）
+| 観点 | 結果 |
+|------|------|
+| `/dashboard/ceo` ／ `/planning-hokko` ／ `/operations/events` ／ `/operations/events/[id]` | ✅ OK |
+| `#logistics` 物流タスク「完了」ボタン表示 | ✅ OK |
+| 物流完了後に案件詳細へ戻る ／ `status=done` 反映 | ✅ OK |
+| `#risks` リスク「解消」ボタン表示 | ✅ OK |
+| `/invoices/[id]` 送信承認申請 ／ 送信承認待ち ／ 承認済み送信実行 導線 | ✅ OK（壊れていない） |
+| 入金記録フォーム ／ 延滞ヒント表示 | ✅ OK |
+| OWNER で finance 系アクション表示 | ✅ OK |
+| STAFF で finance 系アクション非表示 | ✅ OK |
+
+### 21.3 維持確認（壊していないこと）
+- **外部送信ゲート維持**: 請求書外部送信は `invoice_send` 申請→承認→実行のみ。`EXTERNAL_SEND_ENABLED`・`invoice_finalize`/`invoice_send` 分離は不変。
+- **督促メール送信は未実装のまま**（延滞表示＋入金記録導線まで。能動的外部アウトリーチは追加なし）。
+
+### 21.4 判定
+- **Phase 1-14 本番反映 完了（GO）**。インライン是正（物流完了・リスク解消・Finance Bridge・送信承認申請・入金記録）が実機で動作し、外部送信ゲートと finance 権限制御（OWNER 表示／STAFF 非表示）を維持。
+- build / migrate（pending なし）/ engine / runtime いずれもエラーなし。本番ソース＝`main`（`8b71d07`）。
+- → **Phase 1-15 以降は別タスク。今回は本番確認の記録のみで、機能開発には着手しない。**

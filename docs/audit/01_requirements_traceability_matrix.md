@@ -164,3 +164,18 @@
 | 新規DBモデルを増やさない | completedAt の1列のみ（migration 1行） | 20260624184937_p1_13_event_completed_at |
 
 詳細監査: `13_planning_hokko_golden_path.md` §Phase 1-13、`12_maintenance_architecture.md` §Phase 1-13。
+
+## Phase 1-14（2026-06-24）— Golden Path Inline Corrective Actions
+
+| 要件 | 実装 | テスト |
+|---|---|---|
+| 物流遅延→その場で完了 | event detail `#logistics` 完了ボタン＋既存 `updateLogisticsTaskStatusAction`（returnToEvent） | p1_14（done/completedAt・遷移）/ golden_path_inline.spec |
+| 高リスク→その場で解消 | event detail `#risks` 既存 `updateEventRiskStatusAction` | p1_14（resolved）/ spec |
+| Finance未接続→Bridge（finance:create・STAFF非表示） | Golden Path カード 既存 `bridgeEventToFinanceAction` | p1_14（finance:create RBAC） |
+| 請求未送信→送信承認申請（承認ゲート・重複防止） | invoice detail 既存 `requestInvoiceExternalSendApprovalAction`/`executeApprovedInvoiceExternalSendAction` | p1_14（invoice_send 重複なし） |
+| 未回収/延滞→入金記録 | invoice detail 既存 `recordPaymentAction`＋延滞ヒント | p1_14（Invoice/Receivable/Payment/FinanceEvent 整合） |
+| AttentionList 文言の実行性 | golden-path-actions.ts actionLabel（解消/完了/申請/記録/見直す/進む） | golden_path_actions.test |
+| 低粗利は見直し導線のみ | `#finance-summary`（実行なし） | golden_path_actions.test |
+| 新規 server action/DBモデルなし | 既存 action 再利用＋updateLogisticsTaskStatusAction の薄い returnToEvent | schema 変更なし |
+
+詳細監査: `13_planning_hokko_golden_path.md` §Phase 1-14。

@@ -153,6 +153,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             <Card>
               <CardHeader><CardTitle>入金記録</CardTitle></CardHeader>
               <CardContent>
+                {overdue ? <p className="mb-2 rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">⚠️ 支払期日を過ぎています（延滞）。入金があれば記録してください。</p> : null}
                 <form action={recordPaymentAction} className="space-y-2">
                   <input type="hidden" name="id" value={invoice.id} />
                   <Input name="amount" type="number" placeholder={`未収 ${outstanding}`} defaultValue={outstanding} disabled={!canUpdate} />

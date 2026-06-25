@@ -72,3 +72,29 @@ describe('visibleGoldenPathActions — finance 権限ゲート', () => {
     expect(actions.every((a) => !a.requiresFinance)).toBe(true);
   });
 });
+
+describe('actionLabel は実行性を含む（Phase 1-14 インライン是正）', () => {
+  it('解消・完了・申請・記録・進む など対処につながる文言', () => {
+    expect(getGoldenPathActionForReason('high_risk', ctx).actionLabel).toContain('解消');
+    expect(getGoldenPathActionForReason('overdue_logistics', ctx).actionLabel).toContain('完了');
+    expect(getGoldenPathActionForReason('unsent_invoice', ctx).actionLabel).toContain('申請');
+    expect(getGoldenPathActionForReason('overdue_receivable', ctx).actionLabel).toContain('記録');
+    expect(getGoldenPathActionForReason('unpaid', ctx).actionLabel).toContain('記録');
+    expect(getGoldenPathActionForReason('unbridged', ctx).actionLabel).toContain('進む');
+  });
+
+  it('低粗利は実行ではなく「見直す」導線（finance・#finance-summary）', () => {
+    const a = getGoldenPathActionForReason('low_margin', ctx);
+    expect(a.actionLabel).toContain('見直す');
+    expect(a.href).toContain('#finance-summary');
+    expect(a.requiresFinance).toBe(true);
+  });
+
+  it('finance 権限なしでは finance 系アクション（記録/申請/見直す）が出ない', () => {
+    const all: AttentionReasonCode[] = ['overdue_receivable', 'unpaid', 'unsent_invoice', 'low_margin', 'high_risk', 'overdue_logistics', 'approval_pending', 'unbridged'];
+    const visible = visibleGoldenPathActions(buildGoldenPathActionLinks({ id: 'e1', invoiceId: 'inv1', attentionReasons: all }), false);
+    expect(visible.some((a) => a.requiresFinance)).toBe(false);
+    // 非 finance（解消/完了/承認/Bridge）は残る
+    expect(visible.map((a) => a.reason)).toEqual(['high_risk', 'overdue_logistics', 'approval_pending', 'unbridged']);
+  });
+});

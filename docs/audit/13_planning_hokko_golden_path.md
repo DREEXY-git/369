@@ -162,3 +162,47 @@
 1. 是正アクション先での「その場ワンクリック実行」（請求送信/督促のインライン化）。
 2. completedAt を用いたリードタイム・月次完了率の時系列 KPI。
 3. `requestInvoiceSend` 等の関数名を実態（finalize）へリネーム（呼び出し元含む安全な範囲で）。
+
+---
+
+## Phase 1-14 — Golden Path Inline Corrective Actions（2026-06-24）
+
+**位置づけ**: 「Golden Path 是正アクションの**インライン化**」であり横展開（新業務領域）ではない。IKEZAKI OS 全体（全世界企業のAI経営OS）に対しては**まだ初期段階**だが、**プランニングホッコー向け実用MVP**としては「見える→気づく→該当箇所へ飛ぶ→**その場で是正処理を進める**」まで到達し、Golden Path の実務性が一段上がった。
+
+### 今回実装したもの（既存 action 再利用中心・新規 server action ゼロ・新規DBモデルゼロ）
+- **物流遅延→完了**: event detail `#logistics` に未完了タスクの「完了」ボタン（既存 `updateLogisticsTaskStatusAction` 再利用）。`returnToEvent` opt-in 追加（案件詳細へ戻す。URL は DB の `task.eventId` で構築＝open-redirect 回避）。`/operations/logistics` の既存挙動は不変。完了で `status=done`＋`completedAt`＋Growth/Domain/Audit（既存）。承認不要・`inventory:update`。
+- **高リスク→解消**: event detail `#risks` の「解消」ボタン（既存 `updateEventRiskStatusAction`、open/monitoring 対象、`inventory:update`）。
+- **Finance未接続→Bridge**: Golden Path カードの「Finance Bridge へ進む」（既存 `bridgeEventToFinanceAction`、`finance:create`。STAFF には実行ボタンを出さず「財務担当がブリッジを行います」表示）。
+- **請求書未送信→送信承認申請**: invoice detail の既存フロー（`requestInvoiceExternalSendApprovalAction`→承認→`executeApprovedInvoiceExternalSendAction`）。重複申請防止・承認ゲート・`EXTERNAL_SEND_ENABLED` を維持。
+- **未回収/延滞→入金記録**: invoice detail の入金フォーム（既存 `recordPaymentAction`）。延滞時に「⚠️ 支払期日を過ぎています（延滞）」ヒント追加。
+- **AttentionList 文言**: 実行性のある表現へ（「リスクを確認・解消」「物流タスクを確認・完了」「請求書送信を申請」「入金を記録」「Finance Bridgeへ進む」「原価・売上を見直す」）。
+
+### 今回あえて実装しなかったもの
+- **督促メールの実送信**（将来 Phase 候補。今回は延滞表示＋入金記録導線まで）。
+- **外部メール送信の本格実装**（既存の承認ゲート経由フローのみ利用）。
+- **低粗利の自動是正**（原価・売上の見直し導線=`#finance-summary` に留め、実行しない）。
+- 横展開（会計本体/銀行API/OCR/契約/給与/労務/AI社員本体）。
+
+### 権限制御
+- finance系（入金記録/送信承認申請/承認済み送信実行/原価売上見直し/Finance Bridge実行）は `invoice:update`/`finance:create`、invoice detail は ABAC で非finance閲覧不可。AttentionList の finance系は redact＋`visibleGoldenPathActions` で STAFF 非表示。
+- non-finance（リスク解消/物流完了）は `inventory:update`。承認実行は `approval:approve`。
+
+### テスト
+- unit **203**: `golden_path_actions.test.ts`（label 実行性・finance filter・low_margin 見直し導線）。
+- integration **88**: `p1_14_inline_corrective_actions.itest.ts`（物流 done→completedAt・遷移規則・リスク resolved・finance:create RBAC・invoice_send 重複なし・入金で Invoice/Receivable/Payment/FinanceEvent 整合・tenant分離）。
+- e2e spec: `golden_path_inline.spec.ts`（リスク解消/物流完了ボタン・送信申請/入金フォーム・STAFF finance非表示）。
+
+### 残リスク
+- 是正アクションは「その場で1アクション実行/申請」まで。複数ステップの一括処理や督促などの能動アウトリーチは未対応。
+- 物流 `blocked` タスクは直接「完了」不可（todo/in_progress のみ。仕様どおりだが運用周知が必要）。
+- 過去案件は `completedAt=null` のため「今月完了」は fallback 集計（混在）。
+
+### 次に本当にやるべきこと
+1. 督促（dunning）の**承認ゲート付き**ドラフト生成＋送信申請（実送信は承認後・EXTERNAL_SEND_ENABLED 準拠）。
+2. completedAt を用いたリードタイム・月次完了率の時系列 KPI。
+3. `requestInvoiceSend` 等の関数名リネーム（実態=finalize）。
+
+### 本番確認が必要な項目（次回デプロイ後）
+- event detail の物流「完了」ボタンで案件詳細に戻り `status=done`/`completedAt` が反映されること。
+- invoice detail の送信承認申請→承認→送信、入金記録が本番で動作し、外部送信が必ず承認ゲートを通ること。
+- STAFF で finance 系是正アクションが本番でも非表示であること。

@@ -20,7 +20,7 @@ import {
   updateEventRiskStatusAction,
   bridgeEventToFinanceAction,
 } from '../../actions';
-import { createEventLogisticsTasksAction } from '../../logistics/actions';
+import { createEventLogisticsTasksAction, updateLogisticsTaskStatusAction } from '../../logistics/actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -354,9 +354,19 @@ export default async function EventDetailPage({ params, searchParams }: { params
             ) : (
               <div className="space-y-1">
                 {event!.logisticsTasks.map((t) => (
-                  <div key={t.id} className="flex items-center justify-between text-sm">
+                  <div key={t.id} className="flex items-center justify-between gap-2 text-sm">
                     <span>{isLogisticsTaskType(t.type) ? LOGISTICS_TASK_LABEL[t.type] : t.type}</span>
-                    <Badge tone={t.status === 'done' ? 'green' : t.status === 'blocked' ? 'red' : 'blue'}>{t.status}</Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge tone={t.status === 'done' ? 'green' : t.status === 'blocked' ? 'red' : 'blue'}>{t.status}</Badge>
+                      {canEdit && (t.status === 'todo' || t.status === 'in_progress') ? (
+                        <form action={updateLogisticsTaskStatusAction}>
+                          <input type="hidden" name="taskId" value={t.id} />
+                          <input type="hidden" name="status" value="done" />
+                          <input type="hidden" name="returnToEvent" value="1" />
+                          <Button type="submit" variant="ghost" className="h-6 px-2 text-xs">完了</Button>
+                        </form>
+                      ) : null}
+                    </div>
                   </div>
                 ))}
               </div>

@@ -118,5 +118,10 @@ export async function updateLogisticsTaskStatusAction(formData: FormData) {
   }
   revalidatePath('/operations/logistics');
   if (task!.eventId) revalidatePath(`/operations/events/${task!.eventId}`);
+  // event detail から実行した場合は案件詳細へ戻す（Phase 1-14）。URL は DB の task.eventId で構築＝open-redirect 回避。
+  // returnToEvent 未指定の既存（/operations/logistics）フローは従来どおり。
+  if (String(formData.get('returnToEvent') ?? '') === '1' && task!.eventId) {
+    redirect(`/operations/events/${task!.eventId}#logistics`);
+  }
   redirect('/operations/logistics?updated=1');
 }

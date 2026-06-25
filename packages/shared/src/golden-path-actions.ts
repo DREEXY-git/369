@@ -29,15 +29,16 @@ const invoiceHref = (ctx: GoldenPathActionContext) =>
   ctx.invoiceId ? `/invoices/${ctx.invoiceId}` : eventAnchor(ctx.eventId, 'finance-summary');
 
 // reason → 是正アクション定義。href テンプレートと finance 要否を一元管理。
+// actionLabel は「見るだけ」でなく「その場で対処につながる」実行性のある文言にする（Phase 1-14）。
 const ACTION_DEFS: Record<AttentionReasonCode, ActionDef> = {
-  overdue_receivable: { actionLabel: '請求書・入金状況を確認', requiresFinance: true, href: invoiceHref },
-  unpaid: { actionLabel: '入金記録へ', requiresFinance: true, href: invoiceHref },
-  unsent_invoice: { actionLabel: '請求書送信へ', requiresFinance: true, href: invoiceHref },
-  low_margin: { actionLabel: '原価・売上を確認', requiresFinance: true, href: (c) => eventAnchor(c.eventId, 'finance-summary') },
-  high_risk: { actionLabel: 'リスクを確認', requiresFinance: false, href: (c) => eventAnchor(c.eventId, 'risks') },
-  overdue_logistics: { actionLabel: '物流タスクを確認', requiresFinance: false, href: (c) => eventAnchor(c.eventId, 'logistics') },
+  overdue_receivable: { actionLabel: '入金を記録', requiresFinance: true, href: invoiceHref },
+  unpaid: { actionLabel: '入金を記録', requiresFinance: true, href: invoiceHref },
+  unsent_invoice: { actionLabel: '請求書送信を申請', requiresFinance: true, href: invoiceHref },
+  low_margin: { actionLabel: '原価・売上を見直す', requiresFinance: true, href: (c) => eventAnchor(c.eventId, 'finance-summary') },
+  high_risk: { actionLabel: 'リスクを確認・解消', requiresFinance: false, href: (c) => eventAnchor(c.eventId, 'risks') },
+  overdue_logistics: { actionLabel: '物流タスクを確認・完了', requiresFinance: false, href: (c) => eventAnchor(c.eventId, 'logistics') },
   approval_pending: { actionLabel: '承認待ちを処理', requiresFinance: false, href: () => '/approvals' },
-  unbridged: { actionLabel: 'Finance Bridge へ', requiresFinance: false, href: (c) => eventAnchor(c.eventId, 'golden-path') },
+  unbridged: { actionLabel: 'Finance Bridgeへ進む', requiresFinance: false, href: (c) => eventAnchor(c.eventId, 'golden-path') },
 };
 
 /** 1 つの理由に対する是正アクションを生成（純関数）。 */

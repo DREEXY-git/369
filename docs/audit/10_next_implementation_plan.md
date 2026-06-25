@@ -167,3 +167,13 @@ Phase 1-11 完了後、機能追加の前に本番足場固めを実施。詳細
 ### Phase 1-13 本番確認完了（2026-06-24）
 利用者が Vercel 本番（`main` / `246e2be`）を実機確認: Deployment Ready／build・`migrate deploy`・`completedAt` migration・engine・runtime すべてエラーなし／本番 URL スモーク（KPI・今すぐ見るべき案件・是正アクション・アンカー遷移・OWNER finance 表示／STAFF 非表示）OK。詳細は `14_release_stabilization.md` §20。
 → **Phase 1-13 本番反映完了。次 Phase（1-14 候補）に着手可能。** 新機能・新規 DB モデル・大規模リファクタはゲート外の別タスクで。
+
+## Phase 1-14 完了 → 次の計画（2026-06-24）
+
+完了: **Golden Path Inline Corrective Actions**（是正アクションのインライン化）。物流完了（event detail に完了ボタン＋`returnToEvent`）、リスク解消、Finance Bridge、請求送信承認申請、入金記録を**既存 action 再利用**で該当画面からその場で進められるように。**新規 server action ゼロ・新規DBモデルゼロ・migration なし**。AttentionList 文言を実行性のある表現へ。外部送信は承認ゲート（invoice_send/executeApprovedAction/EXTERNAL_SEND_ENABLED）不変、督促メールは未実装。unit 203 / integration 88、6コマンド green。位置づけ: IKEZAKI OS 全体はまだ初期段階。本 Phase はプランニングホッコー向け実用MVPの実務性を一段深めたもの。
+
+次（Phase 1-15 / Phase 2 候補）:
+1. 督促（dunning）の承認ゲート付きドラフト＋送信申請（実送信は承認後）。
+2. completedAt を用いたリードタイム・月次完了率の時系列 KPI。
+3. 関数名リネーム（requestInvoiceSend→finalize 系）。
+4. 横展開（会計本体/銀行API/OCR/契約/給与/労務/AI社員本体）は引き続き対象外。

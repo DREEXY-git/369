@@ -105,3 +105,10 @@
 - integration: **80**（+7）。`p1_13_golden_path_actions.itest.ts`（completedAt セット/集計・attention→action link・tenant分離・finance redact で action 消滅・invoice_finalize/invoice_send の承認種別分離[後方互換クエリ]）。
 - e2e: `golden_path_actions.spec.ts`（是正アクション表示・高リスク→#risks・低粗利→#finance-summary・STAFF finance 非表示）。CI/実環境で実行。
 - 6検証コマンド: db:generate / typecheck / test(200) / lint / build / integration(80) すべて green。
+
+## Phase 1-14 更新（2026-06-24）
+
+- unit: **203**（+3）。`golden_path_actions.test.ts` 拡張（actionLabel の実行性[解消/完了/申請/記録/進む]・低粗利は「見直す」導線・finance なしで finance系 action 非表示）。
+- integration: **88**（+8）。`p1_14_inline_corrective_actions.itest.ts`（物流 done→status=done/completedAt・遷移規則[todo→done可/blocked→done不可]・リスク resolved・Finance Bridge は finance:create 必須[RBAC]・invoice_send 申請の重複なし・入金で Invoice/Receivable/Payment/FinanceEvent 整合更新・tenant分離）。
+- e2e: `golden_path_inline.spec.ts`（リスク解消/物流完了ボタン・送信申請/入金フォーム・STAFF finance 非表示）。CI/実環境で実行。
+- 6検証コマンド: db:generate / typecheck / test(203) / lint / build / integration(88) すべて green。

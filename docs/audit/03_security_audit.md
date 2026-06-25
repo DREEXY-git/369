@@ -135,3 +135,10 @@
 - 非 finance（高リスク→#risks、物流遅延→#logistics、承認待ち→/approvals、Finance未接続→#golden-path）は STAFF にも表示してよい。Finance Bridge の**実行**は引き続き finance:create。承認実行は approval:approve。
 - Approval 種別分離: 候補正式化=`invoice_finalize`（内部確定）、外部送信=`invoice_send`。実行クエリは後方互換（entityType='InvoiceCandidate' ＋ in['invoice_finalize','invoice_send']）で旧 pending を壊さない。外部送信フロー（entityType='Invoice'）は不変。`p1_13` で分離を検証。
 - 新規DBモデルなし（completedAt の1列追加のみ）。新規の送信/削除権限なし。
+
+## Phase 1-14 更新（2026-06-24）— インライン是正と外部送信ゲート維持
+
+- インライン是正は既存の権限/承認を踏襲: 入金記録/送信承認申請/承認済み送信実行=`invoice:update`（invoice detail は ABAC で非finance閲覧不可）、Finance Bridge=`finance:create`、リスク解消/物流完了=`inventory:update`、承認実行=`approval:approve`。
+- **外部送信ゲートは不変**: 請求書外部送信は `invoice_send` 申請→承認→`executeApprovedInvoiceExternalSendAction`（二重実行防止は `executeApprovedAction`）。`EXTERNAL_SEND_ENABLED` と `invoice_finalize`/`invoice_send` 分離を壊していない。**督促メールの実送信は未実装**（能動的外部アウトリーチを新規追加しない）。
+- 物流完了の `returnToEvent` 戻り先は **DB の `task.eventId` で URL を構築**（ユーザー入力を使わない＝open-redirect 回避）。`/operations/logistics` の既存遷移は不変。
+- finance系是正アクションは redact＋`visibleGoldenPathActions` で STAFF 非表示（深層防御）を維持。新規DBモデル/フィールドなし。

@@ -90,7 +90,8 @@ export async function issueInvoiceAction(formData: FormData) {
 export async function requestInvoiceExternalSendApprovalAction(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get('id') ?? '');
-  if (!hasPermission(user, 'invoice', 'update')) redirect(`/invoices/${id}?denied=1`);
+  // 請求書の外部送信申請は finance 機密。server 側で finance:read も必須化（STAFF 直叩き遮断・dunning と統一）。
+  if (!hasPermission(user, 'invoice', 'update') || !hasPermission(user, 'finance', 'read')) redirect(`/invoices/${id}?denied=1`);
   const res = await requestInvoiceExternalSend({ tenantId: user.tenantId, userId: user.userId }, id);
   revalidatePath(`/invoices/${id}`);
   revalidatePath('/approvals');
@@ -100,7 +101,8 @@ export async function requestInvoiceExternalSendApprovalAction(formData: FormDat
 /** 承認済み請求書を外部送信（→SENT）。業務ロジックは invoice-send.ts。二重実行防止は executeApprovedAction。 */
 export async function executeApprovedInvoiceExternalSendAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'invoice', 'update')) redirect('/invoices?denied=1');
+  // 承認済み請求書の外部送信実行は finance 機密。server 側で finance:read も必須化（STAFF 直叩き遮断）。
+  if (!hasPermission(user, 'invoice', 'update') || !hasPermission(user, 'finance', 'read')) redirect('/invoices?denied=1');
   const approvalId = String(formData.get('approvalId') ?? '');
   const req = await prisma.approvalRequest.findFirst({ where: { id: approvalId, tenantId: user.tenantId, requestedForAction: 'invoice_send' } });
   if (!req) redirect('/invoices?error=notfound');
@@ -128,7 +130,8 @@ export async function executeApprovedInvoiceExternalSendAction(formData: FormDat
 export async function recordPaymentAction(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get('id') ?? '');
-  if (!hasPermission(user, 'invoice', 'update')) redirect(`/invoices/${id}?denied=1`);
+  // 入金記録は finance 機密（Invoice/Receivable/FinanceEvent 連動）。server 側で finance:read も必須化（STAFF 直叩き遮断）。
+  if (!hasPermission(user, 'invoice', 'update') || !hasPermission(user, 'finance', 'read')) redirect(`/invoices/${id}?denied=1`);
   const amount = Math.max(0, Number(formData.get('amount') ?? 0) || 0);
   const method = String(formData.get('method') ?? 'bank');
   const res = await recordInvoicePayment({ tenantId: user.tenantId, userId: user.userId }, id, amount, method);

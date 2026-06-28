@@ -8,6 +8,8 @@ import {
   receivableStatusAfterPayment,
   summarizeCashflowActualVsExpected,
   requiresApproval,
+  canForRoles,
+  type RoleKey,
 } from '@hokko/shared';
 
 const T = `itest-p110-${Date.now()}`;
@@ -102,6 +104,28 @@ describe('Cashflow summary + approval + tenant isolation', () => {
 
   it('invoice_send requires approval', () => {
     expect(requiresApproval('invoice_send')).toBe(true);
+  });
+
+  it('外部送信申請/承認済み送信実行/入金記録の権限境界 = invoice:update かつ finance:read（STAFF は finance:read 不足で不可）', () => {
+    // 対象 server action（requestInvoiceExternalSendApprovalAction /
+    // executeApprovedInvoiceExternalSendAction / recordPaymentAction）が server 側で要求する複合ガードと
+    // 同一の判定を RBAC レベルで検証する（'use server' のため db テストから直接 import 不可）。dunning と同一境界。
+    const canFinanceInvoiceAction = (roles: RoleKey[]) =>
+      canForRoles(roles, 'invoice', 'update') && canForRoles(roles, 'finance', 'read');
+    expect(canFinanceInvoiceAction(['OWNER'])).toBe(true);
+    expect(canFinanceInvoiceAction(['EXECUTIVE'])).toBe(true);
+    expect(canFinanceInvoiceAction(['DEPARTMENT_MANAGER'])).toBe(true);
+    // STAFF は invoice:update を持つが finance:read を持たない → 複合ガードで遮断（UI 非表示だけに依存しない）。
+    expect(canFinanceInvoiceAction(['STAFF'])).toBe(false);
+    expect(canForRoles(['STAFF'], 'invoice', 'update')).toBe(true);
+    expect(canForRoles(['STAFF'], 'finance', 'read')).toBe(false);
+    // ADMIN は invoice:update を持たない（更新権限は admin/audit/backup/knowledge のみ）ため従来どおり不可。
+    expect(canForRoles(['ADMIN'], 'invoice', 'update')).toBe(false);
+    expect(canFinanceInvoiceAction(['ADMIN'])).toBe(false);
+    // READ_ONLY / EXTERNAL 系は invoice:update を持たないため従来どおり不可。
+    expect(canFinanceInvoiceAction(['READ_ONLY'])).toBe(false);
+    expect(canFinanceInvoiceAction(['EXTERNAL_EXPERT'])).toBe(false);
+    expect(canFinanceInvoiceAction(['EXTERNAL_PARTNER'])).toBe(false);
   });
 
   it('isolates invoices by tenant', async () => {

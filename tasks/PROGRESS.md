@@ -32,6 +32,19 @@
 - 詳細は `docs/audit/14_release_stabilization.md` §22。
 
 ### 残・次の一手
-- 別タスク: `recordPaymentAction`/請求書外部送信 action も `finance:read` 追加で server 側多層化（同型の直叩き耐性）。
 - 別タスク: UsageEvent / 課金連携（現状 TODO）。
 - 別タスク: 本番 E2E または手動スモークの定型化。
+- 判断要: `createInvoiceAction`/`issueInvoiceAction` の権限方針（STAFF の請求作成/発行を遮断するか＝製品判断）。
+
+## Phase 1-16 候補 — 請求・入金・外部送信 server action の finance 権限 server 側統一
+
+状態: **ローカル是正・検証完了／push 未実施（人間承認待ち）**
+
+- 🔐 Phase 1-15 で確立した同型リスク（UI 非表示でも server action 直叩きで危険）を横展開是正。
+  請求の finance 機密 3 アクション（`requestInvoiceExternalSendApprovalAction` / `executeApprovedInvoiceExternalSendAction` / `recordPaymentAction`）に `finance:read` を必須化（`invoice:update` かつ `finance:read`・dunning と統一）。
+- 実行可能境界＝OWNER / EXECUTIVE / DEPARTMENT_MANAGER。STAFF は finance:read 非保有で遮断。ADMIN は invoice:update 非保有で従来どおり不可。
+- lib（invoice-send / payments）は不変・安全。新規DBモデル/migration なし。
+- テスト: `p1_10_invoice_payment.itest.ts` に権限境界テスト追加。
+- 検証（全 green）: db:generate / dunning unit 20 / integration 15ファイル97（p1_10/p1_15 含む）/ typecheck / lint / unit 23ファイル211 / build（BUILD_ID 生成）。
+- 詳細: `docs/audit/03_security_audit.md`「Phase 1-16 ローカル是正」。
+- 範囲外（判断要）: `createInvoiceAction`/`issueInvoiceAction` の STAFF 遮断可否。

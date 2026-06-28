@@ -142,3 +142,12 @@
 - **外部送信ゲートは不変**: 請求書外部送信は `invoice_send` 申請→承認→`executeApprovedInvoiceExternalSendAction`（二重実行防止は `executeApprovedAction`）。`EXTERNAL_SEND_ENABLED` と `invoice_finalize`/`invoice_send` 分離を壊していない。**督促メールの実送信は未実装**（能動的外部アウトリーチを新規追加しない）。
 - 物流完了の `returnToEvent` 戻り先は **DB の `task.eventId` で URL を構築**（ユーザー入力を使わない＝open-redirect 回避）。`/operations/logistics` の既存遷移は不変。
 - finance系是正アクションは redact＋`visibleGoldenPathActions` で STAFF 非表示（深層防御）を維持。新規DBモデル/フィールドなし。
+
+## Phase 1-15 更新（2026-06-28）— 督促（Dunning）の承認ゲートと安全テンプレート
+
+- **督促送信は承認ゲート経由のみ**: `dunning_send` 承認申請→`executeApprovedAction`（冪等・二重実行防止）。`assertAiToolAllowed`（AI外部送信構造的禁止）。`prepareExternalPayload`（PII マスク）。`EXTERNAL_SEND_ENABLED=false` 既定では実送信せず logged のみ。
+- **威圧的・法的断定の排除**: 決定論テンプレート（AI生成なし）。13禁止表現（法的措置/訴訟/回収に伺/取引停止/至急/最終通告/悪質/債務不履行/信用問題/第三者へ共有/強制/差押/内容証明）をテストで検証。「お支払い状況のご確認」ベースの丁寧な確認文のみ。
+- **督促の finance 機密保護**: invoice detail の #dunning セクションは既存 ABAC（FINANCIAL_CONFIDENTIAL）で STAFF 遮断。AttentionList の督促アクションは `requiresFinance=true` で STAFF 非表示。
+- **Receivable 不変**: 督促送信で Receivable.status を collected にしない（入金時のみ変更）。
+- 宛先メール無しは送信不可（no-recipient ガード）。新規DBモデル/フィールドなし。
+残: レート制限、CSP、MFA、改ざん検知。

@@ -198,11 +198,72 @@
 - 過去案件は `completedAt=null` のため「今月完了」は fallback 集計（混在）。
 
 ### 次に本当にやるべきこと
-1. 督促（dunning）の**承認ゲート付き**ドラフト生成＋送信申請（実送信は承認後・EXTERNAL_SEND_ENABLED 準拠）。
-2. completedAt を用いたリードタイム・月次完了率の時系列 KPI。
-3. `requestInvoiceSend` 等の関数名リネーム（実態=finalize）。
+1. completedAt を用いたリードタイム・月次完了率の時系列 KPI。
+2. `requestInvoiceSend` 等の関数名リネーム（実態=finalize）。
+3. 横展開（会計本体/銀行API/OCR/契約/給与/労務/AI社員本体）は引き続き対象外。
 
 ### 本番確認が必要な項目（次回デプロイ後）
 - event detail の物流「完了」ボタンで案件詳細に戻り `status=done`/`completedAt` が反映されること。
 - invoice detail の送信承認申請→承認→送信、入金記録が本番で動作し、外部送信が必ず承認ゲートを通ること。
-- STAFF で finance 系是正アクションが本番でも非表示であること。
+- invoice detail の #dunning セクションで督促下書き作成→送信承認申請→承認後 logged が正常動作すること。
+- STAFF で finance 系是正アクション・#dunning セクションが本番でも非表示であること。
+
+---
+
+## Phase 1-15 — 督促（Dunning）下書き＋承認ゲート＋送信記録（2026-06-28）
+
+**位置づけ**: 未回収/延滞の「その場で対処」導線を完成させる最終ピース。既存 CollectionReminder モデル＋dunning_send 承認種別を活用し、**新規DBモデル/フィールドなし・AI生成なし・決定論テンプレートのみ**で督促ドラフト＋承認ゲート付き送信を実装。
+
+### 実装（安全要件の詳細）
+- **純ロジック** `packages/shared/src/dunning.ts`（DB/UI非依存）:
+  - `buildDunningDraft(input)` … 決定論テンプレート。「お支払い状況のご確認」ベースの丁寧な確認文。必須要素: 顧客名/請求番号/請求額/入金済額/未回収額/期日/行き違いの場合はご容赦/ご確認をお願いいたします/お手元の請求書をご確認ください。**禁止表現（法的措置/訴訟/回収に伺/取引停止/至急/最終通告/悪質/債務不履行/信用問題/第三者へ共有/強制/差押/内容証明）を一切含まない**。
+  - `isDunningEligible(invoiceStatus, paidAmount, total, receivableStatus)` … DRAFT/PAID/VOID は対象外、全額入金済みは対象外、receivable collected は対象外。
+- **オーケストレーション** `apps/web/lib/domains/finance/dunning.ts`（invoice-send.ts 安全パターン準拠）:
+  - `getDunningContext(actor, invoiceId)` … Invoice+Receivable+CollectionReminder+ApprovalRequest の状態を読み取り UI に渡す。
+  - `createDunningDraft(actor, invoiceId)` … get-or-create パターン（draft/pending_approval 既存時は再利用、重複下書き防止）。
+  - `requestDunningSend(actor, reminderId)` … `dunning_send` 承認申請。PENDING 重複防止。`assertAiToolAllowed`（AIは送信不可）。`prepareExternalPayload`（PII マスク）。
+  - `executeDunningSend(actor, reminderId)` … `EXTERNAL_SEND_ENABLED=false` なら logged のみ（実送信せず記録）。宛先メール無しは送信不可。**Receivable.status は変更しない**（collected は入金時のみ）。
+- **Server Actions** `apps/web/app/(app)/invoices/actions.ts`:
+  - `createDunningDraftAction` / `requestDunningSendApprovalAction` / `executeApprovedDunningSendAction`（3本とも薄い: requireUser→hasPermission(invoice:update)→lib→redirect）。
+  - `executeApprovedDunningSendAction` は `executeApprovedAction` 経由（二重実行防止）。
+- **Invoice 詳細 UI** `apps/web/app/(app)/invoices/[id]/page.tsx`:
+  - `#dunning` セクション（入金履歴の前）。`isDunningEligible` かつ `canUpdate` 時のみ表示。
+  - 下書き作成ボタン → 下書き本文表示 → 送信承認申請ボタン → 承認待ち/送信済み/logged 表示。
+  - 宛先メール無しは「送信先メールアドレスが未登録です」表示。
+- **承認ページ** `apps/web/app/(app)/approvals/page.tsx`: `dunning_send: '督促送信（お支払い状況の確認）'` ラベル追加。
+- **Golden Path 統合** `packages/shared/src/golden-path-actions.ts`:
+  - 延滞/未回収の href を `/invoices/{id}#dunning` へ変更（Phase 1-14 の `/invoices/{id}` から深化）。
+  - actionLabel を「入金確認・督促を作成」へ。invoiceId 無し時は `#finance-summary` フォールバック。
+
+### 安全ポリシー（遵守確認）
+- 外部送信は**必ず承認ゲート経由**（dunning_send 承認→executeApprovedAction）
+- AI は勝手に送信しない（assertAiToolAllowed）
+- EXTERNAL_SEND_ENABLED を壊さない（false=logged のみ）
+- **威圧的・法的断定のある督促文面にしない**（13 禁止表現をテストで検証）
+- STAFF に finance/督促を出さない（ABAC + finance:read ゲート）
+- PAID/DRAFT/VOID には督促を出さない（isDunningEligible）
+- Receivable を送信だけで collected にしない（入金時のみ）
+- 新規DBモデル/フィールドは追加しない（CollectionReminder 既存を活用）
+- AI生成を使わない（決定論テンプレートのみ）
+
+### 権限制御
+- invoice detail の #dunning セクションは `canUpdate`（invoice:update）かつ `isDunningEligible` 時のみ表示。
+- invoice detail 自体は既存 ABAC（FINANCIAL_CONFIDENTIAL）で STAFF 遮断。
+- AttentionList の督促アクションは `requiresFinance=true` ＋ `visibleGoldenPathActions` で STAFF 非表示。
+- 督促操作は OWNER が invoice:update で実行可能。STAFF への非表示は finance:read ゲートで担保。
+
+### テスト
+- unit **211**（+8）: `dunning.test.ts`（テンプレ必須要素・禁止表現・null 入力フォールバック・eligibility）、`golden_path_actions.test.ts` 拡張（#dunning deep link・督促 label・finance 権限フィルタ）。
+- integration **96**（+8）: `p1_15_dunning.itest.ts`（eligibility+テンプレ・下書き作成・重複下書き防止・dunning_send 承認申請・PENDING 重複防止・EXTERNAL_SEND_ENABLED=false→logged・宛先メール無し送信不可・RBAC[finance:read ゲート]・tenant分離）。
+- e2e: `dunning.spec.ts`（#dunning セクション表示・下書き作成・送信承認申請ボタン・承認ページラベル・planning-hokko deep link・STAFF dunning 非表示）。CI/実環境で実行。
+
+### まだ残る弱点（正直な評価）
+- 督促は1通のみ（リマインダー間隔・段階別テンプレートは未実装）。
+- 実送信（EXTERNAL_SEND_ENABLED=true）の配信/バウンス/再送設計は未了。
+- 督促文面のカスタマイズ（テナント別テンプレート）は未実装。
+- CollectionReminder に subject 列がない（subject は表示時に deterministic 生成）。
+
+### 次にやるべきこと
+1. completedAt を用いたリードタイム・月次完了率の時系列 KPI。
+2. 関数名リネーム（requestInvoiceSend→finalize 系）。
+3. 横展開（会計本体/銀行API/OCR/契約/給与/労務/AI社員本体）は引き続き対象外。

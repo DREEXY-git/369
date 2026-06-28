@@ -7,6 +7,7 @@ import { prisma, writeAudit } from '@/lib/db';
 import { executeApprovedAction } from '@/lib/approval';
 import { requestInvoiceExternalSend, executeInvoiceExternalSend } from '@/lib/domains/finance/invoice-send';
 import { recordInvoicePayment } from '@/lib/domains/finance/payments';
+import { createDunningDraft, requestDunningSend, executeDunningSend } from '@/lib/domains/finance/dunning';
 
 interface LineInput {
   name: string;
@@ -133,4 +134,56 @@ export async function recordPaymentAction(formData: FormData) {
   const res = await recordInvoicePayment({ tenantId: user.tenantId, userId: user.userId }, id, amount, method);
   revalidatePath(`/invoices/${id}`);
   redirect(res.ok ? `/invoices/${id}?paid=1` : `/invoices/${id}?error=${res.reason}`);
+}
+
+/** 督促（お支払い状況の確認）下書きを作成。未回収/延滞のみ。業務ロジックは lib/domains/finance/dunning.ts。 */
+export async function createDunningDraftAction(formData: FormData) {
+  const user = await requireUser();
+  const id = String(formData.get('id') ?? '');
+  if (!hasPermission(user, 'invoice', 'update')) redirect(`/invoices/${id}?denied=1`);
+  const res = await createDunningDraft({ tenantId: user.tenantId, userId: user.userId }, id);
+  revalidatePath(`/invoices/${id}`);
+  redirect(res.ok ? `/invoices/${id}?dunning_draft=1#dunning` : `/invoices/${id}?error=${res.reason}#dunning`);
+}
+
+/** 督促送信を申請（dunning_send 承認・重複防止）。実送信は承認後。 */
+export async function requestDunningSendApprovalAction(formData: FormData) {
+  const user = await requireUser();
+  const id = String(formData.get('id') ?? '');
+  const reminderId = String(formData.get('reminderId') ?? '');
+  if (!hasPermission(user, 'invoice', 'update')) redirect(`/invoices/${id}?denied=1`);
+  const res = await requestDunningSend({ tenantId: user.tenantId, userId: user.userId }, reminderId);
+  revalidatePath(`/invoices/${id}`);
+  revalidatePath('/approvals');
+  redirect(res.ok ? `/invoices/${id}?dunning_requested=1#dunning` : `/invoices/${id}?error=${res.reason}#dunning`);
+}
+
+/** 承認済み督促を送信/記録。業務ロジックは dunning.ts。二重実行防止は executeApprovedAction。 */
+export async function executeApprovedDunningSendAction(formData: FormData) {
+  const user = await requireUser();
+  if (!hasPermission(user, 'invoice', 'update')) redirect('/invoices?denied=1');
+  const approvalId = String(formData.get('approvalId') ?? '');
+  const req = await prisma.approvalRequest.findFirst({ where: { id: approvalId, tenantId: user.tenantId, entityType: 'CollectionReminder', requestedForAction: 'dunning_send' } });
+  if (!req) redirect('/invoices?error=notfound');
+  const payload = (req!.payloadAfter as { invoiceId?: string; reminderId?: string } | null) ?? {};
+  const reminderId = String(payload.reminderId ?? req!.entityId);
+  const invoiceId = String(payload.invoiceId ?? '');
+
+  let reason: string | undefined;
+  try {
+    const r = await executeApprovedAction(
+      approvalId,
+      async () => {
+        const res = await executeDunningSend({ tenantId: user.tenantId, userId: user.userId }, reminderId);
+        if (!res.ok) throw new Error(res.reason ?? 'send-failed');
+        return res;
+      },
+      { executedById: user.userId },
+    );
+    if (!r.executed) reason = r.reason;
+  } catch (e) {
+    reason = e instanceof Error ? e.message : 'error';
+  }
+  const dest = invoiceId ? `/invoices/${invoiceId}` : '/invoices';
+  redirect(reason ? `${dest}?error=${encodeURIComponent(reason)}#dunning` : `${dest}?dunning_sent=1#dunning`);
 }

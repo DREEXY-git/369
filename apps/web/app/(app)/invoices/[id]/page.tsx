@@ -12,7 +12,11 @@ import {
   recordPaymentAction,
   requestInvoiceExternalSendApprovalAction,
   executeApprovedInvoiceExternalSendAction,
+  createDunningDraftAction,
+  requestDunningSendApprovalAction,
+  executeApprovedDunningSendAction,
 } from '../actions';
+import { getDunningContext } from '@/lib/domains/finance/dunning';
 import { formatJpy, formatDate, formatDateTime, isOverdue, canSendInvoice } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
@@ -66,6 +70,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const canSend = canSendInvoice(invoice.status);
   const sendApproved = sendApproval?.status === 'APPROVED' && !sendApproval.executedAt;
   const sendPending = sendApproval?.status === 'PENDING';
+
+  // 督促（お支払い状況の確認）。未回収/延滞のみ・finance 書込権限（canUpdate）時のみ取得＝STAFF 非表示。
+  const dunning = canUpdate ? await getDunningContext({ tenantId: user.tenantId, userId: user.userId }, invoice.id) : null;
 
   return (
     <div>
@@ -159,6 +166,45 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   <Input name="amount" type="number" placeholder={`未収 ${outstanding}`} defaultValue={outstanding} disabled={!canUpdate} />
                   <Button type="submit" variant="secondary" className="w-full" disabled={!canUpdate}>入金を記録</Button>
                 </form>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {dunning && dunning.eligible ? (
+            <Card id="dunning" className="scroll-mt-4 border-amber-200">
+              <CardHeader><CardTitle>入金確認・督促（お支払い状況の確認）</CardTitle></CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <p className="text-xs text-muted-foreground">未回収 {formatJpy(dunning.outstanding)}。外部送信は必ず承認後（AIは送信しません）。督促メールの実送信は EXTERNAL_SEND_ENABLED 有効時のみ、無効時は記録（ログ）のみ。</p>
+                {dunning.recipient ? null : (
+                  <p className="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">送信先メールアドレスが未登録です（下書き作成・申請は可能ですが、送信は実行できません）。</p>
+                )}
+                {!dunning.reminder ? (
+                  <form action={createDunningDraftAction}>
+                    <input type="hidden" name="id" value={invoice.id} />
+                    <Button type="submit" variant="outline" className="w-full" disabled={!canUpdate}>お支払い状況の確認文面（下書き）を作成</Button>
+                  </form>
+                ) : (
+                  <>
+                    {dunning.draft ? <div className="text-xs font-medium">件名: {dunning.draft.subject}</div> : null}
+                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md border bg-secondary/30 p-2 text-xs">{dunning.reminder.draftMessage}</pre>
+                    {dunning.reminder.status === 'sent' || dunning.reminder.status === 'logged' ? (
+                      <Badge tone="green">督促を{dunning.reminder.status === 'sent' ? '送信済み' : '記録済み（送信ログ）'}</Badge>
+                    ) : dunning.approvedApprovalId ? (
+                      <form action={executeApprovedDunningSendAction}>
+                        <input type="hidden" name="approvalId" value={dunning.approvedApprovalId} />
+                        <Button type="submit" className="w-full" disabled={!canUpdate || !dunning.recipient}>承認済み — 督促を送信/記録</Button>
+                      </form>
+                    ) : dunning.pendingApprovalId ? (
+                      <Badge tone="amber">督促送信承認待ち（/approvals）</Badge>
+                    ) : (
+                      <form action={requestDunningSendApprovalAction}>
+                        <input type="hidden" name="id" value={invoice.id} />
+                        <input type="hidden" name="reminderId" value={dunning.reminder.id} />
+                        <Button type="submit" variant="outline" className="w-full" disabled={!canUpdate}>送信承認を申請</Button>
+                      </form>
+                    )}
+                  </>
+                )}
               </CardContent>
             </Card>
           ) : null}

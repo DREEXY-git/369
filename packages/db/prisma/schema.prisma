@@ -3186,6 +3186,37 @@ model GrowthEvent {
   @@index([tenantId, type])
 }
 
+// UsageEvent: 非課金の利用量台帳（Phase 1-22）。
+// 「誰が・いつ・どの機能を・どれだけ使ったか」の量(quantity)のみを記録する。
+// 金額(amount/price/currency)は持たない＝請求書でも会計イベントでもない。
+// billing は分類ラベル（usage_only|billable_candidate|never_billable）であって課金実行ではない。
+// metadata に PII / secret / 本文（プロンプト・生成文・顧客情報・金額）を入れない。集計補助の非PII値のみ。
+// Tenant/User への relation は張らない（tenantId/actorId はスカラ）。設計詳細: docs/audit/15。
+model UsageEvent {
+  id             String   @id @default(cuid())
+  tenantId       String
+  actorId        String?
+  actorType      String   @default("user") // user | ai_agent | system
+  eventType      String // 例: ai.output.generated | export.generated | external_send.logged
+  category       String // ai | export | external_send | storage | seat | job
+  billing        String   @default("usage_only") // usage_only | billable_candidate | never_billable（分類のみ・課金実行ではない）
+  unit           String   @default("count") // count | token | mb | minute | seat
+  quantity       Decimal  @default(0) @db.Decimal(18, 4) // 量。金額ではない
+  sourceType     String   @default("") // 由来モデル種別（例: ai_output / outreach_send / job_run）
+  sourceId       String?
+  idempotencyKey String // 二重計上防止キー
+  occurredAt     DateTime @default(now())
+  metadata       Json? // PII/secret/本文 不可。集計補助の非PII値のみ
+  createdAt      DateTime @default(now())
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, occurredAt])
+  @@index([tenantId, eventType])
+  @@index([tenantId, category])
+  @@index([tenantId, billing])
+  @@index([tenantId, sourceType, sourceId])
+}
+
 model DXAssessment {
   id          String   @id @default(cuid())
   tenantId    String

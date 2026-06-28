@@ -262,3 +262,21 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - レビュー担当（人間）が内容を確認のうえ GO / HOLD / NG を判定する。
 
 > 注: 本ファイルの作成は「設計の記録」であって「実装の完了」ではない。S1 以降の実装は未着手。
+
+---
+
+## 17. Phase 1-22 実装状況（UsageEvent モデル追加・非課金）
+
+- 実装範囲: **DB の入れ物（model + migration）と統合テストのみ**。emit・課金・決済・請求は含まない。
+- 追加: `UsageEvent` モデルを `packages/db/prisma/schema.prisma` に追加（設計 §5 の疑似スキーマを実体化）。
+  - フィールド: id / tenantId / actorId / actorType / eventType / category / billing / unit /
+    quantity Decimal(18,4) / sourceType / sourceId / idempotencyKey / occurredAt / metadata Json / createdAt。
+  - 制約: `@@unique([tenantId, idempotencyKey])`（二重計上防止）＋ index 5本（occurredAt/eventType/category/billing/sourceType+sourceId）。
+  - Tenant/User への relation は張らない（tenantId/actorId はスカラ）。
+- migration: `20260628183116_p1_22_usage_event`（**CREATE TABLE と index のみ／既存テーブルの DROP・ALTER なし**＝非破壊）。
+- テスト: `packages/db/src/__tests__/p1_22_usage_event.itest.ts`（作成/既定値/二重計上不可/別tenant同key可/tenant分離/billing 3分類）。
+- **まだ emit していない**（利用量を記録するアプリコードは未実装）。
+- **まだ課金していない**。billing は分類ラベルのみ。**amount / price / currency は持たない**。
+- metadata に PII / secret / 本文 / 金額を入れない方針を維持（テストデータも非PIIの例のみ）。
+- 課金・決済・請求・サブスク・プラン制御・上限 enforcement は**一切行っていない**。
+- 次は別承認で Phase 1-23「非課金 usage 記録 emit」の候補（安全な発火点から idempotencyKey 付きで記録。金額なし）。実課金はさらに先（§11 の安全条件＋人間承認が前提）。

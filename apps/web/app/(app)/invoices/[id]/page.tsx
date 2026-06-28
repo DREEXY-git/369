@@ -71,8 +71,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const sendApproved = sendApproval?.status === 'APPROVED' && !sendApproval.executedAt;
   const sendPending = sendApproval?.status === 'PENDING';
 
-  // 督促（お支払い状況の確認）。未回収/延滞のみ・finance 書込権限（canUpdate）時のみ取得＝STAFF 非表示。
-  const dunning = canUpdate ? await getDunningContext({ tenantId: user.tenantId, userId: user.userId }, invoice.id) : null;
+  // 督促（お支払い状況の確認）。未回収/延滞のみ。invoice:update に加え finance:read を必須化
+  // （STAFF は invoice:update を持つが finance:read を持たないため非表示。server action 側でも同条件で遮断）。
+  const canViewFinance = hasPermission(user, 'finance', 'read');
+  const dunning = canUpdate && canViewFinance ? await getDunningContext({ tenantId: user.tenantId, userId: user.userId }, invoice.id) : null;
 
   return (
     <div>

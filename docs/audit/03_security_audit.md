@@ -150,4 +150,11 @@
 - **督促の finance 機密保護**: invoice detail の #dunning セクションは既存 ABAC（FINANCIAL_CONFIDENTIAL）で STAFF 遮断。AttentionList の督促アクションは `requiresFinance=true` で STAFF 非表示。
 - **Receivable 不変**: 督促送信で Receivable.status を collected にしない（入金時のみ変更）。
 - 宛先メール無しは送信不可（no-recipient ガード）。新規DBモデル/フィールドなし。
-残: レート制限、CSP、MFA、改ざん検知。
+
+### Phase 1-15 ローカル検証時の是正（2026-06-28）
+
+- **督促 server action の権限を server 側で強化（直叩き耐性）**: `createDunningDraftAction` / `requestDunningSendApprovalAction` / `executeApprovedDunningSendAction` は従来 `invoice:update` のみで判定していた。**STAFF は `invoice:update` を持つ**ため、UI 非表示（invoice detail の ABAC）だけに依存すると server action 直叩きで督促を駆動できる懸念があった。→ 3 アクションに `finance:read` を必須化（`invoice:update` かつ `finance:read`）。STAFF は `finance:read` 非保有のため遮断。invoice detail の #dunning 表示条件も同条件（`canUpdate && canViewFinance`）に統一。
+- **権限境界テストを強化**: `p1_15_dunning.itest.ts` で「`invoice:update` かつ `finance:read`」の複合境界（OWNER/EXECUTIVE/DEPARTMENT_MANAGER=可、STAFF=不可）を検証。
+- **特定企業名固定を除去**: `apps/web/lib/domains/finance/dunning.ts` の `COMPANY_NAME = 'プランニングホッコー'` を撤去し、`Tenant.name` から解決（未取得時は汎用フォールバック「請求元」）。unit/integration の `companyName` も汎用名へ。
+- 既知の同型課題（本対応の範囲外）: `recordPaymentAction` / 請求書外部送信 action も `invoice:update` のみ（invoice detail ABAC で UI 遮断）。dunning と同じく `finance:read` 追加で server 側多層化するのが望ましい（別タスク）。
+残: レート制限、CSP、MFA、改ざん検知、上記 finance action の server 側権限統一。

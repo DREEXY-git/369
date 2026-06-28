@@ -140,7 +140,9 @@ export async function recordPaymentAction(formData: FormData) {
 export async function createDunningDraftAction(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get('id') ?? '');
-  if (!hasPermission(user, 'invoice', 'update')) redirect(`/invoices/${id}?denied=1`);
+  // 督促は財務機密に属する外部送信系。UI 非表示だけに頼らず、server 側でも finance:read を必須化
+  // （STAFF は invoice:update を持つが finance:read を持たないため直叩きでも遮断される）。
+  if (!hasPermission(user, 'invoice', 'update') || !hasPermission(user, 'finance', 'read')) redirect(`/invoices/${id}?denied=1`);
   const res = await createDunningDraft({ tenantId: user.tenantId, userId: user.userId }, id);
   revalidatePath(`/invoices/${id}`);
   redirect(res.ok ? `/invoices/${id}?dunning_draft=1#dunning` : `/invoices/${id}?error=${res.reason}#dunning`);
@@ -151,7 +153,8 @@ export async function requestDunningSendApprovalAction(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get('id') ?? '');
   const reminderId = String(formData.get('reminderId') ?? '');
-  if (!hasPermission(user, 'invoice', 'update')) redirect(`/invoices/${id}?denied=1`);
+  // 外部送信申請。server 側で finance:read を必須化（STAFF 直叩き遮断）。
+  if (!hasPermission(user, 'invoice', 'update') || !hasPermission(user, 'finance', 'read')) redirect(`/invoices/${id}?denied=1`);
   const res = await requestDunningSend({ tenantId: user.tenantId, userId: user.userId }, reminderId);
   revalidatePath(`/invoices/${id}`);
   revalidatePath('/approvals');
@@ -161,7 +164,8 @@ export async function requestDunningSendApprovalAction(formData: FormData) {
 /** 承認済み督促を送信/記録。業務ロジックは dunning.ts。二重実行防止は executeApprovedAction。 */
 export async function executeApprovedDunningSendAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'invoice', 'update')) redirect('/invoices?denied=1');
+  // 承認済み督促の送信実行。server 側で finance:read を必須化（STAFF 直叩き遮断）。
+  if (!hasPermission(user, 'invoice', 'update') || !hasPermission(user, 'finance', 'read')) redirect('/invoices?denied=1');
   const approvalId = String(formData.get('approvalId') ?? '');
   const req = await prisma.approvalRequest.findFirst({ where: { id: approvalId, tenantId: user.tenantId, entityType: 'CollectionReminder', requestedForAction: 'dunning_send' } });
   if (!req) redirect('/invoices?error=notfound');

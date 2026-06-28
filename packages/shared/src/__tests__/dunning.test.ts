@@ -4,7 +4,7 @@ import { buildDunningDraft, isDunningEligible, type DunningInput } from '../dunn
 function input(overrides: Partial<DunningInput> = {}): DunningInput {
   return {
     customerName: '株式会社サンプル',
-    companyName: 'プランニングホッコー',
+    companyName: '株式会社サンプル請求元',
     invoiceNumber: 'INV-2026-201',
     total: 110000,
     paidAmount: 30000,

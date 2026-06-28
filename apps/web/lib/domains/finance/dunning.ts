@@ -19,8 +19,15 @@ export interface Actor {
   userId?: string | null;
 }
 
-// 送信者（自社）表示。将来 SystemSetting 化可。
-const COMPANY_NAME = 'プランニングホッコー';
+// 送信者（自社）表示は特定企業に固定しない（IKEZAKI OS は特定企業向けではない）。
+// テナント名（Tenant.name）から解決し、取得できない場合は汎用フォールバック「請求元」を用いる。
+const FALLBACK_COMPANY_NAME = '請求元';
+
+/** 送信者（自社）名をテナントから解決。未取得時は汎用フォールバック。 */
+async function resolveCompanyName(tenantId: string): Promise<string> {
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
+  return tenant?.name?.trim() || FALLBACK_COMPANY_NAME;
+}
 
 interface InvoiceWithRel {
   id: string;
@@ -33,12 +40,12 @@ interface InvoiceWithRel {
   receivable: { id: string; status: string } | null;
 }
 
-function draftBodyFromInvoice(inv: InvoiceWithRel): { subject: string; body: string } {
+function draftBodyFromInvoice(inv: InvoiceWithRel, companyName: string): { subject: string; body: string } {
   const total = toNumber(inv.total);
   const paid = toNumber(inv.paidAmount);
   return buildDunningDraft({
     customerName: inv.customer?.name ?? null,
-    companyName: COMPANY_NAME,
+    companyName,
     invoiceNumber: inv.number,
     total,
     paidAmount: paid,
@@ -89,13 +96,15 @@ export async function getDunningContext(actor: Actor, invoiceId: string): Promis
     approvedApprovalId = approvals.find((a) => a.status === 'APPROVED' && a.executedAt == null)?.id ?? null;
   }
 
+  const companyName = eligible ? await resolveCompanyName(actor.tenantId) : FALLBACK_COMPANY_NAME;
+
   return {
     eligible,
     invoiceId: inv.id,
     invoiceNumber: inv.number,
     outstanding: Math.max(total - paid, 0),
     recipient: inv.customer?.email ?? null,
-    draft: eligible ? draftBodyFromInvoice(inv) : null,
+    draft: eligible ? draftBodyFromInvoice(inv, companyName) : null,
     reminder: reminder ? { id: reminder.id, status: reminder.status, draftMessage: reminder.draftMessage, createdAt: reminder.createdAt } : null,
     pendingApprovalId,
     approvedApprovalId,
@@ -120,7 +129,8 @@ export async function createDunningDraft(actor: Actor, invoiceId: string): Promi
   });
   if (existing) return { ok: true, reminderId: existing.id };
 
-  const { body } = draftBodyFromInvoice(inv);
+  const companyName = await resolveCompanyName(actor.tenantId);
+  const { body } = draftBodyFromInvoice(inv, companyName);
   const reminder = await prisma.collectionReminder.create({
     data: { tenantId: actor.tenantId, receivableId: inv.receivable.id, draftMessage: body, status: 'draft' },
   });

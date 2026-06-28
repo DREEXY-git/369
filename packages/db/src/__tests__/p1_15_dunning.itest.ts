@@ -5,7 +5,7 @@
 //        Receivable は collected にしない）/EXTERNAL_SEND_ENABLED=false で logged/宛先メールなしは送信不可/tenant分離/権限。
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma } from '../client';
-import { buildDunningDraft, isDunningEligible, canForRoles } from '@hokko/shared';
+import { buildDunningDraft, isDunningEligible, canForRoles, type RoleKey } from '@hokko/shared';
 import { isExternalSendEnabled } from '@hokko/integrations';
 
 const T = `itest-p115-${Date.now()}`;
@@ -52,7 +52,7 @@ afterAll(async () => {
 describe('督促対象判定 + テンプレート', () => {
   it('未回収 SENT は対象、テンプレートに必須要素が入る', () => {
     expect(isDunningEligible('SENT', 30000, 110000, 'overdue')).toBe(true);
-    const { subject, body } = buildDunningDraft({ customerName: '株式会社テスト', companyName: 'プランニングホッコー', invoiceNumber: 'INV-P115', total: 110000, paidAmount: 30000, outstanding: 80000, dueDate: new Date() });
+    const { subject, body } = buildDunningDraft({ customerName: '株式会社テスト', companyName: '株式会社サンプル請求元', invoiceNumber: 'INV-P115', total: 110000, paidAmount: 30000, outstanding: 80000, dueDate: new Date() });
     expect(subject).toContain('INV-P115');
     expect(body).toContain('80,000円');
     expect(body).toContain('行き違い');
@@ -61,7 +61,7 @@ describe('督促対象判定 + テンプレート', () => {
 
 describe('督促下書き（CollectionReminder）', () => {
   it('下書きを作成・保存できる（draftMessage/status/receivableId）', async () => {
-    const { body } = buildDunningDraft({ customerName: '株式会社テスト', companyName: 'プランニングホッコー', invoiceNumber: 'INV-P115', total: 110000, paidAmount: 30000, outstanding: 80000, dueDate: new Date() });
+    const { body } = buildDunningDraft({ customerName: '株式会社テスト', companyName: '株式会社サンプル請求元', invoiceNumber: 'INV-P115', total: 110000, paidAmount: 30000, outstanding: 80000, dueDate: new Date() });
     const reminder = await prisma.collectionReminder.create({ data: { tenantId: T, receivableId, draftMessage: body, status: 'draft' } });
     expect(reminder.status).toBe('draft');
     expect(reminder.draftMessage).toContain('INV-P115');
@@ -118,14 +118,21 @@ describe('承認済み督促の送信実行（効果）', () => {
 });
 
 describe('権限と tenant 分離', () => {
-  it('督促操作は OWNER 可。STAFF への督促非表示は finance 機密ゲートで担保', () => {
-    // OWNER は督促操作（invoice:update）可。
-    expect(canForRoles(['OWNER'], 'invoice', 'update')).toBe(true);
-    // STAFF も invoice:update RBAC は持つが、督促非表示は別レイヤで担保:
-    //  - invoice detail ページの ABAC（FINANCIAL_CONFIDENTIAL）で STAFF を遮断
-    //  - AttentionList の督促アクションは finance:read（STAFF=false）で redact/非表示
+  it('督促操作の権限境界 = invoice:update かつ finance:read。STAFF は finance:read 不足で server 側でも不可', () => {
+    // 督促 server action（createDunningDraftAction / requestDunningSendApprovalAction /
+    // executeApprovedDunningSendAction）が要求する複合ガードと同一の判定を RBAC レベルで検証する。
+    // （server action は 'use server' のため db テストから直接 import 不可 → 権限境界を直接表現して証明）
+    const canDunning = (roles: RoleKey[]) =>
+      canForRoles(roles, 'invoice', 'update') && canForRoles(roles, 'finance', 'read');
+    expect(canDunning(['OWNER'])).toBe(true);
+    expect(canDunning(['EXECUTIVE'])).toBe(true);
+    expect(canDunning(['DEPARTMENT_MANAGER'])).toBe(true);
+    // STAFF は invoice:update を持つが finance:read を持たない → 複合ガードで不可（UI 非表示だけに依存しない）。
+    expect(canDunning(['STAFF'])).toBe(false);
+    expect(canForRoles(['STAFF'], 'invoice', 'update')).toBe(true);
     expect(canForRoles(['STAFF'], 'finance', 'read')).toBe(false);
-    expect(canForRoles(['OWNER'], 'finance', 'read')).toBe(true);
+    // 多層防御の補助: invoice detail ページの ABAC（FINANCIAL_CONFIDENTIAL）と
+    // AttentionList の finance:read フィルタも STAFF を遮断する。
   });
 
   it('別テナントの請求・督促は見えない', async () => {

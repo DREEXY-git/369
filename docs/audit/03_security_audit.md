@@ -178,4 +178,5 @@
 - **`createInvoiceAction` は据置**（invoice:create のまま）。DRAFT 生成のみ（Receivable/送信/会計計上なし＝可逆・低リスク）で、営業/STAFF の請求下書き作成は維持（案B）。
 - lib/schema/RBAC/ABAC/UI 不変。新規DBモデル/migration/approval type なし。テスト: `p1_10_invoice_payment.itest.ts` に発行の権限境界テスト追加。
 - フォローアップ（範囲外）: `/invoices` 一覧・`/invoices/new` の finance ABAC 不在、issue の承認ゲート化（案D）、AutomationLevel/会社ポリシー化。
+- **本番確認 GO（2026-06-28・利用者ブラウザ確認）**: `3ab1435` を本番（main）で実機確認し、OWNER 請求発行（DRAFT→ISSUED・Receivable 起票・実送信なし）／STAFF は請求発行・外部送信申請・入金記録すべて不可／下書き作成は据置動作を確認。詳細は `docs/audit/14_release_stabilization.md` §24。
 残: レート制限、CSP、MFA、改ざん検知、上記フォローアップ。

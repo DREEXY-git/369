@@ -190,4 +190,15 @@
 - **STAFF の請求一覧/作成は一旦停止**。営業/STAFF の下書き業務は当面 Quote(見積) で担保。STAFF 向けマスク/スコープ付き請求ドラフトは将来の案E（別タスク）。
 - `issueInvoiceAction`・詳細ページ・invoice-send/payments/dunning・RBAC/ABAC 定義・schema は不変。新規DBモデル/migration/approval type なし。テスト: `p1_10_invoice_payment.itest.ts` に create/一覧の権限境界テスト追加。
 - **本番確認 GO（2026-06-28・利用者ブラウザ確認）**: `5789516` を本番（main）で実機確認し、OWNER 一覧/作成/下書き動作・STAFF は一覧/作成/詳細/発行/外部送信/入金/#dunning すべて遮断を確認。ADMIN/READ_ONLY の一覧閲覧可・作成不可は実機未確定（RBAC テストで担保）。詳細は `docs/audit/14_release_stabilization.md` §25。
+
+### Phase 1-19 ローカル是正（承認一覧・朝報の finance 閲覧露出を遮断・2026-06-28）
+
+- 横断棚卸し（`docs/audit/14` 監査）で、Phase 1-15〜1-18 の境界外に finance 情報の閲覧露出が残存していた:
+  - **`/approvals`**: `requireUser` のみで、非承認者(STAFF)にも PENDING/recent 承認の title/summary を描画。title に請求金額（`請求書送信: INV-xxx（NNN円）`）・請求番号が載り、Phase 1-18 で /invoices から隠した請求情報が承認一覧経由で漏れる抜け穴だった（P0・読み取り露出）。
+  - **`/reports/morning`**: `requireUser` のみで、売上・原価・粗利・売掛延滞などの財務指標を画面表示し、かつ AI 朝報生成（`generateMorningReport`）・異常検知（`detectAnomalies`）の入力にも投入していた（P1）。
+- 是正:
+  - `/approvals`: 閲覧を **`approval:approve` 必須**化し、データ取得（findMany）前に `AccessDenied` で遮断。承認者は finance:read も保有するため finance 情報の漏えいなし。STAFF/READ_ONLY/EXTERNAL は遮断。`payloadAfter`/recipient/maskedPreview は従来どおり非描画。
+  - `/reports/morning`: `finance:read` 非保有者には売上/原価/粗利/売掛延滞を **redact（0/neutral）** し、**AI 入力・異常検知・画面のすべてに redact 後の値**を使用（画面 redact のすり抜け防止）。非財務指標（タスク/リード/承認件数/苦情/契約更新）は維持。`canViewFinance=false` 時は非表示の注記を表示。
+  - UX 補強: 非finance ユーザーには 0 を実績と誤解させないため、AI本文カードを固定の安全文へ差し替え、財務由来の「売上機会」カードを非表示にする。
+- RBAC/ABAC 定義・schema・各 action・lib は不変。新規DBモデル/migration/approval type なし。テスト: `p1_10_invoice_payment.itest.ts` に approvals 閲覧境界（approval:approve）と morning 財務表示境界（finance:read）を追加。
 残: レート制限、CSP、MFA、改ざん検知、案E（STAFF向けマスク/スコープ請求）、AutomationLevel/会社ポリシー化。

@@ -169,6 +169,27 @@ describe('Cashflow summary + approval + tenant isolation', () => {
     expect(canForRoles(['STAFF'], 'finance', 'read')).toBe(false);
   });
 
+  it('Phase 1-19: /approvals 閲覧境界 = approval:approve（STAFF/READ_ONLY/EXTERNAL 不可）', () => {
+    // 承認一覧（Decision Inbox）は finance を含む重要操作の title/summary を載せるため、閲覧を承認者に限定。
+    const canViewApprovals = (roles: RoleKey[]) => canForRoles(roles, 'approval', 'approve');
+    expect(canViewApprovals(['OWNER'])).toBe(true);
+    expect(canViewApprovals(['EXECUTIVE'])).toBe(true);
+    expect(canViewApprovals(['ADMIN'])).toBe(true);
+    expect(canViewApprovals(['DEPARTMENT_MANAGER'])).toBe(true);
+    expect(canViewApprovals(['STAFF'])).toBe(false);
+    expect(canViewApprovals(['READ_ONLY'])).toBe(false);
+    expect(canViewApprovals(['EXTERNAL_EXPERT'])).toBe(false);
+    expect(canViewApprovals(['EXTERNAL_PARTNER'])).toBe(false);
+  });
+
+  it('Phase 1-19: /reports/morning の財務指標表示境界 = finance:read（STAFF は redact）', () => {
+    // 朝報の売上・原価・粗利・売掛延滞は finance:read 保有者のみ。非保有は画面・AI 入力ともに redact。
+    expect(canForRoles(['OWNER'], 'finance', 'read')).toBe(true);
+    expect(canForRoles(['EXECUTIVE'], 'finance', 'read')).toBe(true);
+    expect(canForRoles(['DEPARTMENT_MANAGER'], 'finance', 'read')).toBe(true);
+    expect(canForRoles(['STAFF'], 'finance', 'read')).toBe(false);
+  });
+
   it('isolates invoices by tenant', async () => {
     await makeInvoice(T2, 5000, 'ISSUED');
     const fromT = await prisma.invoice.findMany({ where: { tenantId: T, total: 5000 } });

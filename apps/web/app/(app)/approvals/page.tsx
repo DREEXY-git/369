@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, Badge, Button, Input, EmptyState } from '@/components/ui';
 import { SeverityBadge } from '@/components/badges';
+import { AccessDenied } from '@/components/access-denied';
 import { decideApprovalAction } from './actions';
 import { formatDateTime } from '@hokko/shared';
 
@@ -21,6 +22,18 @@ const TYPE_LABEL: Record<string, string> = {
 export default async function ApprovalsPage() {
   const user = await requireUser();
   const canApprove = hasPermission(user, 'approval', 'approve');
+  // 承認一覧（Decision Inbox）は外部送信・契約・請求・権限・削除など重要操作の title/summary を含み、
+  // 請求金額・請求番号など finance 機密も載る。閲覧は承認者（approval:approve）に限定し、データ取得前に遮断する
+  // （Phase 1-18 で /invoices から隠した請求情報が承認一覧経由で漏れる抜け穴を塞ぐ・Phase 1-19）。
+  if (!canApprove) {
+    return (
+      <AccessDenied
+        title="承認待ち"
+        reason="承認一覧の閲覧には承認権限（approval:approve）が必要です"
+        breadcrumb={[{ label: '承認待ち', href: '/approvals' }]}
+      />
+    );
+  }
   const [pending, recent] = await Promise.all([
     prisma.approvalRequest.findMany({ where: { tenantId: user.tenantId, status: 'PENDING' }, orderBy: { createdAt: 'desc' } }),
     prisma.approvalRequest.findMany({ where: { tenantId: user.tenantId, status: { not: 'PENDING' } }, orderBy: { decidedAt: 'desc' }, take: 10 }),
@@ -29,12 +42,6 @@ export default async function ApprovalsPage() {
   return (
     <div>
       <PageHeader title="承認待ち" description="外部送信・見積発行・契約・請求などの重要操作は人間の承認が必要です。" />
-
-      {!canApprove ? (
-        <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          あなたのロールには承認権限がありません。閲覧のみ可能です。
-        </div>
-      ) : null}
 
       <Card className="mb-4">
         <CardContent className="space-y-3 pt-4">

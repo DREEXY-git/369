@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
@@ -12,6 +12,9 @@ export const dynamic = 'force-dynamic';
 export default async function MorningReportPage() {
   const user = await requireUser();
   const t = user.tenantId;
+  // 朝報は全社的に閲覧されうる。売上・原価・粗利・売掛延滞などの財務指標は finance:read 保有者のみに限定し、
+  // 表示だけでなく AI 朝報生成の入力からも redact する（画面 redact のすり抜け防止・Phase 1-19）。
+  const canViewFinance = hasPermission(user, 'finance', 'read');
 
   const [dealSum, target, overdue, unhandledLeads, pendingApprovals, stalledDeals, tasks, prevMargin, complaints, expiring] =
     await Promise.all([
@@ -27,17 +30,20 @@ export default async function MorningReportPage() {
       prisma.contract.count({ where: { tenantId: t, renewalDate: { lt: new Date(Date.now() + 60 * 86400000) } } }),
     ]);
 
-  const sales = toNumber(dealSum._sum.amount);
-  const cost = toNumber(dealSum._sum.cost);
-  const grossRate = sales > 0 ? Math.round(((sales - cost) / sales) * 1000) / 10 : 0;
-  const targetVal = toNumber(target?.value, 12_000_000);
+  // 財務指標は finance:read 非保有者には redact（0/neutral）。AI 入力・異常検知・画面のすべてに redact 後の値を使う。
+  const sales = canViewFinance ? toNumber(dealSum._sum.amount) : 0;
+  const cost = canViewFinance ? toNumber(dealSum._sum.cost) : 0;
+  const grossRate = canViewFinance && sales > 0 ? Math.round(((sales - cost) / sales) * 1000) / 10 : 0;
+  const targetVal = canViewFinance ? toNumber(target?.value, 12_000_000) : 0;
+  const overdueShown = canViewFinance ? overdue : 0;
+  const prevMarginShown = canViewFinance ? prevMargin : 0;
 
   const anomalies = detectAnomalies({
     salesActual: sales,
     salesTarget: targetVal,
     grossMarginRate: grossRate,
-    prevGrossMarginRate: prevMargin,
-    overdueReceivableCount: overdue,
+    prevGrossMarginRate: prevMarginShown,
+    overdueReceivableCount: overdueShown,
     highPriorityUnhandledLeads: unhandledLeads,
     stalledDeals,
     pendingApprovals,
@@ -50,7 +56,7 @@ export default async function MorningReportPage() {
     date: formatDate(new Date()),
     salesActual: sales,
     salesTarget: targetVal,
-    overdueCount: overdue,
+    overdueCount: overdueShown,
     unhandledLeads,
     pendingApprovals,
     stalledDeals,
@@ -62,18 +68,30 @@ export default async function MorningReportPage() {
     <div>
       <PageHeader title="AI朝礼レポート" description={`${formatDate(new Date())} ・ AIが経営データから自動生成（社長向け）`} />
 
+      {!canViewFinance ? (
+        <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          財務指標（売上・原価・粗利・売掛・延滞・資金繰り）は閲覧権限がないため非表示です（AI生成にも含めていません）。
+        </div>
+      ) : null}
+
       <Card className="mb-4 border-primary/30 bg-accent/40">
         <CardContent className="pt-4">
           <div className="flex items-start gap-2">
             <span className="text-2xl">🤖</span>
-            <p className="text-sm leading-relaxed">{report.forCeo}</p>
+            {/* 非finance ユーザーには財務 redact 値（0）由来の AI 文を見せず、固定の安全文に差し替え（0 を実績と誤解させない）。 */}
+            <p className="text-sm leading-relaxed">
+              {canViewFinance
+                ? report.forCeo
+                : '本日の朝報では、財務指標（売上・原価・粗利・売掛・延滞・資金繰り）は閲覧権限により非表示です。タスク・リード・承認待ち・顧客対応など、非財務の確認事項を中心にご確認ください。'}
+            </p>
           </div>
         </CardContent>
       </Card>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <ListCard title="📌 今日の重要タスク" items={report.todayTasks} />
-        <ListCard title="💰 今週の売上機会" items={report.salesOpportunities} tone="green" />
+        {/* 売上機会は財務由来。非finance ユーザーには redact(0) 由来の内容を見せないため非表示。 */}
+        {canViewFinance ? <ListCard title="💰 今週の売上機会" items={report.salesOpportunities} tone="green" /> : null}
         <ListCard title="🗺️ 本日対応すべきリード" items={report.leadmapTodo} tone="blue" />
         <ListCard title="❓ 社長確認事項" items={report.confirmations} tone="amber" />
       </div>

@@ -201,4 +201,5 @@
   - `/reports/morning`: `finance:read` 非保有者には売上/原価/粗利/売掛延滞を **redact（0/neutral）** し、**AI 入力・異常検知・画面のすべてに redact 後の値**を使用（画面 redact のすり抜け防止）。非財務指標（タスク/リード/承認件数/苦情/契約更新）は維持。`canViewFinance=false` 時は非表示の注記を表示。
   - UX 補強: 非finance ユーザーには 0 を実績と誤解させないため、AI本文カードを固定の安全文へ差し替え、財務由来の「売上機会」カードを非表示にする。
 - RBAC/ABAC 定義・schema・各 action・lib は不変。新規DBモデル/migration/approval type なし。テスト: `p1_10_invoice_payment.itest.ts` に approvals 閲覧境界（approval:approve）と morning 財務表示境界（finance:read）を追加。
+- **本番確認 GO（2026-06-28・利用者ブラウザ確認）**: `491509a` を本番（main）で実機確認し、承認者 `/approvals` 表示OK／STAFF=AccessDenied（title/summary/金額非表示）／finance権限者の朝報従来どおり／非finance は財務非表示・固定安全文・売上機会非表示／既存 finance フロー維持を確認。**これで finance 境界統一ライン（Phase 1-15〜1-19）をクローズ**。詳細は `docs/audit/14_release_stabilization.md` §26。
 残: レート制限、CSP、MFA、改ざん検知、案E（STAFF向けマスク/スコープ請求）、AutomationLevel/会社ポリシー化。

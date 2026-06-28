@@ -504,3 +504,44 @@ Phase 1-18（請求一覧・作成・`createInvoiceAction` を finance 境界に
 - OWNER 請求一覧/作成/下書き（Receivable・送信なし）、STAFF 全面遮断（一覧・作成・詳細・発行・外部送信・入金・#dunning・Golden Path）、既存 finance フロー継続を**実機確認**。実送信なし。
 - 残（実機未確定・別途確認推奨）: ADMIN/READ_ONLY の一覧閲覧可・作成不可。
 - 次タスク候補：案E（STAFF向けマスク/スコープ請求ドラフト）、issue 承認ゲート化（案D）、AutomationLevel/会社ポリシー化、UsageEvent/課金、本番 E2E 定型化。
+
+## 26. Phase 1-19 本番デプロイ確認完了（利用者確認・2026-06-28）
+Phase 1-19（承認一覧 `/approvals` の閲覧を approval:approve 必須化＋ `/reports/morning` の財務 redact・非finance向けAI本文固定化）`491509a` を `main` へ push 後、
+利用者がブラウザ／Vercel 画面で本番（`main` ソース）を確認した結果を記録する。
+**確認は利用者の Vercel 画面・実ブラウザによるもので、サンドボックスからの本番到達確認ではない**（egress 403）。本番DB操作・実メール送信は発生していない。`491509a` は schema 変更／migration 追加なし。
+
+### 26.1 Vercel Production Deployment
+| 項目 | 確認結果 |
+|------|----------|
+| Commit | **`491509a`** |
+| Branch | **`main`** |
+| Status | **Ready** |
+| Build | **成功** |
+| Prisma `migrate deploy` | **pending なし / schema 変更なし** |
+| Prisma engine error | **なし** |
+| Runtime error | **なし** |
+
+### 26.2 本番 URL スモーク（利用者ブラウザ）
+| 観点 | 結果 |
+|------|------|
+| `/login` / OWNER ログイン | ✅ OK |
+| 承認権限者で `/approvals` 表示・承認/却下フォーム | ✅ OK（PII/secret の不用意な表示なし） |
+| STAFF で `/approvals` | ✅ **AccessDenied**（一覧・title・summary・請求番号・金額すべて非表示） |
+| finance 権限者で `/reports/morning`（AI本文・財務指標・売上機会カード・非財務カード） | ✅ OK（従来どおり） |
+| 非finance ユーザーで `/reports/morning` 財務指標非表示 | ✅ OK |
+| 非finance ユーザーで AI本文が固定安全文・財務実値なし・0が実績に見えない | ✅ OK |
+| 非finance ユーザーで「売上機会」カード非表示・非財務カードは表示 | ✅ OK |
+| 既存 請求一覧/作成/詳細/発行/外部送信申請/入金記録/#dunning | ✅ OK（壊れていない） |
+| 意図しない実メール送信 | ✅ **なし** |
+
+### 26.3 維持確認（壊していないこと）
+- `/approvals` は承認者（approval:approve）限定。承認 title/summary の請求金額・番号が非承認者(STAFF)に漏れない（Phase 1-18 の抜け穴を解消）。承認/却下・実行フローは不変。
+- `/reports/morning` は finance:read 非保有者に財務を画面・AI入力・異常検知すべてで redact。非finance には固定安全文＋「売上機会」非表示で 0 の実績誤認も排除。非財務指標は維持。
+- RBAC/ABAC 定義・schema・各 action・lib は不変。既存 finance フロー（請求一覧/作成/詳細/発行/外部送信/入金/dunning）継続。
+- ※ READ_ONLY / EXTERNAL の `/approvals` 実機確認はフォーム未記入（実機未確定）。RBAC 上は approval:approve 非保有のため遮断（`p1_10_invoice_payment.itest.ts` の閲覧境界テストで担保）。
+
+### 26.4 判定
+- **Phase 1-19 本番反映 完了（GO）**。本番ソース＝`main`（`491509a`）。build / migrate（pending なし・schema 変更なし）/ engine / runtime いずれもエラーなし。
+- 承認一覧の承認者限定、STAFF 遮断、朝報の finance redact（UI＋AI）、非finance の固定安全文・売上機会非表示、既存 finance フロー継続を**実機確認**。実送信なし。
+- **これにより finance 境界統一ライン（Phase 1-15〜1-19）を本番確認込みでクローズ可能**。
+- 次タスク候補（P2）：UsageEvent/課金、案E（STAFF向けマスク/スコープ請求）、issue 承認ゲート化（案D）、AutomationLevel/会社ポリシー化、本番 E2E 定型化。

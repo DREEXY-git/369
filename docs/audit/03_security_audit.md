@@ -179,4 +179,14 @@
 - lib/schema/RBAC/ABAC/UI 不変。新規DBモデル/migration/approval type なし。テスト: `p1_10_invoice_payment.itest.ts` に発行の権限境界テスト追加。
 - フォローアップ（範囲外）: `/invoices` 一覧・`/invoices/new` の finance ABAC 不在、issue の承認ゲート化（案D）、AutomationLevel/会社ポリシー化。
 - **本番確認 GO（2026-06-28・利用者ブラウザ確認）**: `3ab1435` を本番（main）で実機確認し、OWNER 請求発行（DRAFT→ISSUED・Receivable 起票・実送信なし）／STAFF は請求発行・外部送信申請・入金記録すべて不可／下書き作成は据置動作を確認。詳細は `docs/audit/14_release_stabilization.md` §24。
-残: レート制限、CSP、MFA、改ざん検知、上記フォローアップ。
+
+### Phase 1-18 ローカル是正（請求一覧・作成・createInvoiceAction を finance 境界に統一・2026-06-28）
+
+- **請求モジュールの閲覧/作成面を finance 機密として統一（案C）**: これまで `/invoices` 一覧・`/invoices/new` 作成ページは `requireUser` のみで ABAC 無し、`createInvoiceAction` は `invoice:create` のみだった。一覧は全顧客の請求額・未収・延滞、作成は顧客/案件名を STAFF にも露出していた（詳細ページだけ ABAC 保護という不整合）。
+  - `/invoices` 一覧: 請求詳細と同じ ABAC（`assertCanViewConfidential` / `FINANCIAL_CONFIDENTIAL`・entityId='invoice-list'）でデータ取得前に保護。finance:read 非保有（STAFF 等）は `AccessDenied`＋data access log。
+  - `/invoices/new`: 顧客/案件取得前に `invoice:create` かつ `finance:read` を必須化（非保有は `AccessDenied`）。
+  - `createInvoiceAction`: `invoice:create` かつ `finance:read` に統一（直叩き遮断）。
+- **境界**: 一覧閲覧=finance:read 保有（OWNER/EXECUTIVE/ADMIN/DEPARTMENT_MANAGER/READ_ONLY 可、STAFF 不可）。作成=invoice:create かつ finance:read（OWNER/EXECUTIVE/DEPARTMENT_MANAGER 可、STAFF/ADMIN/READ_ONLY/EXTERNAL 不可）。
+- **STAFF の請求一覧/作成は一旦停止**。営業/STAFF の下書き業務は当面 Quote(見積) で担保。STAFF 向けマスク/スコープ付き請求ドラフトは将来の案E（別タスク）。
+- `issueInvoiceAction`・詳細ページ・invoice-send/payments/dunning・RBAC/ABAC 定義・schema は不変。新規DBモデル/migration/approval type なし。テスト: `p1_10_invoice_payment.itest.ts` に create/一覧の権限境界テスト追加。
+残: レート制限、CSP、MFA、改ざん検知、案E（STAFF向けマスク/スコープ請求）、AutomationLevel/会社ポリシー化。

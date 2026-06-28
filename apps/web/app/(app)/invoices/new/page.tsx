@@ -1,13 +1,25 @@
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { InvoiceForm } from '@/components/invoices/invoice-form';
 
 export const dynamic = 'force-dynamic';
 
 export default async function NewInvoicePage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const user = await requireUser();
+  // 請求作成は finance 機密の確定前段。invoice:create かつ finance:read を必須化し、顧客/案件の取得前に遮断する
+  // （権限の無いユーザーに顧客名・案件名を渡さない）。STAFF は invoice:create を持つが finance:read 非保有のため不可。
+  if (!hasPermission(user, 'invoice', 'create') || !hasPermission(user, 'finance', 'read')) {
+    return (
+      <AccessDenied
+        title="請求書の新規作成"
+        reason="請求書の作成には finance（経理）権限が必要です"
+        breadcrumb={[{ label: '請求', href: '/invoices' }, { label: '新規', href: '/invoices/new' }]}
+      />
+    );
+  }
   const sp = await searchParams;
   const [customers, deals] = await Promise.all([
     prisma.customer.findMany({ where: { tenantId: user.tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),

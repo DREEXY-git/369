@@ -17,7 +17,9 @@ interface LineInput {
 
 export async function createInvoiceAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'invoice', 'create')) redirect('/invoices?denied=1');
+  // 請求作成は finance 機密。UI 非表示だけに頼らず server 側でも finance:read を必須化（STAFF 直叩き遮断・Phase 1-18）。
+  // 営業/STAFF の下書き業務は当面 Quote(見積) で担保。STAFF 向けマスク/スコープ付き請求は将来の案E。
+  if (!hasPermission(user, 'invoice', 'create') || !hasPermission(user, 'finance', 'read')) redirect('/invoices?denied=1');
 
   const customerId = String(formData.get('customerId') ?? '') || null;
   const dealId = String(formData.get('dealId') ?? '') || null;

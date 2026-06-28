@@ -143,9 +143,30 @@ describe('Cashflow summary + approval + tenant isolation', () => {
     expect(canIssue(['READ_ONLY'])).toBe(false);
     expect(canIssue(['EXTERNAL_EXPERT'])).toBe(false);
     expect(canIssue(['EXTERNAL_PARTNER'])).toBe(false);
-    // create（下書き作成）は invoice:create のまま＝STAFF も可（据置・finance:read を要求しない）。
+    // RBAC 事実: STAFF は invoice:create を持つ（権限定義は不変）。境界は server action 側の複合ガードで担保。
     expect(canForRoles(['STAFF'], 'invoice', 'create')).toBe(true);
     expect(canForRoles(['OWNER'], 'invoice', 'create')).toBe(true);
+  });
+
+  it('Phase 1-18: 請求作成(createInvoiceAction)/一覧/新規ページの境界 = invoice:create かつ finance:read（STAFF 不可）', () => {
+    // createInvoiceAction と /invoices/new が server 側で要求する複合ガードと同一判定を RBAC レベルで検証。
+    // （一覧 /invoices は finance:read 相当の ABAC=FINANCIAL_CONFIDENTIAL で保護＝finance:read 非保有を遮断）
+    const canCreateInvoice = (roles: RoleKey[]) =>
+      canForRoles(roles, 'invoice', 'create') && canForRoles(roles, 'finance', 'read');
+    expect(canCreateInvoice(['OWNER'])).toBe(true);
+    expect(canCreateInvoice(['EXECUTIVE'])).toBe(true);
+    expect(canCreateInvoice(['DEPARTMENT_MANAGER'])).toBe(true);
+    // STAFF は invoice:create を持つが finance:read 非保有 → 作成は server 側で遮断（Phase 1-18 で据置から変更）。
+    expect(canCreateInvoice(['STAFF'])).toBe(false);
+    // ADMIN/READ_ONLY は invoice:create 非保有のため作成不可。
+    expect(canCreateInvoice(['ADMIN'])).toBe(false);
+    expect(canCreateInvoice(['READ_ONLY'])).toBe(false);
+    expect(canCreateInvoice(['EXTERNAL_EXPERT'])).toBe(false);
+    expect(canCreateInvoice(['EXTERNAL_PARTNER'])).toBe(false);
+    // 一覧閲覧境界 = finance:read（ABAC FINANCIAL_CONFIDENTIAL）。ADMIN/READ_ONLY は閲覧可・作成不可。
+    expect(canForRoles(['ADMIN'], 'finance', 'read')).toBe(true);
+    expect(canForRoles(['READ_ONLY'], 'finance', 'read')).toBe(true);
+    expect(canForRoles(['STAFF'], 'finance', 'read')).toBe(false);
   });
 
   it('isolates invoices by tenant', async () => {

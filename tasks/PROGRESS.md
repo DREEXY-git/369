@@ -3,12 +3,12 @@
 > 進捗・タスク・完了履歴の最小トラッカー（Claude Code / Codex 共通）。詳細仕様は `docs/`、監査は `docs/audit/`。
 
 ## 現在地
-- 本番系列: `main`（Vercel Production）。Phase 1-14 まで本番反映済み。
-- Phase 1-15「督促（Dunning）」: `main` にマージ済み（`9e27a21`）＋ローカル検証時の安全是正を適用。
+- 本番系列: `main`（Vercel Production）。**Phase 1-15 まで本番反映・本番確認完了（`ed1c30d`）**。
+- Phase 1-15「督促（Dunning）」: `9e27a21`（本体）＋ `ed1c30d`（安全是正）を `main` へ push 済み・**Vercel 本番確認 GO**。
 
 ## Phase 1-15 — 督促（Dunning）下書き＋承認ゲート＋送信記録
 
-状態: **ローカル検証完了（GO）／ push 未実施（人間承認待ち）**
+状態: **本番確認完了（GO）** — `origin/main = ed1c30d` push 済み、Vercel 本番確認 GO（2026-06-28・利用者ブラウザ確認）。
 
 ### 実装（main 9e27a21・既存）
 - 純ロジック `packages/shared/src/dunning.ts`（`buildDunningDraft`/`isDunningEligible`、禁止表現13語をテストで排除）。
@@ -25,6 +25,13 @@
 - db:generate ✅ / typecheck ✅(web/worker/db) / lint ✅ / unit `pnpm test` ✅ 23ファイル211 / integration ✅ 15ファイル96（`p1_15_dunning` 8 含む）/ build ✅(BUILD_ID生成)
 - ※ prisma エンジンはサンドボックスのNodeダウンローダがDL不可のため curl で手動取得して検証（`tasks/BLOCKERS.md` 参照）。
 
+### 本番確認（GO・2026-06-28・利用者ブラウザ/Vercel）
+- Vercel Production: Commit `ed1c30d` / Branch `main` / Status Ready / Build 成功 / migrate pendingなし・schema変更なし / engine error なし / runtime error なし。
+- 本番スモーク（検証用請求書）: `/login`・OWNERログイン・`/invoices`・`#dunning`表示・督促下書き作成・送信承認申請・`/approvals`に`dunning_send` すべて OK。承認後は `EXTERNAL_SEND_ENABLED=false` のため **logged/記録済み**。**Receivable は collected にならない**。
+- STAFF: finance 機密拒否・`#dunning` 非表示・Golden Path 経由でも督促非表示。**意図しない実メール送信なし**。総合判定 **GO**。
+- 詳細は `docs/audit/14_release_stabilization.md` §22。
+
 ### 残・次の一手
-- push はユーザー承認後に実施（本番 main へ）。
 - 別タスク: `recordPaymentAction`/請求書外部送信 action も `finance:read` 追加で server 側多層化（同型の直叩き耐性）。
+- 別タスク: UsageEvent / 課金連携（現状 TODO）。
+- 別タスク: 本番 E2E または手動スモークの定型化。

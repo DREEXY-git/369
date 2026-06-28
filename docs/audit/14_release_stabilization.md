@@ -310,3 +310,51 @@ Phase 1-14（Golden Path Inline Corrective Actions）を main へ push 後、利
 - **Phase 1-14 本番反映 完了（GO）**。インライン是正（物流完了・リスク解消・Finance Bridge・送信承認申請・入金記録）が実機で動作し、外部送信ゲートと finance 権限制御（OWNER 表示／STAFF 非表示）を維持。
 - build / migrate（pending なし）/ engine / runtime いずれもエラーなし。本番ソース＝`main`（`8b71d07`）。
 - → **Phase 1-15 以降は別タスク。今回は本番確認の記録のみで、機能開発には着手しない。**
+
+## 22. Phase 1-15 本番デプロイ確認完了（利用者確認・2026-06-28）
+Phase 1-15（督促/Dunning）の安全是正コミット `ed1c30d`（督促 server action に `finance:read` 必須化＋会社名の `Tenant.name`/「請求元」汎用化）を `main` へ push 後、
+利用者がブラウザ／Vercel 画面で本番（`main` ソース）を確認した結果を記録する。
+**確認は利用者の Vercel 画面・実ブラウザによるもので、サンドボックスからの本番到達確認ではない**（サンドボックスは本番URL/Vercelとも egress 403 で到達不可）。本番DB操作・実メール送信は発生していない。
+
+### 22.1 Vercel Production Deployment
+| 項目 | 確認結果 |
+|------|----------|
+| Commit | **`ed1c30d`** |
+| Branch | **`main`** |
+| Status | **Ready** |
+| Build | **成功** |
+| Prisma `migrate deploy` | **pending なし / schema 変更なし**（`ed1c30d` は migration 追加なし） |
+| Prisma engine error | **なし** |
+| Runtime error | **なし** |
+
+### 22.2 本番 URL スモーク（利用者ブラウザ・検証用請求書）
+| 観点 | 結果 |
+|------|------|
+| `/login` | ✅ OK |
+| OWNER ログイン | ✅ OK |
+| `/invoices` | ✅ OK |
+| 確認に使った請求書 | 検証用請求書（実顧客請求書は不使用） |
+| `/invoices/[id]#dunning`（入金確認・督促） | ✅ OK |
+| 督促下書き作成 | ✅ OK |
+| 送信承認申請 | ✅ OK |
+| `/approvals` に `dunning_send` 表示 | ✅ OK |
+| 承認後の送信/記録 | ✅ **logged / 記録済み**（`EXTERNAL_SEND_ENABLED=false`） |
+| Receivable が `collected` に変わらない | ✅ OK |
+| STAFF で同じ請求書 URL | ✅ **finance 機密拒否** |
+| STAFF で `#dunning` カード非表示 | ✅ OK |
+| STAFF が Golden Path 経由でも督促アクション非表示 | ✅ OK |
+| 意図しない実メール送信 | ✅ **なし** |
+
+### 22.3 維持確認（壊していないこと）
+- **外部送信ゲート維持**：督促送信は `dunning_send` 申請→承認→`executeApprovedAction`（二重実行防止）。`EXTERNAL_SEND_ENABLED=false` により**実メール送信なし（logged のみ）**。
+- **finance 機密保護維持**：督促 server action は `invoice:update` かつ `finance:read`。STAFF は finance:read 非保有のため server 側で遮断＋invoice detail ABAC＋Golden Path の finance:read フィルタで多層に非表示。
+- **Receivable 不変**：督促送信だけでは `collected` にしない（入金時のみ）。
+- PII / secret は記録していない。実顧客ではなく検証用請求書で確認。
+
+### 22.4 判定
+- **Phase 1-15 本番反映 完了（GO）**。本番ソース＝`main`（`ed1c30d`）。build / migrate（pending なし・schema 変更なし）/ engine / runtime いずれもエラーなし。
+- OWNER 督促フロー（下書き→承認申請→承認→送信/記録 logged）、STAFF 権限制御（finance 機密拒否・#dunning 非表示・Golden Path 非表示）、外部送信ゲート、Receivable 不変を**実機確認**。
+- 次タスク候補：
+  - `recordPaymentAction` / 請求書外部送信 action の `finance:read` server 側統一（dunning と同型の直叩き耐性）
+  - UsageEvent / 課金連携（現状 TODO）
+  - 本番 E2E または手動スモークの定型化

@@ -112,3 +112,10 @@
 - integration: **88**（+8）。`p1_14_inline_corrective_actions.itest.ts`（物流 done→status=done/completedAt・遷移規則[todo→done可/blocked→done不可]・リスク resolved・Finance Bridge は finance:create 必須[RBAC]・invoice_send 申請の重複なし・入金で Invoice/Receivable/Payment/FinanceEvent 整合更新・tenant分離）。
 - e2e: `golden_path_inline.spec.ts`（リスク解消/物流完了ボタン・送信申請/入金フォーム・STAFF finance 非表示）。CI/実環境で実行。
 - 6検証コマンド: db:generate / typecheck / test(203) / lint / build / integration(88) すべて green。
+
+## Phase 1-15 更新（2026-06-28）— 督促（Dunning）
+
+- unit: **211**（+8）。`dunning.test.ts`（テンプレ必須要素[顧客名/請求番号/金額/期日/行き違い/ご容赦/ご確認]・禁止表現13語の不在検証・null入力フォールバック[ご担当者/別途ご相談]・eligibility[SENT/PARTIALLY_PAID可・DRAFT/PAID/VOID不可・全額入金不可・collected不可]）。`golden_path_actions.test.ts` 拡張（#dunning deep link・督促 label・finance 権限フィルタ）。
+- integration: **96**（+8）。`p1_15_dunning.itest.ts`（eligibility+テンプレ・下書き作成[draftMessage/status]・重複下書き防止[get-or-create]・dunning_send 承認申請・PENDING 重複防止・EXTERNAL_SEND_ENABLED=false→logged/Receivable 不変・宛先メール無し送信不可・RBAC[OWNER=invoice:update可/STAFF=finance:read不可]・tenant分離）。
+- e2e: `dunning.spec.ts`（#dunning セクション表示・下書き作成・送信承認申請ボタン・承認ページ dunning_send ラベル・planning-hokko #dunning deep link・STAFF dunning 非表示）。CI/実環境で実行。
+- 6検証コマンド: db:generate / typecheck / test(211) / lint / build / integration(96) すべて green。

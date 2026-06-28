@@ -27,12 +27,15 @@ const eventAnchor = (eventId: string, anchor: string) => `/operations/events/${e
 // 請求書 deep link。invoiceId 不明時は案件の財務サマリーへフォールバック。
 const invoiceHref = (ctx: GoldenPathActionContext) =>
   ctx.invoiceId ? `/invoices/${ctx.invoiceId}` : eventAnchor(ctx.eventId, 'finance-summary');
+// 未回収/延滞は請求書の督促セクション（#dunning）へ（Phase 1-15）。入金記録も督促下書きも同セクション付近で対応。
+const dunningHref = (ctx: GoldenPathActionContext) =>
+  ctx.invoiceId ? `/invoices/${ctx.invoiceId}#dunning` : eventAnchor(ctx.eventId, 'finance-summary');
 
 // reason → 是正アクション定義。href テンプレートと finance 要否を一元管理。
-// actionLabel は「見るだけ」でなく「その場で対処につながる」実行性のある文言にする（Phase 1-14）。
+// actionLabel は「見るだけ」でなく「その場で対処につながる」実行性のある文言にする（Phase 1-14/1-15）。
 const ACTION_DEFS: Record<AttentionReasonCode, ActionDef> = {
-  overdue_receivable: { actionLabel: '入金を記録', requiresFinance: true, href: invoiceHref },
-  unpaid: { actionLabel: '入金を記録', requiresFinance: true, href: invoiceHref },
+  overdue_receivable: { actionLabel: '入金確認・督促を作成', requiresFinance: true, href: dunningHref },
+  unpaid: { actionLabel: '入金確認・督促を作成', requiresFinance: true, href: dunningHref },
   unsent_invoice: { actionLabel: '請求書送信を申請', requiresFinance: true, href: invoiceHref },
   low_margin: { actionLabel: '原価・売上を見直す', requiresFinance: true, href: (c) => eventAnchor(c.eventId, 'finance-summary') },
   high_risk: { actionLabel: 'リスクを確認・解消', requiresFinance: false, href: (c) => eventAnchor(c.eventId, 'risks') },

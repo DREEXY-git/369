@@ -182,3 +182,12 @@ Phase 1-11 完了後、機能追加の前に本番足場固めを実施。詳細
 利用者が Vercel 本番（`main` / `8b71d07`）を実機確認: Deployment Ready／build 成功／schema 変更なし・migrate pending なし／engine・runtime エラーなし／本番 URL スモーク（物流完了ボタン→案件詳細へ戻り status=done 反映・リスク解消ボタン・invoice 送信承認申請/承認待ち/承認済み送信/入金記録・延滞ヒント・OWNER finance 表示／STAFF 非表示・外部送信ゲート維持・督促メール未実装のまま）OK。詳細は `14_release_stabilization.md` §21。
 → **Phase 1-14 本番反映完了。次 Phase に進める状態。ただし次 Phase は利用者確認後に着手。**
 次候補: ①督促（dunning）の承認付きドラフト＋送信申請（実送信は承認後）／②completedAt を用いたリードタイム KPI／③関数名リネーム（requestInvoiceSend→finalize 系）。横展開は引き続き対象外。
+
+## Phase 1-15 完了 → 次の計画（2026-06-28）
+
+完了: **督促（Dunning）下書き＋承認ゲート＋送信記録**。純ロジック `packages/shared/src/dunning.ts`（決定論テンプレート＋eligibility判定）＋オーケストレーション `apps/web/lib/domains/finance/dunning.ts`（getDunningContext/createDunningDraft/requestDunningSend/executeDunningSend）＋薄い Server Actions 3本＋Invoice 詳細 #dunning セクション＋承認ページ dunning_send ラベル＋Golden Path #dunning deep link。既存 CollectionReminder を活用し**新規DBモデル/フィールドなし・AI生成なし・禁止表現テスト付き決定論テンプレート**。外部送信は承認ゲート経由・EXTERNAL_SEND_ENABLED=false で logged のみ。Receivable は入金時のみ collected。unit 211 / integration 96、6コマンド green。
+
+次（Phase 2 候補）:
+1. completedAt を用いたリードタイム・月次完了率の時系列 KPI。
+2. 関数名リネーム（requestInvoiceSend→finalize 系）。
+3. 横展開（会計本体/銀行API/OCR/契約/給与/労務/AI社員本体）は引き続き対象外。

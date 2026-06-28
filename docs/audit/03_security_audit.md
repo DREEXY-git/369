@@ -170,4 +170,12 @@
 - **テスト**: `p1_10_invoice_payment.itest.ts` に権限境界テストを追加（OWNER/EXECUTIVE/DEPARTMENT_MANAGER=可、STAFF/ADMIN/READ_ONLY/EXTERNAL=不可）。新規DBモデル/migration なし。
 - 範囲外（フォローアップ判断）: `createInvoiceAction`（invoice:create）/ `issueInvoiceAction`（invoice:update＋Receivable 起票）も finance 機密ページ上の操作だが、STAFF の請求作成/発行を遮断するかは製品判断を伴うため未変更。
 - **本番確認 GO（2026-06-28・利用者ブラウザ確認）**: `addbd82` を本番（main）で実機確認し、OWNER 請求・入金フロー動作／STAFF は外部送信申請・承認済み送信・入金記録すべて不可を確認。詳細は `docs/audit/14_release_stabilization.md` §23。
-残: レート制限、CSP、MFA、改ざん検知、createInvoice/issueInvoice の権限方針判断。
+
+### Phase 1-17 ローカル是正（請求発行 issueInvoiceAction の finance 権限境界統一・2026-06-28）
+
+- **請求発行を finance 機密の確定操作として server 側で保護**: `issueInvoiceAction`（DRAFT→ISSUED＋`Receivable(open)`起票＝売掛起票・財務確定）を `invoice:update` のみ→ `invoice:update` かつ `finance:read` に統一（dunning/invoice_send/payment と同一境界）。STAFF は finance:read 非保有のため直叩き遮断。
+- **境界**: OWNER/EXECUTIVE/DEPARTMENT_MANAGER=可、STAFF/ADMIN（invoice:update 非保有）/READ_ONLY/EXTERNAL=不可。
+- **`createInvoiceAction` は据置**（invoice:create のまま）。DRAFT 生成のみ（Receivable/送信/会計計上なし＝可逆・低リスク）で、営業/STAFF の請求下書き作成は維持（案B）。
+- lib/schema/RBAC/ABAC/UI 不変。新規DBモデル/migration/approval type なし。テスト: `p1_10_invoice_payment.itest.ts` に発行の権限境界テスト追加。
+- フォローアップ（範囲外）: `/invoices` 一覧・`/invoices/new` の finance ABAC 不在、issue の承認ゲート化（案D）、AutomationLevel/会社ポリシー化。
+残: レート制限、CSP、MFA、改ざん検知、上記フォローアップ。

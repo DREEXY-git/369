@@ -71,7 +71,9 @@ export async function createInvoiceAction(formData: FormData) {
 export async function issueInvoiceAction(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get('id') ?? '');
-  if (!hasPermission(user, 'invoice', 'update')) redirect(`/invoices/${id}?denied=1`);
+  // 発行は DRAFT→ISSUED ＋ 売掛起票＝財務状態の確定（finance 機密）。server 側で finance:read も必須化
+  // （STAFF は invoice:update を持つが finance:read 非保有のため直叩き遮断・dunning/invoice_send/payment と統一）。
+  if (!hasPermission(user, 'invoice', 'update') || !hasPermission(user, 'finance', 'read')) redirect(`/invoices/${id}?denied=1`);
   const inv = await prisma.invoice.findFirst({ where: { id, tenantId: user.tenantId } });
   if (!inv || inv.status !== 'DRAFT') redirect(`/invoices/${id}`);
 

@@ -6,6 +6,18 @@
 - 本番系列: `main`（Vercel Production）。**Phase 1-16候補まで本番反映・本番確認完了（`addbd82`）**。
 - Phase 1-15「督促（Dunning）」: `9e27a21`＋`ed1c30d` push 済み・Vercel 本番確認 GO。
 - Phase 1-16候補「請求・入金系 finance 権限境界統一」: `addbd82` push 済み・Vercel 本番確認 GO。
+- Phase 1-17「請求発行 issueInvoiceAction の finance 権限境界統一」: ローカル是正・検証完了／push 未実施（人間承認待ち）。
+
+## Phase 1-17 — 請求発行(issueInvoiceAction)の finance 権限 server 側統一
+
+状態: **ローカル是正・検証完了／push 未実施（人間承認待ち）**
+
+- 🔐 発行（DRAFT→ISSUED＋Receivable 起票＝財務確定）を `invoice:update` かつ `finance:read` に統一（dunning/invoice_send/payment と同一境界）。STAFF は finance:read 非保有で直叩き遮断。
+- 境界＝OWNER/EXECUTIVE/DEPARTMENT_MANAGER 可、STAFF/ADMIN/READ_ONLY/EXTERNAL 不可。
+- `createInvoiceAction` は据置（invoice:create のまま・STAFF の下書き作成維持＝案B）。lib/schema/RBAC/UI 不変・migration なし。
+- テスト: `p1_10_invoice_payment.itest.ts` に発行の権限境界テスト追加。
+- 詳細: `docs/audit/03_security_audit.md`「Phase 1-17 ローカル是正」。
+- フォローアップ: `/invoices` 一覧・`/invoices/new` の finance ABAC、issue の承認ゲート化（案D）、AutomationLevel 化。
 
 ## Phase 1-15 — 督促（Dunning）下書き＋承認ゲート＋送信記録
 

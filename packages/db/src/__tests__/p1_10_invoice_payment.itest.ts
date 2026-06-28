@@ -128,6 +128,26 @@ describe('Cashflow summary + approval + tenant isolation', () => {
     expect(canFinanceInvoiceAction(['EXTERNAL_PARTNER'])).toBe(false);
   });
 
+  it('請求発行(issueInvoiceAction)の権限境界 = invoice:update かつ finance:read。下書き作成(create)は invoice:create のまま', () => {
+    // Phase 1-17: 発行（DRAFT→ISSUED＋Receivable 起票＝財務確定）を finance 機密境界へ統一。
+    // create（DRAFT 生成のみ）は据置＝STAFF も可（営業の下書き作成を止めない）。
+    const canIssue = (roles: RoleKey[]) =>
+      canForRoles(roles, 'invoice', 'update') && canForRoles(roles, 'finance', 'read');
+    expect(canIssue(['OWNER'])).toBe(true);
+    expect(canIssue(['EXECUTIVE'])).toBe(true);
+    expect(canIssue(['DEPARTMENT_MANAGER'])).toBe(true);
+    // STAFF は invoice:update を持つが finance:read 非保有 → 発行は server 側で遮断。
+    expect(canIssue(['STAFF'])).toBe(false);
+    // ADMIN は invoice:update 非保有のため従来どおり発行不可。READ_ONLY/EXTERNAL も不可。
+    expect(canIssue(['ADMIN'])).toBe(false);
+    expect(canIssue(['READ_ONLY'])).toBe(false);
+    expect(canIssue(['EXTERNAL_EXPERT'])).toBe(false);
+    expect(canIssue(['EXTERNAL_PARTNER'])).toBe(false);
+    // create（下書き作成）は invoice:create のまま＝STAFF も可（据置・finance:read を要求しない）。
+    expect(canForRoles(['STAFF'], 'invoice', 'create')).toBe(true);
+    expect(canForRoles(['OWNER'], 'invoice', 'create')).toBe(true);
+  });
+
   it('isolates invoices by tenant', async () => {
     await makeInvoice(T2, 5000, 'ISSUED');
     const fromT = await prisma.invoice.findMany({ where: { tenantId: T, total: 5000 } });

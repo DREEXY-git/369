@@ -189,4 +189,5 @@
 - **境界**: 一覧閲覧=finance:read 保有（OWNER/EXECUTIVE/ADMIN/DEPARTMENT_MANAGER/READ_ONLY 可、STAFF 不可）。作成=invoice:create かつ finance:read（OWNER/EXECUTIVE/DEPARTMENT_MANAGER 可、STAFF/ADMIN/READ_ONLY/EXTERNAL 不可）。
 - **STAFF の請求一覧/作成は一旦停止**。営業/STAFF の下書き業務は当面 Quote(見積) で担保。STAFF 向けマスク/スコープ付き請求ドラフトは将来の案E（別タスク）。
 - `issueInvoiceAction`・詳細ページ・invoice-send/payments/dunning・RBAC/ABAC 定義・schema は不変。新規DBモデル/migration/approval type なし。テスト: `p1_10_invoice_payment.itest.ts` に create/一覧の権限境界テスト追加。
+- **本番確認 GO（2026-06-28・利用者ブラウザ確認）**: `5789516` を本番（main）で実機確認し、OWNER 一覧/作成/下書き動作・STAFF は一覧/作成/詳細/発行/外部送信/入金/#dunning すべて遮断を確認。ADMIN/READ_ONLY の一覧閲覧可・作成不可は実機未確定（RBAC テストで担保）。詳細は `docs/audit/14_release_stabilization.md` §25。
 残: レート制限、CSP、MFA、改ざん検知、案E（STAFF向けマスク/スコープ請求）、AutomationLevel/会社ポリシー化。

@@ -459,3 +459,48 @@ Phase 1-17（`issueInvoiceAction` に `finance:read` 必須化＝請求発行を
   - issue の承認ゲート化（案D）/ AutomationLevel・会社ポリシー化
   - UsageEvent / 課金連携
   - 本番 E2E または手動スモークの定型化
+
+## 25. Phase 1-18 本番デプロイ確認完了（利用者確認・2026-06-28）
+Phase 1-18（請求一覧・作成・`createInvoiceAction` を finance 境界に統一＝案C）`5789516` を `main` へ push 後、
+利用者がブラウザ／Vercel 画面で本番（`main` ソース）を確認した結果を記録する。
+**確認は利用者の Vercel 画面・実ブラウザによるもので、サンドボックスからの本番到達確認ではない**（egress 403）。本番DB操作・実メール送信は発生していない。`5789516` は schema 変更／migration 追加なし。
+
+### 25.1 Vercel Production Deployment
+| 項目 | 確認結果 |
+|------|----------|
+| Commit | **`5789516`** |
+| Branch | **`main`** |
+| Status | **Ready** |
+| Build | **成功** |
+| Prisma `migrate deploy` | **pending なし / schema 変更なし** |
+| Prisma engine error | **なし** |
+| Runtime error | **なし** |
+
+### 25.2 本番 URL スモーク（利用者ブラウザ・検証用/デモ用データ）
+| 観点 | 結果 |
+|------|------|
+| `/login` / OWNER ログイン / `/invoices` | ✅ OK |
+| OWNER で請求一覧表示 | ✅ OK |
+| OWNER で `/invoices/new` 表示 | ✅ OK |
+| OWNER で請求下書き作成 | ✅ OK |
+| 下書き作成だけで Receivable 起票 | ✅ されない |
+| 下書き作成だけで外部送信 | ✅ されない |
+| 既存 請求詳細 / 発行 / 外部送信申請 / 入金記録 / #dunning | ✅ OK（壊れていない） |
+| STAFF で `/invoices` 一覧 | ✅ **finance 機密拒否／非表示** |
+| STAFF で `/invoices/new` | ✅ **finance 機密拒否／非表示** |
+| STAFF で請求下書き作成 | ✅ **不可** |
+| STAFF で 請求詳細 / 発行 / 外部送信申請 / 入金記録 / #dunning | ✅ いずれも不可・非表示 |
+| STAFF が Golden Path 経由で finance アクション | ✅ 非表示 |
+| 意図しない実メール送信 | ✅ **なし** |
+
+### 25.3 維持確認（壊していないこと）
+- 請求モジュールの閲覧/作成面を finance 境界へ統一（一覧=ABAC `FINANCIAL_CONFIDENTIAL`、作成/`createInvoiceAction`=`invoice:create` かつ `finance:read`）。詳細・発行・外部送信・入金・dunning と一貫。
+- STAFF の請求一覧/作成は停止。営業ドラフトは当面 Quote(見積) で担保。STAFF 向けマスク/スコープ請求は将来の案E。
+- `issueInvoiceAction`・詳細ページ・invoice-send/payments/dunning・RBAC/ABAC 定義・schema は不変。
+- ※ ADMIN / READ_ONLY の実機確認（一覧閲覧可・作成不可）は本フォームでは選択未確定（実機未確定）。設計・RBAC 上は ADMIN/READ_ONLY=一覧閲覧可（finance:read 保有）・作成不可（invoice:create 非保有）で、`p1_10_invoice_payment.itest.ts` の権限境界テストで担保済み。
+
+### 25.4 判定
+- **Phase 1-18 本番反映 完了（GO）**。本番ソース＝`main`（`5789516`）。build / migrate（pending なし・schema 変更なし）/ engine / runtime いずれもエラーなし。
+- OWNER 請求一覧/作成/下書き（Receivable・送信なし）、STAFF 全面遮断（一覧・作成・詳細・発行・外部送信・入金・#dunning・Golden Path）、既存 finance フロー継続を**実機確認**。実送信なし。
+- 残（実機未確定・別途確認推奨）: ADMIN/READ_ONLY の一覧閲覧可・作成不可。
+- 次タスク候補：案E（STAFF向けマスク/スコープ請求ドラフト）、issue 承認ゲート化（案D）、AutomationLevel/会社ポリシー化、UsageEvent/課金、本番 E2E 定型化。

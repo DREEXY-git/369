@@ -358,3 +358,57 @@ Phase 1-15（督促/Dunning）の安全是正コミット `ed1c30d`（督促 ser
   - `recordPaymentAction` / 請求書外部送信 action の `finance:read` server 側統一（dunning と同型の直叩き耐性）
   - UsageEvent / 課金連携（現状 TODO）
   - 本番 E2E または手動スモークの定型化
+
+## 23. Phase 1-16 本番デプロイ確認完了（利用者確認・2026-06-28）
+Phase 1-16候補（請求・入金系 server action の finance 権限境界統一）`addbd82` を `main` へ push 後、
+利用者がブラウザ／Vercel 画面で本番（`main` ソース）を確認した結果を記録する。
+**確認は利用者の Vercel 画面・実ブラウザによるもので、サンドボックスからの本番到達確認ではない**（サンドボックスは本番URL/Vercel とも egress 403 で到達不可）。本番DB操作・実メール送信は発生していない。`addbd82` は schema 変更／migration 追加なし。
+
+### 23.1 Vercel Production Deployment
+| 項目 | 確認結果 |
+|------|----------|
+| Commit | **`addbd82`** |
+| Branch | **`main`** |
+| Status | **Ready** |
+| Build | **成功** |
+| Prisma `migrate deploy` | **pending なし / schema 変更なし** |
+| Prisma engine error | **なし** |
+| Runtime error | **なし** |
+
+### 23.2 本番 URL スモーク（利用者ブラウザ・検証用/デモ用請求書）
+| 観点 | 結果 |
+|------|------|
+| `/login` | ✅ OK |
+| OWNER ログイン | ✅ OK |
+| `/invoices` | ✅ OK |
+| 確認に使った請求書 | 検証用/デモ用請求書（実顧客は不使用） |
+| OWNER で請求書外部送信申請 | ✅ OK |
+| `/approvals` に `invoice_send` 表示 | ✅ OK |
+| OWNER で入金記録 | ✅ OK |
+| Invoice / Receivable / FinanceEvent 連動 | ✅ OK |
+| 送信だけで Receivable が collected にならない | ✅ OK |
+| 入金していないのに collected にならない | ✅ OK |
+| 既存 `#dunning` / 督促カード | ✅ OK（壊れていない） |
+| `EXTERNAL_SEND_ENABLED` | **false** |
+| 意図しない実メール送信 | ✅ **なし** |
+| STAFF で請求書外部送信申請 | ✅ **不可** |
+| STAFF で承認済み請求書外部送信実行 | ✅ **不可** |
+| STAFF で入金記録 | ✅ **不可** |
+| STAFF で `#dunning` カード非表示 | ✅ OK |
+| STAFF が Golden Path 経由で finance アクション非表示 | ✅ OK |
+
+### 23.3 維持確認（壊していないこと）
+- finance 機密 server action（外部送信申請・承認済み外部送信実行・入金記録・督促 3 本）の server 側境界を **`invoice:update` かつ `finance:read`** に統一。STAFF 直叩き耐性を維持。
+- 実行境界＝OWNER / EXECUTIVE / DEPARTMENT_MANAGER。ADMIN（invoice:update 非保有）/ READ_ONLY / EXTERNAL 系は実行不可。
+- 外部送信ゲート（`invoice_send` 承認→`executeApprovedAction` 二重実行防止）・`EXTERNAL_SEND_ENABLED=false` で実メール送信なし。
+- 入金記録の Invoice / Receivable / FinanceEvent 連動を維持。送信だけでは Receivable を collected にしない。
+- 既存 dunning フローを壊していない。PII / secret は記録しない。実顧客ではなく検証用/デモ用請求書で確認。
+
+### 23.4 判定
+- **Phase 1-16候補 本番反映 完了（GO）**。本番ソース＝`main`（`addbd82`）。build / migrate（pending なし・schema 変更なし）/ engine / runtime いずれもエラーなし。
+- OWNER 請求・入金フロー、STAFF 権限制御（外部送信申請/承認済み送信/入金記録すべて不可・#dunning 非表示・Golden Path 非表示）、外部送信ゲート、Receivable 不変、既存 dunning 継続を**実機確認**。
+- 次タスク候補：
+  - `createInvoiceAction` / `issueInvoiceAction` の権限方針判断
+  - UsageEvent / 課金連携
+  - 本番 E2E または手動スモークの定型化
+  - finance 機密 server action の横断棚卸し継続

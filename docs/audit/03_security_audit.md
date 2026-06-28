@@ -169,4 +169,5 @@
 - **lib は不変・安全**: `invoice-send.ts`（承認ゲート `invoice_send`・PII マスク・`EXTERNAL_SEND_ENABLED` で logged・`assertAiToolAllowed`・tenant）/ `payments.ts`（tenant 全クエリ・Receivable は全額入金時のみ collected・writeAudit）は変更なし。承認ゲート・外部送信ゲート・二重実行防止・Receivable 不変は維持。
 - **テスト**: `p1_10_invoice_payment.itest.ts` に権限境界テストを追加（OWNER/EXECUTIVE/DEPARTMENT_MANAGER=可、STAFF/ADMIN/READ_ONLY/EXTERNAL=不可）。新規DBモデル/migration なし。
 - 範囲外（フォローアップ判断）: `createInvoiceAction`（invoice:create）/ `issueInvoiceAction`（invoice:update＋Receivable 起票）も finance 機密ページ上の操作だが、STAFF の請求作成/発行を遮断するかは製品判断を伴うため未変更。
+- **本番確認 GO（2026-06-28・利用者ブラウザ確認）**: `addbd82` を本番（main）で実機確認し、OWNER 請求・入金フロー動作／STAFF は外部送信申請・承認済み送信・入金記録すべて不可を確認。詳細は `docs/audit/14_release_stabilization.md` §23。
 残: レート制限、CSP、MFA、改ざん検知、createInvoice/issueInvoice の権限方針判断。

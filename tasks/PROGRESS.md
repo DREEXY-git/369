@@ -16,11 +16,14 @@
 - Phase 1-24「UsageEvent emit 拡張候補の横断監査・設計のみ」: 監査完了（GO）。次の P0 = AI出力 `saveAIOutputStandard`。ファイル変更なし。
 - Phase 1-25「AIOutput の非課金 UsageEvent emit」: `11c224d`（実装）＋`9944f0e`（本番確認記録）push 済み・**Vercel 本番確認 GO（2026-06-29）＝完全クローズ**。`saveAIOutputStandard` で `ai.output.generated`（billing=usage_only・metadata=task/model のみ）を記録。**emit対象は LeadMap export + AIOutput の2種類／課金なし／決済なし／billable_candidate なし／金額なし／helper・LeadMap emit 不変**。※旧 `a9643a4` は揮発環境で失われた未push記録で正式基準ではない。**正式基準 origin/main=`9944f0e`**。
 - Phase 1-26「UsageEvent emit 拡張方針の記録・監査（docs-only）」: `057d314` push 済み。Phase 1-25 完了状態を固定（`11c224d`+`9944f0e`、旧 a9643a4 を基準にしない）＋次候補を横断監査。**次の P0 = danger-actions export**。`docs/audit/16` 作成。
-- Phase 1-27「admin danger-actions export の非課金 UsageEvent emit」: `executeApprovedExportAction` で `export.generated`（billing=usage_only・metadata=固定値 scope/format/source）を記録。**emit対象は LeadMap export + AIOutput + admin danger-actions export の3種類／課金なし／決済なし／billable_candidate なし／金額なし／payloadAfter 実値 metadata 不可／helper・LeadMap・AIOutput emit 不変**。ローカル実装・検証完了／push 未実施（人間承認待ち）。本番確認未実施。
+- Phase 1-27「admin danger-actions export の非課金 UsageEvent emit」: `35cd384` push 済み・**Vercel 本番確認 GO（2026-06-29）**。`executeApprovedExportAction` で `export.generated`（billing=usage_only・metadata=固定値 scope/format/source）を記録。**emit対象は LeadMap export + AIOutput + admin danger-actions export の3種類／課金なし／決済なし／billable_candidate なし／金額なし／payloadAfter 実値 metadata 不可／helper・LeadMap・AIOutput emit 不変**。
 
 ## Phase 1-27 — admin danger-actions export の非課金 UsageEvent emit
 
-状態: **ローカル実装・検証完了／push 未実施（人間承認待ち）**／本番確認は push 後に必要（apps/web のコード変更を含む・ただし課金/決済/emit拡大なし）
+状態: **本番確認完了（GO）** — `35cd384` を `main` へ push 済み・Vercel 本番確認 GO（2026-06-29・利用者ブラウザ確認）。詳細 `docs/audit/14` §30 / `docs/audit/15` §21.1。
+- 実機確認: Vercel `35cd384`/Ready/Build成功・migrate deploy 不要・migration pending なし・engine/runtime/UsageEvent/admin export error なし。admin danger-actions の承認済み export が従来どおり動作・ExportJob 作成 OK。**同一承認リクエストの再実行は already-executed で拒否（正常・二重実行防止）**。UsageEvent/recordUsageEvent 関連エラーなし。emit対象は LeadMap export + AIOutput + admin danger-actions export の3種類・billing=usage_only・billable_candidate 未使用・metadata=固定3値(scope/format/source)のみ・payloadAfter 実値なし。課金/決済/サブスク/UsageEvent管理画面の新規表示なし。既存機能（/leadmap・/invoices・/finance・/approvals・/reports/morning・#dunning・LeadMap export CSV・AIOutput生成）回帰なし。権限境界（STAFF finance機密遮断・請求一覧/作成遮断・/approvals AccessDenied・非finance 朝報財務非表示）維持。実メール送信なし・本番DB直接操作なし・Prisma migrate 手動実行なし。
+- **課金なし／決済なし／billable_candidate なし／metadata=固定3値のみ／payloadAfter 実値なし／emit対象は3種類**。既存機能回帰なし。
+- 次候補: P1（外部送信 sent / Webhook delivery）だが別途監査・承認。実課金はさらに先（設計 §11 の安全条件＋人間承認が前提）。
 
 - 🧩 `apps/web/app/(app)/admin/danger-actions/actions.ts`: `executeApprovedExportAction` の ExportJob 作成後・既存 `writeAudit` 後・`return job.id` 前に `recordUsageEvent` を1回だけ追加。
   eventType=`export.generated` / category=`export` / **billing=`usage_only`** / unit=`count` / quantity=`1` / sourceType=`ExportJob` / sourceId=`job.id` / idempotencyKey=`usage:export.generated:<job.id>` / metadata=`{scope:'admin_danger_actions_export',format:'csv',source:'admin_danger_actions'}`（固定値・非PII）。

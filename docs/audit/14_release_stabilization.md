@@ -772,3 +772,98 @@ Phase 1-25（**AIOutput 非課金 UsageEvent emit**＝`saveAIOutputStandard` で
 - runtime route / runtime emit の billing は **usage_only**。**billable_candidate は使っていない**。metadata は **task/model のみ**。
 - **課金・決済・サブスクは未実装のまま**。UsageEvent 管理画面は新規表示なし。
 - 次候補は P1 候補（danger-actions export / 外部送信 sent / Webhook など）への段階展開（別途承認）。**実課金はさらに先で、人間承認・設計 §11 の安全条件が必要**。
+
+## 30. Phase 1-27 本番デプロイ確認完了（利用者確認・2026-06-29）
+Phase 1-27（**admin danger-actions export 非課金 UsageEvent emit**＝承認済み export 実行で ExportJob 作成・writeAudit 後に `export.generated` / `billing=usage_only` を記録）`35cd384` を `main` へ push 後、
+利用者がブラウザ／Vercel 画面で本番（`main` ソース）を確認した結果を記録する。
+**確認は利用者の Vercel 画面・実ブラウザによるもので、サンドボックスからの本番到達確認ではない**（egress 403）。本番DB操作・実メール送信・Prisma migrate 手動実行は発生していない。
+`35cd384` は apps/web のコード変更（admin export emit 1箇所＋テスト/docs）のみで schema 変更・migration 追加はない。
+
+### 30.1 Vercel Production Deployment
+| 項目 | 確認結果 |
+|------|----------|
+| Commit | **`35cd384`** |
+| Branch | **`main`** |
+| Status | **Ready** |
+| Build | **成功** |
+| Prisma `migrate deploy` | **不要** |
+| Migration pending | **なし** |
+| Prisma engine error | **なし** |
+| Runtime error | **なし** |
+| UsageEvent / admin danger-actions export related error | **なし** |
+
+### 30.2 本番ブラウザ確認
+| 観点 | 結果 |
+|------|------|
+| `/login` | ✅ OK |
+| OWNER ログイン | ✅ OK |
+| `/admin/danger-actions` | ✅ OK |
+| admin danger-actions 画面が開ける | ✅ OK |
+| 承認済み export 実行 | ✅ OK |
+| ExportJob 作成 | ✅ OK |
+| 同じ承認リクエストの再実行 | ✅ already-executed で拒否（正常・二重実行防止） |
+| Export 実行後に画面エラーが出ない | ✅ OK |
+| Export 実行後に runtime error が出ない | ✅ OK |
+| UsageEvent / recordUsageEvent 関連エラー | ✅ なし |
+
+### 30.3 UsageEvent emit 安全確認
+| 観点 | 結果 |
+|------|------|
+| UsageEvent emit対象に admin danger-actions export が追加されている | ✅ OK |
+| 既存の LeadMap export emit は維持されている | ✅ OK |
+| 既存の AIOutput emit は維持されている | ✅ OK |
+| billing が usage_only | ✅ OK |
+| billable_candidate が使われていない | ✅ OK |
+| metadata が固定3値（scope/format/source）のみ | ✅ OK |
+| req.payloadAfter 実値が metadata に入っていない | ✅ OK |
+
+### 30.4 課金・決済・サブスクなし確認
+| 観点 | 結果 |
+|------|------|
+| 課金処理 | ✅ なし |
+| 決済処理 | ✅ なし |
+| サブスクリプション処理 | ✅ なし |
+| UsageEvent 管理画面が新規表示されていない | ✅ OK |
+| 課金画面が新規表示されていない | ✅ OK |
+| 決済画面が新規表示されていない | ✅ OK |
+| サブスク画面が新規表示されていない | ✅ OK |
+
+### 30.5 既存機能の回帰確認
+| 観点 | 結果 |
+|------|------|
+| `/leadmap` | ✅ OK |
+| `/invoices` | ✅ OK |
+| `/finance` | ✅ OK |
+| `/approvals` | ✅ OK |
+| `/reports/morning` | ✅ OK |
+| 既存 #dunning / 督促カード | ✅ OK |
+| LeadMap export CSV | ✅ OK |
+| AIOutput 生成機能 | ✅ OK |
+
+### 30.6 権限・セキュリティ確認
+| 観点 | 結果 |
+|------|------|
+| STAFF で finance 機密が見えない | ✅ OK |
+| STAFF で請求一覧/作成が遮断される | ✅ OK |
+| STAFF で `/approvals` が AccessDenied | ✅ OK |
+| 非finance ユーザーで朝報の財務値が非表示 | ✅ OK |
+
+### 30.7 外部送信・環境確認
+| 観点 | 結果 |
+|------|------|
+| 意図しない実メール送信 | ✅ なし |
+| Vercel 環境変数変更 | ✅ なし |
+| 本番DBを直接触ったか | ✅ 触っていない |
+| Prisma migrate を手動実行したか | ✅ 実行していない |
+
+### 30.8 判定
+- **Phase 1-27 本番反映 完了（GO）**。本番ソース＝`main`（`35cd384`）。
+- admin danger-actions の承認済み export は**従来どおり動作**。ExportJob 作成 OK。
+- 同じ承認リクエストの再実行は **already-executed で拒否**され、正常な二重実行防止。
+- UsageEvent / recordUsageEvent 関連エラーなし。
+- UsageEvent emit対象は **LeadMap export + AIOutput + admin danger-actions export の3種類**。
+- billing は **usage_only**。**billable_candidate は使っていない**。metadata は **固定3値（scope/format/source）のみ**。
+- **`req.payloadAfter` 実値・顧客情報・CSV本文・件数・金額・secret は UsageEvent metadata に保存していない**。
+- **課金・決済・サブスクは未実装のまま**。既存機能・既存権限境界に**回帰なし**。
+- 実メール送信・本番DB直接操作・Prisma migrate 手動実行・Vercel 環境変数変更なし。
+- 次候補は P1（外部送信 sent / Webhook delivery）だが、**別途監査・人間承認が必要**。**実課金はさらに先で、人間承認・設計上の安全条件が必要**。

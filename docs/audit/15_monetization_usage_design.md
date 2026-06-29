@@ -375,3 +375,15 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - テスト: `packages/db/src/__tests__/p1_27_usage_event_admin_export.itest.ts`（payload 仕様／metadata=scope,format,source のみ／usage_only／二重計上不可／別tenant同key可）。
 - 現在の emit 対象は **LeadMap export + AIOutput + admin danger-actions export の3種類**。
 - 次候補は別途監査・承認。実課金はさらに先（§11 の安全条件＋人間承認が前提）。
+
+### 21.1 本番確認（GO・2026-06-29・利用者ブラウザ/Vercel）
+- **本番確認 GO**（2026-06-29・利用者ブラウザ確認）。`35cd384` を Vercel Production（`main`）で確認。
+- admin danger-actions の承認済み export が**従来どおり動作**。ExportJob 作成 OK。
+- 同一承認リクエストの再実行は **already-executed で拒否**され、二重実行防止として正常。
+- **UsageEvent / recordUsageEvent 関連エラーなし**。
+- runtime billing は **usage_only**。**billable_candidate は使っていない**。
+- metadata は **固定3値（scope/format/source）のみ**。`req.payloadAfter` 実値・顧客情報・CSV本文・金額・secret は入れていない。
+- **課金処理・決済処理・サブスクリプション処理はなし**。
+- UsageEvent emit対象は **LeadMap export + AIOutput + admin danger-actions export の3種類**。
+- 既存機能・既存権限境界に影響なし。
+- 詳細は `docs/audit/14_release_stabilization.md` §30。

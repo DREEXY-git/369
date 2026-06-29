@@ -280,3 +280,11 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - metadata に PII / secret / 本文 / 金額を入れない方針を維持（テストデータも非PIIの例のみ）。
 - 課金・決済・請求・サブスク・プラン制御・上限 enforcement は**一切行っていない**。
 - 次は別承認で Phase 1-23「非課金 usage 記録 emit」の候補（安全な発火点から idempotencyKey 付きで記録。金額なし）。実課金はさらに先（§11 の安全条件＋人間承認が前提）。
+
+### 17.1 本番確認（GO・2026-06-28・利用者ブラウザ/Vercel）
+- **本番確認 GO**（2026-06-28・利用者ブラウザ確認）。`d14ce1d` を Vercel Production（`main`）で確認。
+- Prisma `migrate deploy` 成功／migration pending なし／**UsageEvent / Prisma migration error なし**／engine・runtime error なし。
+- 既存画面（`/login`・`/invoices`・`/approvals`・`/reports/morning`・`/finance`・`/planning-hokko`）と既存 finance フロー（請求一覧/作成/詳細/発行/外部送信申請/入金/dunning）に**影響なし**。
+- 課金画面・決済画面・サブスク画面・UsageEvent 管理画面は**新規表示なし**。
+- **課金処理・決済処理・UsageEvent emit はなし**（UsageEvent はまだ入れ物のみ）。
+- 詳細は `docs/audit/14_release_stabilization.md` §27。

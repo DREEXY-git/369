@@ -4,6 +4,7 @@
 import { createHash } from 'node:crypto';
 import { prisma } from './db';
 import { writeAIDataAccess } from './audit';
+import { recordUsageEvent } from './usage-events';
 import {
   detectPromptInjection,
   checkToolPermission,
@@ -114,6 +115,23 @@ export async function saveAIOutputStandard(args: SaveAIOutputArgs): Promise<Save
       costEstimate: args.costEstimate ?? 0,
       safetyFlags,
     },
+  });
+  // Phase 1-25: 非課金の利用量記録（AI出力が1件生成されたという事実のみ）。課金ではない・billing=usage_only 固定。
+  // metadata は非PIIの task/model のみ（input/output/outputText/prompt/citations/顧客情報/金額/secret は入れない）。
+  // 記録失敗は AIOutput 保存・主処理を壊さない（recordUsageEvent は例外を投げず ok:false を返すだけ）。
+  await recordUsageEvent({
+    tenantId: args.tenantId,
+    actorId: args.userId ?? null,
+    actorType: (args.actorType ?? 'ai_agent') as 'user' | 'ai_agent' | 'system',
+    eventType: 'ai.output.generated',
+    category: 'ai',
+    billing: 'usage_only',
+    unit: 'count',
+    quantity: 1,
+    sourceType: 'AIOutput',
+    sourceId: out.id,
+    idempotencyKey: `usage:ai.output.generated:${out.id}`,
+    metadata: { task: args.task, model: args.model ?? 'fake' },
   });
   if (args.logDataAccess) {
     await writeAIDataAccess({

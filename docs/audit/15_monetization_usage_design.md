@@ -318,3 +318,21 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - **課金処理・決済処理・サブスクリプション処理はなし**。課金/決済/サブスク/UsageEvent 管理画面は新規表示なし。
 - 既存 finance / invoice / dunning / approvals / morning に**影響なし**。意図しない実メール送信なし。
 - 詳細は `docs/audit/14_release_stabilization.md` §28。
+
+---
+
+## 19. Phase 1-25 実装状況（AIOutput の非課金 usage emit）
+
+- 実装範囲: **AIOutput 生成の共通経路 `saveAIOutputStandard`（apps/web/lib/ai-safety-server.ts）に emit を1箇所追加**。emit 対象は **AIOutput のみ**。
+- 配線: `prisma.aIOutput.create` 成功後に `recordUsageEvent` を1回だけ呼ぶ（return 前・`logDataAccess` 処理は不変）。
+  - eventType=`ai.output.generated` / category=`ai` / **billing=`usage_only`（固定）** / unit=`count` / quantity=`1` /
+    sourceType=`AIOutput` / sourceId=`out.id` / idempotencyKey=`usage:ai.output.generated:<AIOutput.id>`。
+  - metadata=`{ task: args.task, model: args.model ?? 'fake' }`（**task / model のみ・非PII**）。
+- **billable_candidate は使わない**（runtime は usage_only のみ）。**課金なし／決済なし／金額なし**。
+- metadata に **input / inputHash / output / outputText / citations / prompt / 生成本文 / 顧客情報 / email / 金額 / secret を入れない**。
+- **recordUsageEvent 失敗で AIOutput 保存や既存処理（logDataAccess・戻り値）を壊さない**（helper は例外を投げない設計）。
+- **recordUsageEvent helper は変更していない**。**LeadMap export の emit は維持**（Phase 1-23 のまま）。
+- 他の発火点（外部送信・dunning・invoice送信・JobRun・Webhook・storage・seat）には**広げていない**。
+- ※ 補足: `actorType` は helper の許可型（user|ai_agent|system）にキャストして渡す（`saveAIOutputStandard` の `ai_assistant` も DB は String 列のため値は保持。helper は不変）。worker の `aIOutput.create` 直叩き経路（apps/worker）は対象外。
+- テスト: `packages/db/src/__tests__/p1_25_usage_event_ai_output.itest.ts`（payload 仕様／metadata=task,model のみ／usage_only／二重計上不可／別tenant同key可）。
+- 次候補: 他の安全な発火点への段階展開（別途承認）。実課金はさらに先（§11 の安全条件＋人間承認が前提）。

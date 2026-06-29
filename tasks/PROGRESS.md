@@ -13,6 +13,23 @@
 - Phase 1-21B「UsageEvent / Monetization 設計の docs-only 記録」: `docs/audit/15_monetization_usage_design.md` 作成（設計のみ・課金実行なし）。`85c79ab` push 済み（origin/main）。コード/schema/migration 変更なし＝本番確認不要。
 - Phase 1-22「UsageEvent モデル追加・migration」: `d14ce1d` push 済み・**Vercel 本番確認 GO（2026-06-28）**。schema に `UsageEvent` 追加＋migration `20260628183116_p1_22_usage_event`＋`p1_22_usage_event.itest.ts`。**DB model + test のみ／emit なし／課金なし／決済なし**。
 - Phase 1-23「非課金 UsageEvent emit 最小実装」: `399de6f` push 済み・**Vercel 本番確認 GO（2026-06-29）**。`recordUsageEvent` helper＋LeadMap CSV export で `export.generated`（billing=usage_only）を記録。**emit 対象は LeadMap export のみ／課金なし／決済なし／billable_candidate なし／金額なし**。
+- Phase 1-24「UsageEvent emit 拡張候補の横断監査・設計のみ」: 監査完了（GO）。次の P0 = AI出力 `saveAIOutputStandard`。ファイル変更なし。
+- Phase 1-25「AIOutput の非課金 UsageEvent emit」: `saveAIOutputStandard` で `ai.output.generated`（billing=usage_only・metadata=task/model のみ）を記録。**emit 対象に AIOutput を1種類追加／課金なし／決済なし／billable_candidate なし／金額なし／helper・LeadMap emit 不変**。ローカル実装・検証完了／push 未実施（人間承認待ち）。本番確認未実施。
+
+## Phase 1-25 — AIOutput の非課金 UsageEvent emit（saveAIOutputStandard）
+
+状態: **ローカル実装・検証完了／push 未実施（人間承認待ち）**／本番確認未実施（apps/web のコード変更を含むため push 時は要・ただし課金/決済/emit拡大なし）
+
+- 🧩 `apps/web/lib/ai-safety-server.ts`: `saveAIOutputStandard` の `aIOutput.create` 成功後に `recordUsageEvent` を1回だけ追加。
+  eventType=`ai.output.generated` / category=`ai` / **billing=`usage_only`** / unit=`count` / quantity=`1` / sourceType=`AIOutput` / sourceId=`out.id` / idempotencyKey=`usage:ai.output.generated:<out.id>` / metadata=`{task, model}`（非PII）。
+  記録失敗で AIOutput 保存・logDataAccess・戻り値を壊さない（helper は例外を投げない）。`actorType` は helper 許可型へキャスト（helper 不変）。
+- emit 対象は **AIOutput のみ**。外部送信・dunning・invoice送信・JobRun・Webhook・storage・seat には広げない。**LeadMap export emit は維持／recordUsageEvent helper は不変**。
+- 課金なし／決済なし／`billable_candidate`・`never_billable` の runtime 使用なし／金額(amount/price/currency)なし／metadata に input/inputHash/output/outputText/citations/prompt/顧客情報/email/金額/secret を入れない。
+- 🧪 `packages/db/src/__tests__/p1_25_usage_event_ai_output.itest.ts`: payload 仕様／metadata=task,model のみ／usage_only／二重計上不可／別tenant同key可。
+- schema/migration/RBAC/ABAC/package/lock 変更なし。
+- 検証（全 green）: db:generate / p1_25 integration 5 / p1_23 5・p1_22 6・p1_10 11・p1_15 8 回帰 / 統合 18ファイル117 / `./scripts/verify.sh`（typecheck/lint/unit 23ファイル211/build）。
+- 詳細: `docs/audit/15_monetization_usage_design.md` §19。
+- 次候補: 他の安全な発火点への段階展開（別途承認）。実課金はさらに先（設計 §11 の安全条件＋人間承認が前提）。
 
 ## Phase 1-23 — 非課金 UsageEvent emit 最小実装（LeadMap export のみ）
 

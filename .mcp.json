@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/mcp.json",
+  "_comment": "プロジェクトスコープのMCP。Vercel MCP は OAuth 認証（トークンは書かない）。必要なら playwright/context7 等を追加してよい。",
+  "mcpServers": {
+    "vercel": {
+      "type": "http",
+      "url": "https://mcp.vercel.com"
+    }
+  }
+}

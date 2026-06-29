@@ -447,3 +447,22 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - UsageEvent emit対象は **LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send の5種類**。
 - 既存機能・既存権限境界に影響なし。
 - 詳細は `docs/audit/14_release_stabilization.md` §32。
+
+---
+
+## 24. Phase 1-33 実装状況（dunning の非課金 usage emit）
+
+- 実装範囲: **dunning / executeDunningSend の1箇所のみ**。emit 対象に「dunning（督促送信）」を追加。
+- 配線: `apps/web/lib/domains/finance/dunning.ts` の `executeDunningSend` で、既存の `collectionReminder.update` / `writeAudit` / `emitGrowthEvent` の**後**・`return { ok: true }` の**前**に `recordUsageEvent` を呼ぶ。
+  - eventType=`external_send.dunning` / category=`external_send` / **billing=`usage_only`（固定）** / unit=`count` / quantity=`1` /
+    sourceType=`CollectionReminder` / sourceId=`reminderId` / idempotencyKey=`usage:external_send.dunning:<CollectionReminder.id>`。
+  - metadata=`{ channel:'email', status: sendStatus, kind:'dunning' }`（**非PII・channel/status/kind のみ**）。
+- **emit 条件は `sendStatus === 'logged' || sendStatus === 'sent'` のときのみ**。**no-recipient / already-sent / not-found / failed / rejected / blocked / suppressed / その他 status は emit しない**（送れていない＝never_billable 相当）。
+- metadata に **recipient / subject / draftMessage / maskedBody / inv.number / inv.total / reminderId / receivableId / invoiceId / 顧客情報 / 金額 / secret を入れない**（sourceId に reminderId は使うが metadata には入れない）。
+- **既存 dunning ロジック（collectionReminder.update / writeAudit / emitGrowthEvent）は不変。Receivable は触らない・collected にしない**。**recordUsageEvent helper は変更なし**。
+- **LeadMap export / AIOutput / admin danger-actions export / approvals outreach / invoice-send emit は維持**。
+- **recordUsageEvent 失敗で dunning 主処理・戻り値を壊さない**（helper は例外を投げない設計）。**実メール送信は起こさない**（既存挙動不変・`EXTERNAL_SEND_ENABLED=false` で logged）。
+- schema / migration / RBAC / ABAC / package / lock 変更なし。**課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／金額なし**。
+- テスト: `packages/db/src/__tests__/p1_33_usage_event_dunning.itest.ts`（payload 仕様／metadata=channel,status,kind のみ／usage_only／emit 条件 logged|sent のみ・それ以外 emit しない／二重計上不可／別tenant同key可）。
+- 現在の emit 対象は **LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning の6種類**。
+- 次候補は別途監査・承認（Webhook delivery〔worker/packages 経路の共通 helper 設計が前提〕／JobRun）。実課金はさらに先（§11 の安全条件＋人間承認が前提）。

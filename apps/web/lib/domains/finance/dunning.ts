@@ -6,6 +6,7 @@
 //   - 新規DBモデル/フィールドなし: CollectionReminder を使用。件名は決定論導出（非保存）、
 //     承認状態は ApprovalRequest(entityType='CollectionReminder') 逆引き、実行者は writeAudit で記録。
 import { prisma, writeAudit } from '@/lib/db';
+import { recordUsageEvent } from '@/lib/usage-events';
 import { emitGrowthEvent } from '@/lib/growth';
 import { requireApprovalForDangerousAction } from '@/lib/approval';
 import { prepareExternalPayload } from '@/lib/safe-external-send';
@@ -240,5 +241,25 @@ export async function executeDunningSend(actor: Actor, reminderId: string): Prom
     entityType: 'CollectionReminder',
     entityId: reminderId,
   });
+  // Phase 1-33: 非課金の利用量記録（dunning 送信が logged/sent として確定した事実のみ）。課金ではない・billing=usage_only 固定。
+  // no-recipient / already-sent / failed / その他 status は emit しない（送れていない＝never_billable 相当）。
+  // metadata は非PIIの channel/status/kind のみ（recipient/draftMessage/subject/maskedBody/inv.number/金額/reminderId/secret は入れない）。
+  // 記録失敗は dunning 主処理を壊さない（recordUsageEvent は例外を投げず ok:false を返すだけ）。Receivable は触らない・collected にしない。
+  if (sendStatus === 'logged' || sendStatus === 'sent') {
+    await recordUsageEvent({
+      tenantId: actor.tenantId,
+      actorId: actor.userId,
+      actorType: 'user',
+      eventType: 'external_send.dunning',
+      category: 'external_send',
+      billing: 'usage_only',
+      unit: 'count',
+      quantity: 1,
+      sourceType: 'CollectionReminder',
+      sourceId: reminderId,
+      idempotencyKey: `usage:external_send.dunning:${reminderId}`,
+      metadata: { channel: 'email', status: sendStatus, kind: 'dunning' },
+    });
+  }
   return { ok: true };
 }

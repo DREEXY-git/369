@@ -622,3 +622,97 @@ Phase 1-22（**非課金の利用量台帳 `UsageEvent` の DB model ＋ migrati
 - 権限境界（STAFF の finance 機密遮断・請求一覧/作成遮断・`/approvals` AccessDenied・非finance 朝報財務非表示）も維持。
 - **課金・決済・サブスク・UsageEvent emit は未実装のまま**。UsageEvent はまだ「入れ物（DB テーブル）」のみで、利用量は記録されていない。
 - 次候補は Phase 1-23「非課金 usage 記録 emit」（別途承認・金額なし）。**実課金はさらに先で、人間承認・設計 §11 の安全条件が必要**。
+
+## 28. Phase 1-23 本番デプロイ確認完了（利用者確認・2026-06-29）
+Phase 1-23（**非課金 UsageEvent emit の最小実装**＝LeadMap CSV export が1回発生したことを `export.generated`/`billing=usage_only` として記録）`399de6f` を `main` へ push 後、
+利用者がブラウザ／Vercel 画面で本番（`main` ソース）を確認した結果を記録する。
+**確認は利用者の Vercel 画面・実ブラウザによるもので、サンドボックスからの本番到達確認ではない**（egress 403）。本番DB操作・実メール送信・Prisma migrate 手動実行は発生していない。
+`399de6f` は apps/web のコード変更（emit 1箇所＋helper）のみで schema 変更・migration 追加はない。
+
+### 28.1 Vercel Production Deployment
+| 項目 | 確認結果 |
+|------|----------|
+| Commit | **`399de6f`** |
+| Branch | **`main`** |
+| Status | **Ready** |
+| Build | **成功** |
+| Prisma `migrate deploy` | **不要** |
+| Migration pending | **なし** |
+| Prisma engine error | **なし** |
+| Runtime error | **なし** |
+| UsageEvent / LeadMap export related error | **なし** |
+
+### 28.2 本番 URL スモーク（利用者ブラウザ）
+| 観点 | 結果 |
+|------|------|
+| `/login` | ✅ OK |
+| OWNER ログイン | ✅ OK |
+| `/leadmap` | ✅ OK |
+| `/invoices` | ✅ OK |
+| `/finance` | ✅ OK |
+| `/approvals` | ✅ OK |
+| `/reports/morning` | ✅ OK |
+
+### 28.3 LeadMap CSV export 確認
+| 観点 | 結果 |
+|------|------|
+| LeadMap export CSV ダウンロード | ✅ OK |
+| CSV ファイルが従来どおり取得できる | ✅ OK |
+| CSV の内容が壊れていない | ✅ OK |
+| Export 操作後に画面エラーが出ない | ✅ OK |
+| Export 操作後に runtime error が出ない | ✅ OK |
+| UsageEvent / recordUsageEvent 関連エラー | ✅ なし |
+
+### 28.4 UsageEvent emit の安全確認
+| 観点 | 結果 |
+|------|------|
+| UsageEvent emit 対象が LeadMap export のみ | ✅ OK |
+| billing が usage_only | ✅ OK |
+| billable_candidate が使われていない | ✅ OK |
+| 課金処理 | ✅ なし |
+| 決済処理 | ✅ なし |
+| サブスクリプション処理 | ✅ なし |
+| UsageEvent 管理画面が新規表示されていない | ✅ OK |
+| 課金画面が新規表示されていない | ✅ OK |
+| 決済画面が新規表示されていない | ✅ OK |
+| サブスク画面が新規表示されていない | ✅ OK |
+
+### 28.5 既存機能の回帰確認
+| 観点 | 結果 |
+|------|------|
+| 既存の請求一覧 | ✅ OK |
+| 既存の請求作成 | ✅ OK |
+| 既存の請求詳細 | ✅ OK |
+| 既存の請求発行 | ✅ OK |
+| 既存の請求外部送信申請 | ✅ OK |
+| 既存の入金記録 | ✅ OK |
+| 既存 #dunning / 督促カード | ✅ OK |
+| 承認一覧 `/approvals` | ✅ OK |
+| 朝報 `/reports/morning` | ✅ OK |
+| finance 画面 | ✅ OK |
+
+### 28.6 権限・セキュリティ確認
+| 観点 | 結果 |
+|------|------|
+| OWNER で LeadMap export | ✅ OK |
+| STAFF で finance 機密が見えない | ✅ OK |
+| STAFF で請求一覧/作成が遮断される | ✅ OK |
+| STAFF で `/approvals` が AccessDenied | ✅ OK |
+| 非finance ユーザーで朝報の財務値が非表示 | ✅ OK |
+
+### 28.7 外部送信・環境確認
+| 観点 | 結果 |
+|------|------|
+| 意図しない実メール送信 | ✅ なし |
+| Vercel 環境変数変更 | ✅ なし |
+| 本番DBを直接触ったか | ✅ 触っていない |
+| Prisma migrate を手動実行したか | ✅ 実行していない |
+
+### 28.8 判定
+- **Phase 1-23 本番反映 完了（GO）**。本番ソース＝`main`（`399de6f`）。
+- LeadMap CSV export が**従来どおり動作**。UsageEvent / recordUsageEvent 関連エラーなし。
+- UsageEvent emit 対象は **LeadMap export のみ**。runtime route の billing は **usage_only**。**billable_candidate は使っていない**。
+- **課金・決済・サブスクは未実装のまま**。UsageEvent 管理画面は新規表示なし。
+- 既存 finance / invoice / dunning / approvals / morning に**回帰なし**を実機確認。権限境界も維持。
+- 意図しない実メール送信なし。本番DB直接操作・Prisma migrate 手動実行なし。
+- 次候補は「他の安全な発火点への段階展開」（別途承認）。**実課金はさらに先で、人間承認・設計 §11 の安全条件が必要**。

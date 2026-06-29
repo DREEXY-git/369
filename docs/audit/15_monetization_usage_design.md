@@ -310,3 +310,11 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - emit 対象は **LeadMap export のみ**。AI出力・外部送信・dunning・invoice送信・JobRun・storage・seat には広げていない。
 - テスト: `packages/db/src/__tests__/p1_23_usage_event_emit.itest.ts`（payload 仕様/非PII metadata/usage_only/二重計上不可/別tenant同key可）。
 - 次候補: 他の安全な発火点への段階展開（別途承認）。実課金はさらに先（§11 の安全条件＋人間承認が前提）。
+
+### 18.1 本番確認（GO・2026-06-29・利用者ブラウザ/Vercel）
+- **本番確認 GO**（2026-06-29・利用者ブラウザ確認）。`399de6f` を Vercel Production（`main`）で確認。
+- LeadMap CSV export が**従来どおり動作**（ダウンロード/内容/操作後エラーなし）。**UsageEvent / recordUsageEvent 関連エラーなし**。
+- runtime route の billing は **usage_only**。**billable_candidate は使っていない**。UsageEvent emit 対象は **LeadMap export のみ**。
+- **課金処理・決済処理・サブスクリプション処理はなし**。課金/決済/サブスク/UsageEvent 管理画面は新規表示なし。
+- 既存 finance / invoice / dunning / approvals / morning に**影響なし**。意図しない実メール送信なし。
+- 詳細は `docs/audit/14_release_stabilization.md` §28。

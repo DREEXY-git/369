@@ -492,3 +492,23 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - 主な設計確定事項: recorder 配置案 = `packages/db/src/usage.ts`（prisma は `./client` から・apps/web 非依存・将来 apps/web helper を委譲）。Webhook = `webhook.delivered` / success のみ / failed・dead は emit しない / sourceId=delivery.id / idempotencyKey=`usage:webhook.delivered:<eventId>:<subscriptionId>` / metadata に url・secret・signature・payload を入れない。JobRun = `job.run.completed` / succeeded のみ / jobType ホワイトリスト / actorType=system。
 - **詳細は `docs/audit/17_worker_usage_recorder_design.md`**。
 - **実装は別フェーズ・別承認**（Phase 1-36 = 共通 recorder 実装のみ → Phase 1-37 Webhook emit → Phase 1-38 JobRun emit）。実課金はさらに先（§11 の安全条件＋人間承認が前提）。
+
+---
+
+## 26. Phase 1-36 実装状況（worker-safe UsageEvent recorder 実装のみ）
+
+- 実装範囲: **`packages/db/src/usage.ts` の共通 recorder（`recordUsageEventCore`）のみ**。**runtime emit 追加なし**。
+- 配線: なし。**Webhook emit 追加なし／JobRun emit 追加なし／runtime call site 追加なし**。`packages/db/src/outbox.ts` / `packages/db/src/jobrun.ts` / `apps/worker` は不変。
+- `recordUsageEventCore`: **apps/web に依存しない**（prisma は `packages/db` の `./client` から import・`@/` alias 不使用）。worker/packages からも `@hokko/db` 経由で使える。
+  - 必須（tenantId / eventType / category / idempotencyKey）が空なら `ok:false / reason='missing_required_field'`。
+  - **metadata の禁止 top-level key ガード**を実装（url/secret/signature/payload/body/stack/prompt/transcript/customer/email/subject/amount/price/currency/total/各種実ID/token/apiKey 等）。該当時は create せず `ok:false / reason='forbidden_metadata_key'`。
+  - billing は許可外を **usage_only に丸める**（**本フェーズの runtime 使用は usage_only のみ**。billable_candidate / never_billable は runtime で使わない）。
+  - actorType 既定 = `user`（worker/JobRun/Webhook 用途では将来 caller が `system` を渡す）。unit 既定 = `count` / quantity 既定 = `1` / sourceType 既定 = `''` / sourceId 既定 = `null`。
+  - **P2002（unique 衝突）は duplicate 扱い**（`ok:true / created:false / duplicate:true`）。その他失敗は `ok:false / reason='create_failed'`。**例外は外へ投げない**（呼び出し元の主処理を壊さない）。
+  - **amount / price / currency は扱わない**（UsageEvent model にも存在しない）。
+- export: `packages/db/src/index.ts` に `export * from './usage';` を追加（既存 jobrun/outbox と同じ集約パターン）。
+- **apps/web helper（apps/web/lib/usage-events.ts）は不変**。**既存6 emit は不変**。将来この apps/web helper を本 recorder へ委譲し得るが別フェーズ。
+- schema / migration / RBAC / ABAC / package / lock 変更なし。**課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／金額なし**。
+- テスト: `packages/db/src/__tests__/p1_36_usage_recorder.itest.ts`（usage_only 作成／actorType=system・actorId=null 作成／payload 仕様／forbidden_metadata_key（url/secret/payload・金額キー）で create されない／missing_required_field／二重計上不可／別tenant同key可／invalid billing は usage_only に丸め／金額カラム不在）。
+- **現在の emit 対象は 6種類のまま**（LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning）。**runtime での新規 emit はゼロ**。
+- 次候補は **Phase 1-37 Webhook success emit**（本 recorder を outbox の success 確定時に呼ぶ）だが**別途監査・人間承認が必要**。実課金はさらに先（§11 の安全条件＋人間承認が前提）。

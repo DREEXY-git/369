@@ -25,6 +25,24 @@
 - Phase 1-33「dunning の非課金 UsageEvent emit」: `6cefe8f` push 済み・**Vercel 本番確認 GO（2026-06-29）**。`executeDunningSend` で `external_send.dunning`（billing=usage_only・metadata=channel/status/kind のみ・logged/sent のみ emit）を記録。**emit対象は 上記5種類 + dunning の6種類／課金なし／決済なし／billable_candidate なし／金額なし／no-recipient・already-sent・failed等は emit しない／既存 dunning ロジック・helper・既存5 emit 不変／Receivable 不変・collected にしない**。
 - Phase 1-34「Webhook/JobRun/worker・packages 経路の次候補 横断監査（読み取り専用）」: 監査完了（GO）。Webhook 本番経路=`packages/db/src/outbox.ts::processOutboxBatch`（worker・admin手動）、JobRun=`packages/db/src/jobrun.ts`（worker は actorId なし）。`recordUsageEvent` は apps/web 専用で worker/packages から import 不可。次は実装ではなく packages/db 層 worker-safe recorder の docs-only 設計と判定。ファイル変更なし。
 - Phase 1-35「worker/packages UsageEvent recorder architecture design（docs-only）」: `cca2e5a` push 済み・**本番確認不要（docs-only・コード挙動不変）**。`docs/audit/17_worker_usage_recorder_design.md` 作成＋doc15 §25＋本ファイル。**設計のみ／実装なし／emit 追加なし／emit 対象は6種類のまま／課金なし／決済なし／billable_candidate なし／never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。
+- Phase 1-36「worker-safe UsageEvent recorder 実装のみ」: `packages/db/src/usage.ts` の `recordUsageEventCore`（apps/web 非依存・prisma は `./client`）を追加＋index.ts に export＋DB統合テスト。**runtime emit 追加なし／Webhook emit なし／JobRun emit なし／runtime call site なし／apps/web helper 不変／既存6 emit 不変／emit 対象は6種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／金額なし／schema・migration・package・lock 変更なし**。metadata 禁止 top-level key ガード・P2002 duplicate・missing_required_field・例外を投げない設計。ローカル実装・検証完了／push 未実施（人間承認待ち）。
+
+## Phase 1-36 — worker-safe UsageEvent recorder 実装のみ
+
+状態: **ローカル実装・検証完了／push 未実施（人間承認待ち）／本番確認未実施**（packages/db に recorder 関数を追加するコード変更を含む・ただし runtime emit 追加なし・Webhook/JobRun emit なし・既存挙動不変。push 後は念のため CI/build 確認）
+
+- 🧩 `packages/db/src/usage.ts` 新規: `recordUsageEventCore`（worker-safe・apps/web 非依存・prisma は `./client` から import・`@/` alias 不使用）。
+  - 必須（tenantId/eventType/category/idempotencyKey）欠落で `ok:false / missing_required_field`。
+  - metadata 禁止 top-level key ガード（url/secret/signature/payload/body/stack/prompt/transcript/customer/email/subject/amount/price/currency/total/各種実ID/token/apiKey 等）→ `ok:false / forbidden_metadata_key`（create しない）。
+  - billing 許可外は **usage_only に丸め**（runtime 使用は usage_only のみ）。actorType 既定 user（worker は将来 system）／unit=count／quantity=1。
+  - **P2002 は duplicate 扱い**（ok:true/created:false/duplicate:true）。その他失敗は `ok:false / create_failed`。**例外を外へ投げない**。amount/price/currency は扱わない。
+- 🧩 `packages/db/src/index.ts`: `export * from './usage';` を追加（既存 jobrun/outbox と同じ集約パターン）。
+- 🧪 `packages/db/src/__tests__/p1_36_usage_recorder.itest.ts`: usage_only 作成／system actor・actorId=null／payload 仕様／forbidden_metadata_key（url/secret/payload・金額キー）で未作成／missing_required_field／二重計上不可／別tenant同key可／invalid billing→usage_only／金額カラム不在。
+- **apps/web helper・既存6 emit・outbox.ts・jobrun.ts・apps/worker は不変**。**runtime での新規 emit はゼロ**。
+- schema/migration/RBAC/ABAC/package/lock 変更なし。**課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／金額なし**。
+- 詳細: `docs/audit/15_monetization_usage_design.md` §26。
+- 現在の UsageEvent emit 対象は **6種類のまま**（LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning）。
+- 次候補: Phase 1-37 Webhook success emit（本 recorder を outbox success 確定時に呼ぶ）だが別途監査・人間承認。実課金はさらに先（設計 §11 安全条件＋人間承認が前提）。
 
 ## Phase 1-35 — worker/packages UsageEvent recorder architecture design（docs-only）
 

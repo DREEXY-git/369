@@ -345,3 +345,15 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - UsageEvent emit対象は **LeadMap export + AIOutput の2種類**。
 - 詳細は `docs/audit/14_release_stabilization.md` §29。
 - ※ 本記録は揮発環境で未push記録コミットが失われたため同一実測値で再作成（コード `11c224d` 不変）。
+
+---
+
+## 20. Phase 1-26 実装状況（emit 拡張候補の監査・状態固定／docs-only）
+
+- 種別: **docs-only の記録・監査**。コード実装・schema/migration・課金・決済・billable_candidate runtime 使用・UsageEvent emit 追加は**なし**。
+- Phase 1-25 は **`11c224d`（実装）＋ `9944f0e`（本番確認記録）でクローズ済み**。本番確認 GO 済み。
+- 旧ローカルコミット **`a9643a4` は未push のまま揮発環境で失われたもので、正式基準ではない**。**現在の正式基準は origin/main = `9944f0e`**。今後 `a9643a4` を前提にしない。
+- 現在の emit 対象は **LeadMap export + AIOutput の2種類**（runtime billing は usage_only・billable_candidate 不使用・課金/決済なし）。
+- 次の emit 拡張候補を横断監査し、**次の P0 = danger-actions export（admin の承認付きエクスポート・`export.generated`/usage_only）** に確定。
+- 候補比較・分類（P0/P1/P2/NEVER_BILLABLE/DO_NOT_TOUCH_NOW）・metadata/idempotency 方針・Phase 1-27 プロンプト案は **`docs/audit/16_usage_event_emit_expansion_strategy.md`** に記録。
+- 実装は別タスク・別承認（Phase 1-27）。実課金はさらに先（§11 の安全条件＋人間承認が前提）。

@@ -14,7 +14,20 @@
 - Phase 1-22「UsageEvent モデル追加・migration」: `d14ce1d` push 済み・**Vercel 本番確認 GO（2026-06-28）**。schema に `UsageEvent` 追加＋migration `20260628183116_p1_22_usage_event`＋`p1_22_usage_event.itest.ts`。**DB model + test のみ／emit なし／課金なし／決済なし**。
 - Phase 1-23「非課金 UsageEvent emit 最小実装」: `399de6f` push 済み・**Vercel 本番確認 GO（2026-06-29）**。`recordUsageEvent` helper＋LeadMap CSV export で `export.generated`（billing=usage_only）を記録。**emit 対象は LeadMap export のみ／課金なし／決済なし／billable_candidate なし／金額なし**。
 - Phase 1-24「UsageEvent emit 拡張候補の横断監査・設計のみ」: 監査完了（GO）。次の P0 = AI出力 `saveAIOutputStandard`。ファイル変更なし。
-- Phase 1-25「AIOutput の非課金 UsageEvent emit」: `11c224d` push 済み・**Vercel 本番確認 GO（2026-06-29）**。`saveAIOutputStandard` で `ai.output.generated`（billing=usage_only・metadata=task/model のみ）を記録。**emit対象は LeadMap export + AIOutput の2種類／課金なし／決済なし／billable_candidate なし／金額なし／helper・LeadMap emit 不変**。
+- Phase 1-25「AIOutput の非課金 UsageEvent emit」: `11c224d`（実装）＋`9944f0e`（本番確認記録）push 済み・**Vercel 本番確認 GO（2026-06-29）＝完全クローズ**。`saveAIOutputStandard` で `ai.output.generated`（billing=usage_only・metadata=task/model のみ）を記録。**emit対象は LeadMap export + AIOutput の2種類／課金なし／決済なし／billable_candidate なし／金額なし／helper・LeadMap emit 不変**。※旧 `a9643a4` は揮発環境で失われた未push記録で正式基準ではない。**正式基準 origin/main=`9944f0e`**。
+- Phase 1-26「UsageEvent emit 拡張方針の記録・監査（docs-only）」: Phase 1-25 完了状態を固定（`11c224d`+`9944f0e`、旧 a9643a4 を基準にしない）＋次候補を横断監査。**次の P0 = danger-actions export**。`docs/audit/16` 作成。コード/schema/migration/課金/決済/emit追加なし。ローカル記録完了／push 未実施（人間承認待ち）。
+
+## Phase 1-26 — UsageEvent emit 拡張方針の記録・監査（docs-only）
+
+状態: **ローカル監査・記録完了／push 未実施（人間承認待ち）**／本番確認不要（docs のみ・コード挙動不変）
+
+- 🔒 状態固定: Phase 1-25 は **`11c224d`（実装）＋`9944f0e`（本番確認記録）でクローズ済み**・本番 GO 済み。旧 `a9643a4` は**未push のまま揮発環境で失われた**もので**正式基準ではない**。**正式基準 origin/main=`9944f0e`**。今後 `a9643a4` を前提にしない。
+- 📄 `docs/audit/16_usage_event_emit_expansion_strategy.md`（新規）: 状態固定＋候補A〜G監査＋比較表＋分類（P0/P1/P2/NEVER_BILLABLE/DO_NOT_TOUCH_NOW）＋metadata/idempotency 方針＋Phase 1-27 プロンプト案。
+- 現在の emit 対象は **LeadMap export + AIOutput の2種類**。runtime billing=usage_only・billable_candidate 不使用・課金/決済/サブスクなし。
+- 次候補を **danger-actions export（admin 承認付きエクスポート・`export.generated`/usage_only・metadata=非PII・sourceId=job.id）** の1つに確定（P1=外部送信 sent / Webhook、P2=JobRun/worker、DO_NOT_TOUCH=seat/finance internal）。
+- コード/schema/migration/RBAC/ABAC/package/lock 不変。課金なし／決済なし／emit 追加なし。
+- 詳細: `docs/audit/16` / `docs/audit/15` §20。
+- 次は別承認で **Phase 1-27**（danger-actions export emit の最小実装・1対象のみ・usage_only・金額なし）。
 
 ## Phase 1-25 — AIOutput の非課金 UsageEvent emit（saveAIOutputStandard）
 

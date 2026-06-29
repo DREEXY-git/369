@@ -288,3 +288,25 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - 課金画面・決済画面・サブスク画面・UsageEvent 管理画面は**新規表示なし**。
 - **課金処理・決済処理・UsageEvent emit はなし**（UsageEvent はまだ入れ物のみ）。
 - 詳細は `docs/audit/14_release_stabilization.md` §27。
+
+---
+
+## 18. Phase 1-23 実装状況（非課金 usage emit 最小実装）
+
+- 実装範囲: **最初の1箇所（LeadMap CSV export）だけ**を UsageEvent に記録する最小配線。**課金・決済・請求・サブスクは含まない。**
+- 追加: `apps/web/lib/usage-events.ts` の `recordUsageEvent` helper。
+  - UsageEvent を1件安全に記録するだけ。**金額(amount/price/currency)を扱わない。**
+  - tenantId+idempotencyKey の unique 制約に当たれば duplicate 扱い（既存を壊さない）。
+  - **記録に失敗しても例外を外へ投げない**（呼び出し元の主処理を壊さないため ok:false を返すのみ）。
+  - billing は許可値以外なら `usage_only` に丸める。quantity 既定 1。必須項目欠落時は ok:false。
+- 配線: `apps/web/app/api/leadmap/export/route.ts` で ExportJob 作成後に1回だけ emit。
+  - eventType=`export.generated` / category=`export` / **billing=`usage_only`（固定）** / unit=`count` / quantity=`1` /
+    sourceType=`ExportJob` / sourceId=`exportJob.id` / idempotencyKey=`usage:export.generated:<exportJob.id>`。
+  - metadata=`{ scope:"leadmap_leads", format:"csv", hasCampaignFilter: Boolean(campaignId) }`（**非PIIのみ**）。
+- billing は **`usage_only` のみ**。`billable_candidate` / `never_billable` はまだ使わない。
+- **課金なし／決済なし。UsageEvent は金額を持たない。**
+- metadata に **PII / secret / 本文 / 金額 / campaignId 実値 / CSV本文 / 件数（規模推測値）を入れない**。
+- **UsageEvent 記録失敗は主処理（CSV export）を壊さない**設計。
+- emit 対象は **LeadMap export のみ**。AI出力・外部送信・dunning・invoice送信・JobRun・storage・seat には広げていない。
+- テスト: `packages/db/src/__tests__/p1_23_usage_event_emit.itest.ts`（payload 仕様/非PII metadata/usage_only/二重計上不可/別tenant同key可）。
+- 次候補: 他の安全な発火点への段階展開（別途承認）。実課金はさらに先（§11 の安全条件＋人間承認が前提）。

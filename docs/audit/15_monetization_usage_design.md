@@ -387,3 +387,21 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - UsageEvent emit対象は **LeadMap export + AIOutput + admin danger-actions export の3種類**。
 - 既存機能・既存権限境界に影響なし。
 - 詳細は `docs/audit/14_release_stabilization.md` §30。
+
+---
+
+## 22. Phase 1-29 実装状況（approvals outreach 送信の非課金 usage emit）
+
+- 実装範囲: **approvals outreach 送信の1箇所のみ**。emit 対象に「approvals outreach 送信」を追加。
+- 配線: `apps/web/app/(app)/approvals/actions.ts` の `decideApprovalAction`（outreach_send 承認）で、`OutreachSendLog.create` を `const outreachLog = ...` で受け、その直後・`outreachDraft.update` の前に `recordUsageEvent` を呼ぶ。
+  - eventType=`external_send.outreach` / category=`external_send` / **billing=`usage_only`（固定）** / unit=`count` / quantity=`1` /
+    sourceType=`OutreachSendLog` / sourceId=`outreachLog.id` / idempotencyKey=`usage:external_send.outreach:<OutreachSendLog.id>`。
+  - metadata=`{ channel: 'email', status: sendStatus }`（**非PII・channel/status のみ**）。
+- **emit 条件は `sendStatus === 'logged' || sendStatus === 'sent'` のときのみ**。**`suppressed` / `failed` / `rejected` は emit しない**（抑止・失敗はユーザーに課金しない＝never_billable 相当）。
+- metadata に **toAddress / fromAddress / subject / body / draftId / leadId / placeId / 顧客情報 / 金額 / secret を入れない**。
+- **recordUsageEvent helper は変更なし**。**LeadMap export emit / AIOutput emit / admin danger-actions export emit は維持**。
+- **recordUsageEvent 失敗で承認・送信の主処理を壊さない**（helper は例外を投げない設計）。**実メール送信は起こさない**（既存挙動不変・`EXTERNAL_SEND_ENABLED=false` で logged）。
+- schema / migration / RBAC / ABAC / package / lock 変更なし。**課金なし／決済なし／billable_candidate runtime 使用なし／金額なし**。
+- テスト: `packages/db/src/__tests__/p1_29_usage_event_outreach.itest.ts`（payload 仕様／metadata=channel,status のみ／usage_only／emit 条件 logged|sent のみ・suppressed/failed/rejected は emit しない／二重計上不可／別tenant同key可）。
+- 現在の emit 対象は **LeadMap export + AIOutput + admin danger-actions export + approvals outreach の4種類**。
+- 次候補は別途監査・承認（A' invoice-send/dunning ／ B Webhook delivery）。実課金はさらに先（§11 の安全条件＋人間承認が前提）。

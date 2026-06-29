@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
+import { recordUsageEvent } from '@/lib/usage-events';
 import { isSuppressed } from '@hokko/shared';
 import { getEmailProvider, isExternalSendEnabled } from '@hokko/integrations';
 
@@ -65,7 +66,7 @@ export async function decideApprovalAction(formData: FormData) {
           provider = res.provider;
         }
 
-        await prisma.outreachSendLog.create({
+        const outreachLog = await prisma.outreachSendLog.create({
           data: {
             tenantId: user.tenantId,
             draftId: draft.id,
@@ -79,6 +80,26 @@ export async function decideApprovalAction(formData: FormData) {
             approvedById: user.userId,
           },
         });
+        // Phase 1-29: 非課金の利用量記録（outreach 送信が logged/sent として確定した事実のみ）。課金ではない・billing=usage_only 固定。
+        // suppressed / failed は emit しない（抑止・失敗はユーザーに課金しない＝never_billable 相当）。
+        // metadata は非PIIの channel/status のみ（toAddress/subject/body/draftId/leadId/顧客情報/金額は入れない）。
+        // 記録失敗は承認・送信の主処理を壊さない（recordUsageEvent は例外を投げず ok:false を返すだけ）。
+        if (sendStatus === 'logged' || sendStatus === 'sent') {
+          await recordUsageEvent({
+            tenantId: user.tenantId,
+            actorId: user.userId,
+            actorType: 'user',
+            eventType: 'external_send.outreach',
+            category: 'external_send',
+            billing: 'usage_only',
+            unit: 'count',
+            quantity: 1,
+            sourceType: 'OutreachSendLog',
+            sourceId: outreachLog.id,
+            idempotencyKey: `usage:external_send.outreach:${outreachLog.id}`,
+            metadata: { channel: 'email', status: sendStatus },
+          });
+        }
         await prisma.outreachDraft.update({
           where: { id: draft.id },
           data: { status: sendStatus === 'suppressed' ? 'APPROVED' : 'SENT' },

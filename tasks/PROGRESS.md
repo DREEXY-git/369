@@ -17,6 +17,26 @@
 - Phase 1-25「AIOutput の非課金 UsageEvent emit」: `11c224d`（実装）＋`9944f0e`（本番確認記録）push 済み・**Vercel 本番確認 GO（2026-06-29）＝完全クローズ**。`saveAIOutputStandard` で `ai.output.generated`（billing=usage_only・metadata=task/model のみ）を記録。**emit対象は LeadMap export + AIOutput の2種類／課金なし／決済なし／billable_candidate なし／金額なし／helper・LeadMap emit 不変**。※旧 `a9643a4` は揮発環境で失われた未push記録で正式基準ではない。**正式基準 origin/main=`9944f0e`**。
 - Phase 1-26「UsageEvent emit 拡張方針の記録・監査（docs-only）」: `057d314` push 済み。Phase 1-25 完了状態を固定（`11c224d`+`9944f0e`、旧 a9643a4 を基準にしない）＋次候補を横断監査。**次の P0 = danger-actions export**。`docs/audit/16` 作成。
 - Phase 1-27「admin danger-actions export の非課金 UsageEvent emit」: `35cd384` push 済み・**Vercel 本番確認 GO（2026-06-29）**。`executeApprovedExportAction` で `export.generated`（billing=usage_only・metadata=固定値 scope/format/source）を記録。**emit対象は LeadMap export + AIOutput + admin danger-actions export の3種類／課金なし／決済なし／billable_candidate なし／金額なし／payloadAfter 実値 metadata 不可／helper・LeadMap・AIOutput emit 不変**。
+- Phase 1-28「次の UsageEvent emit 拡張候補の横断監査（読み取り専用）」: 監査完了（GO）。次の P0 = approvals outreach 送信。外部送信の分類設計（logged/sent=usage_only emit・suppressed/failed=emit しない）を確定。ファイル変更なし。
+- Phase 1-29「approvals outreach 送信の非課金 UsageEvent emit」: `decideApprovalAction` で `external_send.outreach`（billing=usage_only・metadata=channel/status のみ・logged/sent のみ emit）を記録。**emit対象は LeadMap export + AIOutput + admin danger-actions export + approvals outreach の4種類／課金なし／決済なし／billable_candidate なし／金額なし／suppressed・failed は emit しない／helper・既存3 emit 不変**。ローカル実装・検証完了／push 未実施（人間承認待ち）。本番確認未実施。
+
+## Phase 1-29 — approvals outreach 送信の非課金 UsageEvent emit
+
+状態: **ローカル実装・検証完了／push 未実施（人間承認待ち）**／本番確認未実施（apps/web のコード変更を含む・ただし課金/決済/emit拡大なし・実メール送信なし）
+
+- 🧩 `apps/web/app/(app)/approvals/actions.ts`: `decideApprovalAction`（outreach_send 承認）の `OutreachSendLog.create` を `const outreachLog = ...` で受け、直後・`outreachDraft.update` 前に `recordUsageEvent` を追加。
+  eventType=`external_send.outreach` / category=`external_send` / **billing=`usage_only`** / unit=`count` / quantity=`1` / sourceType=`OutreachSendLog` / sourceId=`outreachLog.id` / idempotencyKey=`usage:external_send.outreach:<id>` / metadata=`{channel:'email', status: sendStatus}`（非PII）。
+  記録失敗で承認・送信主処理を壊さない（helper は例外を投げない）。**実メール送信は起こさない**（既存挙動不変）。
+- **emit 条件は `sendStatus === 'logged' || sendStatus === 'sent'` のみ**。**`suppressed` / `failed` / `rejected` は emit しない**（never_billable 相当）。
+- metadata に toAddress/fromAddress/subject/body/draftId/leadId/placeId/顧客情報/金額/secret を入れない。
+- emit 対象に **approvals outreach 送信** を追加。**LeadMap export / AIOutput / admin danger-actions export emit・recordUsageEvent helper は不変**。
+- 課金なし／決済なし／`billable_candidate`・`never_billable` の runtime 使用なし／金額(amount/price/currency)なし。
+- 🧪 `packages/db/src/__tests__/p1_29_usage_event_outreach.itest.ts`: payload 仕様／metadata=channel,status のみ／usage_only／emit 条件（logged|sent のみ・suppressed/failed/rejected は emit しない）／二重計上不可／別tenant同key可。
+- schema/migration/RBAC/ABAC/package/lock 変更なし。
+- 検証（全 green）: db:generate / p1_29 integration 6 / p1_27 5・p1_25 5・p1_23 5・p1_22 6・p1_10 11・p1_15 8 回帰 / 統合 20ファイル128 / `./scripts/verify.sh`（typecheck/lint/unit 23ファイル211/build）。
+- 詳細: `docs/audit/15_monetization_usage_design.md` §22。
+- 現在の emit 対象は **LeadMap export + AIOutput + admin danger-actions export + approvals outreach の4種類**。
+- 次候補: A'（invoice-send/dunning）／B（Webhook delivery）だが別途監査・承認。実課金はさらに先（設計 §11 の安全条件＋人間承認が前提）。
 
 ## Phase 1-27 — admin danger-actions export の非課金 UsageEvent emit
 

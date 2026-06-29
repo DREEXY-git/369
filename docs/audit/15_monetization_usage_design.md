@@ -466,3 +466,15 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - テスト: `packages/db/src/__tests__/p1_33_usage_event_dunning.itest.ts`（payload 仕様／metadata=channel,status,kind のみ／usage_only／emit 条件 logged|sent のみ・それ以外 emit しない／二重計上不可／別tenant同key可）。
 - 現在の emit 対象は **LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning の6種類**。
 - 次候補は別途監査・承認（Webhook delivery〔worker/packages 経路の共通 helper 設計が前提〕／JobRun）。実課金はさらに先（§11 の安全条件＋人間承認が前提）。
+
+### 24.1 本番確認（GO・2026-06-29・利用者ブラウザ/Vercel）
+- **本番確認 GO**（2026-06-29・利用者ブラウザ確認）。`6cefe8f` を Vercel Production（`main`）で確認。
+- dunning が**従来どおり動作**。**CollectionReminder / Receivable / writeAudit / GrowthEvent の既存挙動に回帰なし**（Receivable は変更されず collected にならない）。
+- **UsageEvent / recordUsageEvent 関連エラーなし**。
+- runtime billing は **usage_only**。**billable_candidate / never_billable は使っていない**。metadata は **channel/status/kind のみ**。
+- recipient/subject/draftMessage/maskedBody/inv.number/inv.total/reminderId/receivableId/invoiceId/顧客情報/金額/secret は入れていない。
+- **no-recipient / already-sent / not-found / failed / rejected / blocked / suppressed / その他 status は emit しない**。
+- **課金処理・決済処理・サブスクリプション処理はなし**。
+- UsageEvent emit対象は **LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning の6種類**。
+- 既存機能・既存権限境界に影響なし。
+- 詳細は `docs/audit/14_release_stabilization.md` §33。

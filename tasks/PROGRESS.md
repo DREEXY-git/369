@@ -22,11 +22,11 @@
 - Phase 1-30「次候補（invoice-send/dunning vs Webhook delivery）の横断監査（読み取り専用）」: 監査完了（GO）。次の P0 = invoice-send。Webhook は worker/packages 経路（`processOutboxBatch`）で apps/web helper を使えず URL/secret/payload/retry の共通 helper 設計が必要なため後回し。ファイル変更なし。
 - Phase 1-31「invoice-send の非課金 UsageEvent emit」: `b062f68` push 済み・**Vercel 本番確認 GO（2026-06-29）**。`executeInvoiceExternalSend` で `external_send.invoice`（billing=usage_only・metadata=channel/status/kind のみ・logged/sent のみ emit）を記録。**emit対象は 上記4種類 + invoice-send の5種類／課金なし／決済なし／billable_candidate なし／金額なし／failed等は emit しない／既存 finance ロジック・helper・既存4 emit 不変／financeEvent・writeAudit・GrowthEvent 回帰なし**。
 - Phase 1-32「次候補（dunning vs Webhook 等）の横断監査（読み取り専用）」: 監査完了（GO）。次の P0 = dunning（invoice-send と同型・FinanceEvent を書かない分さらに安全）。Webhook は worker/packages 経路（`processOutboxBatch`）の共通 helper 設計が必要なため後回し。ファイル変更なし。
-- Phase 1-33「dunning の非課金 UsageEvent emit」: `executeDunningSend` で `external_send.dunning`（billing=usage_only・metadata=channel/status/kind のみ・logged/sent のみ emit）を記録。**emit対象は 上記5種類 + dunning の6種類／課金なし／決済なし／billable_candidate なし／金額なし／no-recipient・already-sent・failed等は emit しない／既存 dunning ロジック・helper・既存5 emit 不変／Receivable 不変・collected にしない**。ローカル実装・検証完了／push 未実施（人間承認待ち）。本番確認未実施。
+- Phase 1-33「dunning の非課金 UsageEvent emit」: `6cefe8f` push 済み・**Vercel 本番確認 GO（2026-06-29）**。`executeDunningSend` で `external_send.dunning`（billing=usage_only・metadata=channel/status/kind のみ・logged/sent のみ emit）を記録。**emit対象は 上記5種類 + dunning の6種類／課金なし／決済なし／billable_candidate なし／金額なし／no-recipient・already-sent・failed等は emit しない／既存 dunning ロジック・helper・既存5 emit 不変／Receivable 不変・collected にしない**。
 
 ## Phase 1-33 — dunning の非課金 UsageEvent emit
 
-状態: **ローカル実装・検証完了／push 未実施（人間承認待ち）**／本番確認未実施（apps/web の finance コード変更を含む・ただし課金/決済/emit拡大なし・dunning ロジック不変・Receivable 不変・実メール送信なし）
+状態: **本番確認完了（GO）** — `6cefe8f` を `main` へ push 済み・Vercel 本番確認 GO（2026-06-29・利用者ブラウザ確認）。詳細 `docs/audit/14` §33 / `docs/audit/15` §24.1。
 
 - 🧩 `apps/web/lib/domains/finance/dunning.ts`: `executeDunningSend` の既存 `collectionReminder.update`/`writeAudit`/`emitGrowthEvent` の後・`return { ok: true }` 前に `recordUsageEvent` を追加。
   eventType=`external_send.dunning` / category=`external_send` / **billing=`usage_only`** / unit=`count` / quantity=`1` / sourceType=`CollectionReminder` / sourceId=`reminderId` / idempotencyKey=`usage:external_send.dunning:<id>` / metadata=`{channel:'email', status: sendStatus, kind:'dunning'}`（非PII）。

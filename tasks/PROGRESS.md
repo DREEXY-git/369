@@ -23,6 +23,23 @@
 - Phase 1-31「invoice-send の非課金 UsageEvent emit」: `b062f68` push 済み・**Vercel 本番確認 GO（2026-06-29）**。`executeInvoiceExternalSend` で `external_send.invoice`（billing=usage_only・metadata=channel/status/kind のみ・logged/sent のみ emit）を記録。**emit対象は 上記4種類 + invoice-send の5種類／課金なし／決済なし／billable_candidate なし／金額なし／failed等は emit しない／既存 finance ロジック・helper・既存4 emit 不変／financeEvent・writeAudit・GrowthEvent 回帰なし**。
 - Phase 1-32「次候補（dunning vs Webhook 等）の横断監査（読み取り専用）」: 監査完了（GO）。次の P0 = dunning（invoice-send と同型・FinanceEvent を書かない分さらに安全）。Webhook は worker/packages 経路（`processOutboxBatch`）の共通 helper 設計が必要なため後回し。ファイル変更なし。
 - Phase 1-33「dunning の非課金 UsageEvent emit」: `6cefe8f` push 済み・**Vercel 本番確認 GO（2026-06-29）**。`executeDunningSend` で `external_send.dunning`（billing=usage_only・metadata=channel/status/kind のみ・logged/sent のみ emit）を記録。**emit対象は 上記5種類 + dunning の6種類／課金なし／決済なし／billable_candidate なし／金額なし／no-recipient・already-sent・failed等は emit しない／既存 dunning ロジック・helper・既存5 emit 不変／Receivable 不変・collected にしない**。
+- Phase 1-34「Webhook/JobRun/worker・packages 経路の次候補 横断監査（読み取り専用）」: 監査完了（GO）。Webhook 本番経路=`packages/db/src/outbox.ts::processOutboxBatch`（worker・admin手動）、JobRun=`packages/db/src/jobrun.ts`（worker は actorId なし）。`recordUsageEvent` は apps/web 専用で worker/packages から import 不可。次は実装ではなく packages/db 層 worker-safe recorder の docs-only 設計と判定。ファイル変更なし。
+- Phase 1-35「worker/packages UsageEvent recorder architecture design（docs-only）」: `docs/audit/17_worker_usage_recorder_design.md` 作成＋doc15 §25＋本ファイル。**設計のみ／実装なし／emit 追加なし／emit 対象は6種類のまま／課金なし／決済なし／billable_candidate なし／never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。ローカル設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）。
+
+## Phase 1-35 — worker/packages UsageEvent recorder architecture design（docs-only）
+
+状態: **ローカル設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）**
+
+- 🎯 目的: worker/packages 経路でも UsageEvent を安全に記録するための architecture を docs-only で設計・記録（Webhook/JobRun を将来安全に計測する前段階）。**実装しない・emit 追加しない**。
+- 📄 `docs/audit/17_worker_usage_recorder_design.md` 新規作成（非エンジニア向け要約＋依存境界図＋Webhook/JobRun 設計＋metadata 可否＋idempotency 規約＋never_billable 方針＋段階導入計画＋リスク対策＋GO判定）。
+- 📄 `docs/audit/15_monetization_usage_design.md` §25 追記（Phase 1-35 実装状況）。
+- 確定事項: `recordUsageEvent`（apps/web/lib/usage-events.ts）は `@/lib/db` import の apps/web 専用で worker/packages から import 不可。次は packages/db 層に worker-safe recorder（`packages/db/src/usage.ts` 案・prisma は `./client`・apps/web 非依存）を置く設計。
+- Webhook 将来設計: `webhook.delivered`/category=webhook/usage_only/**success のみ**/failed・dead は emit しない/sourceType=WebhookDelivery/sourceId=delivery.id/idempotencyKey=`usage:webhook.delivered:<eventId>:<subscriptionId>`/actorType=system/metadata に url・secret・signature・payload を入れない。
+- JobRun 将来設計: `job.run.completed`/category=job/usage_only/**succeeded のみ**/failed・dead は emit しない/sourceType=JobRun/sourceId=jobRun.id/idempotencyKey=`usage:job.run:<jobRun.id>`/actorType=system/jobType ホワイトリスト/payload・error・logs を metadata に入れない。
+- never_billable / emit しない: webhook failed・dead・retry失敗／job failed・dead／AccessDenied／policy deny／PIIマスク／injection検知／承認却下／監査・セキュリティログ／blocked・suppressed・rejected／no-recipient・already-sent・not-found。現段階は never_billable を runtime で使わず基本 emit しない。
+- 段階導入: Phase 1-36 共通 recorder 実装のみ → 1-37 Webhook emit → 1-38 JobRun emit（各別承認）。実課金はさらに先（設計 §11 安全条件＋人間承認が前提）。
+- 現在の UsageEvent emit 対象は **6種類のまま**（LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning）。
+- 詳細: `docs/audit/17_worker_usage_recorder_design.md`。
 
 ## Phase 1-33 — dunning の非課金 UsageEvent emit
 

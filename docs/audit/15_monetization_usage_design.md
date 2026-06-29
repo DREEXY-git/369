@@ -478,3 +478,17 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - UsageEvent emit対象は **LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning の6種類**。
 - 既存機能・既存権限境界に影響なし。
 - 詳細は `docs/audit/14_release_stabilization.md` §33。
+
+---
+
+## 25. Phase 1-35 実装状況（worker/packages UsageEvent recorder architecture design / docs-only）
+
+- **docs-only**。**実装なし／emit 追加なし／schema・migration なし／package・lock なし**。
+- **課金なし／決済なし／billable_candidate runtime 使用なし／never_billable runtime 使用なし**。
+- **現在の emit 対象は 6種類のまま**（LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning）。
+- Phase 1-34 監査で、**Webhook delivery の本番経路は `packages/db/src/outbox.ts::processOutboxBatch`（apps/worker から呼ばれる／admin 手動も可）**、**JobRun は `packages/db/src/jobrun.ts`（worker は actorId を持たない・system actor）**と判明。`apps/web/lib/events.ts` の deliverWebhook は legacy/runtime 未使用。
+- `recordUsageEvent` helper は **apps/web 専用**（`@/lib/db` import・`@/*` は apps/web alias）。**packages/db / apps/worker からそのまま import できない**（依存方向・module 解決を壊す）。
+- したがって次は実装ではなく、**packages/db 層に worker-safe な共通 recorder を置く設計**が必要。本フェーズはその architecture を docs-only で確定した。
+- 主な設計確定事項: recorder 配置案 = `packages/db/src/usage.ts`（prisma は `./client` から・apps/web 非依存・将来 apps/web helper を委譲）。Webhook = `webhook.delivered` / success のみ / failed・dead は emit しない / sourceId=delivery.id / idempotencyKey=`usage:webhook.delivered:<eventId>:<subscriptionId>` / metadata に url・secret・signature・payload を入れない。JobRun = `job.run.completed` / succeeded のみ / jobType ホワイトリスト / actorType=system。
+- **詳細は `docs/audit/17_worker_usage_recorder_design.md`**。
+- **実装は別フェーズ・別承認**（Phase 1-36 = 共通 recorder 実装のみ → Phase 1-37 Webhook emit → Phase 1-38 JobRun emit）。実課金はさらに先（§11 の安全条件＋人間承認が前提）。

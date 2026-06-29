@@ -19,6 +19,26 @@
 - Phase 1-27「admin danger-actions export の非課金 UsageEvent emit」: `35cd384` push 済み・**Vercel 本番確認 GO（2026-06-29）**。`executeApprovedExportAction` で `export.generated`（billing=usage_only・metadata=固定値 scope/format/source）を記録。**emit対象は LeadMap export + AIOutput + admin danger-actions export の3種類／課金なし／決済なし／billable_candidate なし／金額なし／payloadAfter 実値 metadata 不可／helper・LeadMap・AIOutput emit 不変**。
 - Phase 1-28「次の UsageEvent emit 拡張候補の横断監査（読み取り専用）」: 監査完了（GO）。次の P0 = approvals outreach 送信。外部送信の分類設計（logged/sent=usage_only emit・suppressed/failed=emit しない）を確定。ファイル変更なし。
 - Phase 1-29「approvals outreach 送信の非課金 UsageEvent emit」: `986e738` push 済み・**Vercel 本番確認 GO（2026-06-29）**。`decideApprovalAction` で `external_send.outreach`（billing=usage_only・metadata=channel/status のみ・logged/sent のみ emit）を記録。**emit対象は LeadMap export + AIOutput + admin danger-actions export + approvals outreach の4種類／課金なし／決済なし／billable_candidate なし／金額なし／suppressed・failed は emit しない／helper・既存3 emit 不変**。
+- Phase 1-30「次候補（invoice-send/dunning vs Webhook delivery）の横断監査（読み取り専用）」: 監査完了（GO）。次の P0 = invoice-send。Webhook は worker/packages 経路（`processOutboxBatch`）で apps/web helper を使えず URL/secret/payload/retry の共通 helper 設計が必要なため後回し。ファイル変更なし。
+- Phase 1-31「invoice-send の非課金 UsageEvent emit」: `executeInvoiceExternalSend` で `external_send.invoice`（billing=usage_only・metadata=channel/status/kind のみ・logged/sent のみ emit）を記録。**emit対象は 上記4種類 + invoice-send の5種類／課金なし／決済なし／billable_candidate なし／金額なし／failed等は emit しない／既存 finance ロジック・helper・既存4 emit 不変**。ローカル実装・検証完了／push 未実施（人間承認待ち）。本番確認未実施。
+
+## Phase 1-31 — invoice-send の非課金 UsageEvent emit
+
+状態: **ローカル実装・検証完了／push 未実施（人間承認待ち）**／本番確認未実施（apps/web の finance コード変更を含む・ただし課金/決済/emit拡大なし・finance ロジック不変・実メール送信なし）
+
+- 🧩 `apps/web/lib/domains/finance/invoice-send.ts`: `executeInvoiceExternalSend` の既存 `invoice.update(SENT)`/`financeEvent.create`/`writeAudit`/`emitGrowthEvent` の後・`return { ok: true }` 前に `recordUsageEvent` を追加。
+  eventType=`external_send.invoice` / category=`external_send` / **billing=`usage_only`** / unit=`count` / quantity=`1` / sourceType=`Invoice` / sourceId=`invoiceId` / idempotencyKey=`usage:external_send.invoice:<invoiceId>` / metadata=`{channel:'email', status: sendStatus, kind:'invoice'}`（非PII）。
+  記録失敗で送信主処理・financeEvent・戻り値を壊さない（helper は例外を投げない）。**実メール送信は起こさない**（既存挙動不変）。
+- **emit 条件は `sendStatus === 'logged' || sendStatus === 'sent'` のみ**。**`failed` / `rejected` / `blocked` / `suppressed` / その他 status は emit しない**（never_billable 相当）。
+- metadata に recipient/customer/email/inv.number/inv.total/maskedBody/amount/price/currency/receivable/invoiceId/secret を入れない（sourceId に invoiceId は使うが metadata には入れない）。
+- emit 対象に **invoice-send** を追加。**既存 finance ロジック（invoice.update/financeEvent/writeAudit/emitGrowthEvent）・recordUsageEvent helper・既存4 emit（LeadMap/AIOutput/admin/outreach）は不変**。
+- 課金なし／決済なし／`billable_candidate`・`never_billable` の runtime 使用なし／金額(amount/price/currency)なし。
+- 🧪 `packages/db/src/__tests__/p1_31_usage_event_invoice_send.itest.ts`: payload 仕様／metadata=channel,status,kind のみ／usage_only／emit 条件（logged|sent のみ・failed/rejected/blocked/suppressed は emit しない）／二重計上不可／別tenant同key可。
+- schema/migration/RBAC/ABAC/package/lock 変更なし。
+- 検証（全 green）: db:generate / p1_31 integration 6 / p1_29 6・p1_27 5・p1_25 5・p1_23 5・p1_22 6・p1_10 11・p1_15 8 回帰 / 統合 21ファイル134 / `./scripts/verify.sh`（typecheck/lint/unit 23ファイル211/build）。
+- 詳細: `docs/audit/15_monetization_usage_design.md` §23。
+- 現在の emit 対象は **LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send の5種類**。
+- 次候補: dunning ／ Webhook delivery（worker/packages 経路の共通 helper 設計が前提）だが別途監査・承認。実課金はさらに先（設計 §11 の安全条件＋人間承認が前提）。
 
 ## Phase 1-29 — approvals outreach 送信の非課金 UsageEvent emit
 

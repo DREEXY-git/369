@@ -416,3 +416,22 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - UsageEvent emit対象は **LeadMap export + AIOutput + admin danger-actions export + approvals outreach の4種類**。
 - 既存機能・既存権限境界に影響なし。
 - 詳細は `docs/audit/14_release_stabilization.md` §31。
+
+---
+
+## 23. Phase 1-31 実装状況（invoice-send の非課金 usage emit）
+
+- 実装範囲: **invoice-send の1箇所のみ**。emit 対象に「invoice-send」を追加。
+- 配線: `apps/web/lib/domains/finance/invoice-send.ts` の `executeInvoiceExternalSend` で、既存の `invoice.update(SENT)` / `financeEvent.create` / `writeAudit` / `emitGrowthEvent` の**後**・`return { ok: true }` の**前**に `recordUsageEvent` を呼ぶ。
+  - eventType=`external_send.invoice` / category=`external_send` / **billing=`usage_only`（固定）** / unit=`count` / quantity=`1` /
+    sourceType=`Invoice` / sourceId=`invoiceId` / idempotencyKey=`usage:external_send.invoice:<invoiceId>`。
+  - metadata=`{ channel:'email', status: sendStatus, kind:'invoice' }`（**非PII・channel/status/kind のみ**）。
+- **emit 条件は `sendStatus === 'logged' || sendStatus === 'sent'` のときのみ**。**`failed` / `rejected` / `blocked` / `suppressed` / その他 status は emit しない**（送れていない＝never_billable 相当）。
+- metadata に **recipient / customer / email / inv.number / inv.total / maskedBody / amount / price / currency / receivable / invoiceId / secret を入れない**（sourceId に invoiceId は使うが metadata には入れない）。
+- **既存 finance ロジック（invoice.update / financeEvent.create / writeAudit / emitGrowthEvent）は不変**。**recordUsageEvent helper は変更なし**。
+- **LeadMap export emit / AIOutput emit / admin danger-actions export emit / approvals outreach emit は維持**。
+- **recordUsageEvent 失敗で送信主処理・financeEvent・戻り値を壊さない**（helper は例外を投げない設計）。**実メール送信は起こさない**（既存挙動不変・`EXTERNAL_SEND_ENABLED=false` で logged）。
+- schema / migration / RBAC / ABAC / package / lock 変更なし。**課金なし／決済なし／billable_candidate runtime 使用なし／金額なし**。
+- テスト: `packages/db/src/__tests__/p1_31_usage_event_invoice_send.itest.ts`（payload 仕様／metadata=channel,status,kind のみ／usage_only／emit 条件 logged|sent のみ・failed/rejected/blocked/suppressed は emit しない／二重計上不可／別tenant同key可）。
+- 現在の emit 対象は **LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send の5種類**。
+- 次候補は別途監査・承認（dunning ／ Webhook delivery〔worker/packages 経路の共通 helper 設計が前提〕）。実課金はさらに先（§11 の安全条件＋人間承認が前提）。

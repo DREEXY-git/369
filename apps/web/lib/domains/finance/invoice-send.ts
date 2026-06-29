@@ -2,6 +2,7 @@
 // 鉄則: 外部送信は必ず承認後。送信前に prepareExternalPayload でPIIマスク。
 //       AI は送信主体になれない（assertAiToolAllowed で多重防御）。設計: docs/audit/12。
 import { prisma, writeAudit } from '@/lib/db';
+import { recordUsageEvent } from '@/lib/usage-events';
 import { emitGrowthEvent } from '@/lib/growth';
 import { requireApprovalForDangerousAction } from '@/lib/approval';
 import { prepareExternalPayload } from '@/lib/safe-external-send';
@@ -117,5 +118,25 @@ export async function executeInvoiceExternalSend(actor: Actor, invoiceId: string
     amount: toNumber(inv.total),
     alsoDomainEvent: { domainType: 'INVOICE_SENT' as DomainEventType, aggregateType: 'Invoice', aggregateId: invoiceId },
   });
+  // Phase 1-31: 非課金の利用量記録（invoice send が logged/sent として確定した事実のみ）。課金ではない・billing=usage_only 固定。
+  // failed / その他 status は emit しない（送れていない＝never_billable 相当）。
+  // metadata は非PIIの channel/status/kind のみ（recipient/顧客情報/請求番号/請求金額/inv.total/inv.number/maskedBody/本文/金額/secret は入れない）。
+  // 記録失敗は送信主処理・financeEvent・writeAudit・戻り値を壊さない（recordUsageEvent は例外を投げず ok:false を返すだけ）。
+  if (sendStatus === 'logged' || sendStatus === 'sent') {
+    await recordUsageEvent({
+      tenantId: actor.tenantId,
+      actorId: actor.userId,
+      actorType: 'user',
+      eventType: 'external_send.invoice',
+      category: 'external_send',
+      billing: 'usage_only',
+      unit: 'count',
+      quantity: 1,
+      sourceType: 'Invoice',
+      sourceId: invoiceId,
+      idempotencyKey: `usage:external_send.invoice:${invoiceId}`,
+      metadata: { channel: 'email', status: sendStatus, kind: 'invoice' },
+    });
+  }
   return { ok: true };
 }

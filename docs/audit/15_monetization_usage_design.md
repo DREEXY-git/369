@@ -435,3 +435,15 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - テスト: `packages/db/src/__tests__/p1_31_usage_event_invoice_send.itest.ts`（payload 仕様／metadata=channel,status,kind のみ／usage_only／emit 条件 logged|sent のみ・failed/rejected/blocked/suppressed は emit しない／二重計上不可／別tenant同key可）。
 - 現在の emit 対象は **LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send の5種類**。
 - 次候補は別途監査・承認（dunning ／ Webhook delivery〔worker/packages 経路の共通 helper 設計が前提〕）。実課金はさらに先（§11 の安全条件＋人間承認が前提）。
+
+### 23.1 本番確認（GO・2026-06-29・利用者ブラウザ/Vercel）
+- **本番確認 GO**（2026-06-29・利用者ブラウザ確認）。`b062f68` を Vercel Production（`main`）で確認。
+- invoice-send が**従来どおり動作**。請求書が SENT になる既存挙動に回帰なし。**financeEvent / writeAudit / GrowthEvent の既存挙動に回帰なし**。
+- **UsageEvent / recordUsageEvent 関連エラーなし**。
+- runtime billing は **usage_only**。**billable_candidate は使っていない**。metadata は **channel/status/kind のみ**。
+- recipient/customer/email/inv.number/inv.total/maskedBody/amount/price/currency/receivable/invoiceId/secret は入れていない。
+- **failed / rejected / blocked / suppressed / その他 status は emit しない**。
+- **課金処理・決済処理・サブスクリプション処理はなし**。
+- UsageEvent emit対象は **LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send の5種類**。
+- 既存機能・既存権限境界に影響なし。
+- 詳細は `docs/audit/14_release_stabilization.md` §32。

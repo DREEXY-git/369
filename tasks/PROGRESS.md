@@ -15,7 +15,24 @@
 - Phase 1-23「非課金 UsageEvent emit 最小実装」: `399de6f` push 済み・**Vercel 本番確認 GO（2026-06-29）**。`recordUsageEvent` helper＋LeadMap CSV export で `export.generated`（billing=usage_only）を記録。**emit 対象は LeadMap export のみ／課金なし／決済なし／billable_candidate なし／金額なし**。
 - Phase 1-24「UsageEvent emit 拡張候補の横断監査・設計のみ」: 監査完了（GO）。次の P0 = AI出力 `saveAIOutputStandard`。ファイル変更なし。
 - Phase 1-25「AIOutput の非課金 UsageEvent emit」: `11c224d`（実装）＋`9944f0e`（本番確認記録）push 済み・**Vercel 本番確認 GO（2026-06-29）＝完全クローズ**。`saveAIOutputStandard` で `ai.output.generated`（billing=usage_only・metadata=task/model のみ）を記録。**emit対象は LeadMap export + AIOutput の2種類／課金なし／決済なし／billable_candidate なし／金額なし／helper・LeadMap emit 不変**。※旧 `a9643a4` は揮発環境で失われた未push記録で正式基準ではない。**正式基準 origin/main=`9944f0e`**。
-- Phase 1-26「UsageEvent emit 拡張方針の記録・監査（docs-only）」: Phase 1-25 完了状態を固定（`11c224d`+`9944f0e`、旧 a9643a4 を基準にしない）＋次候補を横断監査。**次の P0 = danger-actions export**。`docs/audit/16` 作成。コード/schema/migration/課金/決済/emit追加なし。ローカル記録完了／push 未実施（人間承認待ち）。
+- Phase 1-26「UsageEvent emit 拡張方針の記録・監査（docs-only）」: `057d314` push 済み。Phase 1-25 完了状態を固定（`11c224d`+`9944f0e`、旧 a9643a4 を基準にしない）＋次候補を横断監査。**次の P0 = danger-actions export**。`docs/audit/16` 作成。
+- Phase 1-27「admin danger-actions export の非課金 UsageEvent emit」: `executeApprovedExportAction` で `export.generated`（billing=usage_only・metadata=固定値 scope/format/source）を記録。**emit対象は LeadMap export + AIOutput + admin danger-actions export の3種類／課金なし／決済なし／billable_candidate なし／金額なし／payloadAfter 実値 metadata 不可／helper・LeadMap・AIOutput emit 不変**。ローカル実装・検証完了／push 未実施（人間承認待ち）。本番確認未実施。
+
+## Phase 1-27 — admin danger-actions export の非課金 UsageEvent emit
+
+状態: **ローカル実装・検証完了／push 未実施（人間承認待ち）**／本番確認は push 後に必要（apps/web のコード変更を含む・ただし課金/決済/emit拡大なし）
+
+- 🧩 `apps/web/app/(app)/admin/danger-actions/actions.ts`: `executeApprovedExportAction` の ExportJob 作成後・既存 `writeAudit` 後・`return job.id` 前に `recordUsageEvent` を1回だけ追加。
+  eventType=`export.generated` / category=`export` / **billing=`usage_only`** / unit=`count` / quantity=`1` / sourceType=`ExportJob` / sourceId=`job.id` / idempotencyKey=`usage:export.generated:<job.id>` / metadata=`{scope:'admin_danger_actions_export',format:'csv',source:'admin_danger_actions'}`（固定値・非PII）。
+  記録失敗で承認済み export 本処理を壊さない（helper は例外を投げない）。
+- emit 対象に **admin danger-actions export** を追加。**LeadMap export emit・AIOutput emit・recordUsageEvent helper は不変**。
+- 課金なし／決済なし／`billable_candidate`・`never_billable` の runtime 使用なし／金額(amount/price/currency)なし／`req.payloadAfter` の実値・顧客情報・CSV本文・件数・金額・secret・実IDを metadata に入れない。
+- 🧪 `packages/db/src/__tests__/p1_27_usage_event_admin_export.itest.ts`: payload 仕様／metadata=scope,format,source のみ／usage_only／二重計上不可／別tenant同key可。
+- schema/migration/RBAC/ABAC/package/lock 変更なし。
+- 検証（全 green）: db:generate / p1_27 integration 5 / p1_25 5・p1_23 5・p1_22 6・p1_10 11・p1_15 8 回帰 / 統合 19ファイル122 / `./scripts/verify.sh`（typecheck/lint/unit 23ファイル211/build）。
+- 詳細: `docs/audit/15_monetization_usage_design.md` §21。
+- 現在の emit 対象は **LeadMap export + AIOutput + admin danger-actions export の3種類**。
+- 次候補: 別途監査・承認（P1=外部送信 sent / Webhook）。実課金はさらに先（設計 §11 の安全条件＋人間承認が前提）。
 
 ## Phase 1-26 — UsageEvent emit 拡張方針の記録・監査（docs-only）
 

@@ -357,3 +357,21 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - 次の emit 拡張候補を横断監査し、**次の P0 = danger-actions export（admin の承認付きエクスポート・`export.generated`/usage_only）** に確定。
 - 候補比較・分類（P0/P1/P2/NEVER_BILLABLE/DO_NOT_TOUCH_NOW）・metadata/idempotency 方針・Phase 1-27 プロンプト案は **`docs/audit/16_usage_event_emit_expansion_strategy.md`** に記録。
 - 実装は別タスク・別承認（Phase 1-27）。実課金はさらに先（§11 の安全条件＋人間承認が前提）。
+
+---
+
+## 21. Phase 1-27 実装状況（admin danger-actions export の非課金 usage emit）
+
+- 実装範囲: **admin danger-actions export の1箇所のみ**。emit 対象に「admin danger-actions export」を追加。
+- 配線: `apps/web/app/(app)/admin/danger-actions/actions.ts` の `executeApprovedExportAction` 内、ExportJob 作成後・既存 `writeAudit` 後・`return job.id` の前に `recordUsageEvent` を1回だけ呼ぶ。
+  - eventType=`export.generated` / category=`export` / **billing=`usage_only`（固定）** / unit=`count` / quantity=`1` /
+    sourceType=`ExportJob` / sourceId=`job.id` / idempotencyKey=`usage:export.generated:<job.id>`。
+  - metadata=`{ scope:'admin_danger_actions_export', format:'csv', source:'admin_danger_actions' }`（**固定値のみ・非PII**）。
+- **`req.payloadAfter` の実値は UsageEvent metadata に入れない**（固定文字列のみ）。
+- **課金なし／決済なし**。**billable_candidate runtime 使用なし**。**amount / price / currency なし**。
+- **recordUsageEvent helper は変更なし**。**LeadMap export emit は維持**。**AIOutput emit は維持**。
+- **recordUsageEvent 失敗で承認済み export 本処理を壊さない**（helper は例外を投げない設計）。
+- schema / migration / RBAC / ABAC / package / lock 変更なし。
+- テスト: `packages/db/src/__tests__/p1_27_usage_event_admin_export.itest.ts`（payload 仕様／metadata=scope,format,source のみ／usage_only／二重計上不可／別tenant同key可）。
+- 現在の emit 対象は **LeadMap export + AIOutput + admin danger-actions export の3種類**。
+- 次候補は別途監査・承認。実課金はさらに先（§11 の安全条件＋人間承認が前提）。

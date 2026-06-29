@@ -512,3 +512,12 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - テスト: `packages/db/src/__tests__/p1_36_usage_recorder.itest.ts`（usage_only 作成／actorType=system・actorId=null 作成／payload 仕様／forbidden_metadata_key（url/secret/payload・金額キー）で create されない／missing_required_field／二重計上不可／別tenant同key可／invalid billing は usage_only に丸め／金額カラム不在）。
 - **現在の emit 対象は 6種類のまま**（LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning）。**runtime での新規 emit はゼロ**。
 - 次候補は **Phase 1-37 Webhook success emit**（本 recorder を outbox の success 確定時に呼ぶ）だが**別途監査・人間承認が必要**。実課金はさらに先（§11 の安全条件＋人間承認が前提）。
+
+### 26.1 本番確認（GO・2026-06-29・利用者/Vercel・CI）
+- **本番確認 GO**（2026-06-29・利用者 Vercel/CI 確認）。`60a202d` を Vercel Production（`main`）/ CI で確認。Status Ready・Build 成功・migrate deploy 不要・migration pending なし・Prisma engine error なし・Runtime error なし・UsageEvent recorder 関連エラーなし。
+- worker-safe recorder（`recordUsageEventCore`）は反映済み。**ただし runtime emit 呼び出しはゼロ**で、本番挙動は不変（新規 UsageEvent 記録は発生しない）。
+- **runtime emit 追加なし／Webhook emit なし／JobRun emit なし**。apps/web helper・既存6 emit・outbox.ts・jobrun.ts・apps/worker は不変。
+- **emit 対象は6種類のまま**（LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning）。
+- **課金なし／決済なし／サブスクなし／billable_candidate・never_billable runtime 使用なし**。metadata 安全方針（禁止 top-level key ガード・非PII）維持。
+- 実メール送信・Webhook 実送信・worker/outbox dispatch 実行・本番DB直接操作・Prisma migrate 手動実行なし。
+- 詳細は `docs/audit/14_release_stabilization.md` §34。

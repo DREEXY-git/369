@@ -1171,3 +1171,63 @@ Phase 1-33（**dunning の非課金 UsageEvent emit**＝承認済み督促送信
 - **課金・決済・サブスクは未実装のまま**。既存機能・既存権限境界に**回帰なし**。
 - 実メール送信・本番DB直接操作・Prisma migrate 手動実行・Vercel 環境変数変更なし。
 - 次候補は Webhook delivery（worker/packages 経路の共通 helper 設計が前提）／JobRun だが、**別途監査・人間承認が必要**。**実課金はさらに先で、人間承認・設計上の安全条件が必要**。
+
+## 34. Phase 1-36 本番デプロイ確認完了（利用者確認・2026-06-29）
+Phase 1-36（**worker-safe UsageEvent recorder 実装のみ**＝`packages/db/src/usage.ts` の `recordUsageEventCore` 追加。apps/web 非依存・prisma は `./client`。将来 Webhook/JobRun を計測するための共通部品）`60a202d` を `main` へ push 後、利用者が Vercel Production / CI で確認した結果を記録する。
+**確認は利用者の Vercel 画面・CI によるもので、サンドボックスからの本番到達確認ではない**（egress 403）。本番DB操作・実メール送信・Webhook 実送信・worker 実行・Prisma migrate 手動実行は発生していない。
+**重要: 本コミットは recorder 本体の追加のみで runtime emit（呼び出し）はゼロ。本番挙動は `d668fe3` と同一**（新規 UsageEvent 記録は発生しない）。
+
+### 34.1 Vercel Production / CI
+| 項目 | 確認結果 |
+|------|----------|
+| Commit | **`60a202d`** |
+| Branch | **`main`** |
+| Status | **Ready** |
+| Build | **成功** |
+| Prisma `migrate deploy` | **不要** |
+| Migration pending | **なし** |
+| Prisma engine error | **なし** |
+| Runtime error | **なし** |
+| UsageEvent recorder related error | **なし** |
+
+### 34.2 動作・回帰確認
+| 観点 | 結果 |
+|------|------|
+| `/login` | ✅ OK |
+| 主要ページ簡易確認 | ✅ OK |
+| runtime emit 追加 | ✅ なし |
+| Webhook emit 追加 | ✅ なし |
+| JobRun emit 追加 | ✅ なし |
+| 既存6 emit | ✅ 不変 |
+| apps/web helper（apps/web/lib/usage-events.ts） | ✅ 不変 |
+| outbox.ts / jobrun.ts / apps/worker | ✅ 不変 |
+| UsageEvent emit 対象は6種類のまま | ✅ OK |
+
+### 34.3 課金・決済・サブスクなし確認
+| 観点 | 結果 |
+|------|------|
+| 課金処理 | ✅ なし |
+| 決済処理 | ✅ なし |
+| サブスクリプション処理 | ✅ なし |
+| billable_candidate runtime 使用 | ✅ なし |
+| never_billable runtime 使用 | ✅ なし |
+
+### 34.4 外部送信・環境確認
+| 観点 | 結果 |
+|------|------|
+| 実メール送信 | ✅ なし |
+| Webhook 実送信 | ✅ なし |
+| worker / outbox dispatch 実行 | ✅ なし |
+| 本番DBを直接触ったか | ✅ 触っていない |
+| Prisma migrate を手動実行したか | ✅ 実行していない |
+| Vercel 環境変数変更 | ✅ なし |
+
+### 34.5 判定
+- **Phase 1-36 本番反映 完了（GO）**。本番ソース＝`main`（`60a202d`）。
+- worker-safe recorder（`recordUsageEventCore`）が反映済み。**ただし runtime emit 呼び出しはゼロ**で、本番挙動は不変。
+- UsageEvent / recordUsageEvent recorder 関連エラーなし。
+- UsageEvent emit 対象は **LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning の6種類のまま**。
+- **Webhook emit / JobRun emit は未追加**。apps/web helper・既存6 emit・outbox.ts・jobrun.ts・apps/worker は不変。
+- **課金・決済・サブスクは未実装のまま**。billable_candidate / never_billable の runtime 使用なし。
+- 実メール送信・Webhook 実送信・worker 実行・本番DB直接操作・Prisma migrate 手動実行・Vercel 環境変数変更なし。
+- 次候補は Phase 1-37 Webhook success emit（本 recorder を outbox の success 確定時に呼ぶ）だが、**別途監査・人間承認が必要**。実課金はさらに先（設計 §11 の安全条件＋人間承認が前提）。

@@ -336,3 +336,12 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - ※ 補足: `actorType` は helper の許可型（user|ai_agent|system）にキャストして渡す（`saveAIOutputStandard` の `ai_assistant` も DB は String 列のため値は保持。helper は不変）。worker の `aIOutput.create` 直叩き経路（apps/worker）は対象外。
 - テスト: `packages/db/src/__tests__/p1_25_usage_event_ai_output.itest.ts`（payload 仕様／metadata=task,model のみ／usage_only／二重計上不可／別tenant同key可）。
 - 次候補: 他の安全な発火点への段階展開（別途承認）。実課金はさらに先（§11 の安全条件＋人間承認が前提）。
+
+### 19.1 本番確認（GO・2026-06-29・利用者ブラウザ/Vercel）
+- **本番確認 GO**（2026-06-29・利用者ブラウザ確認）。`11c224d` を Vercel Production（`main`）で確認。
+- `saveAIOutputStandard` 経由のAI生成が**従来どおり動作**。AIOutput 保存後に画面エラー / runtime error なし。**UsageEvent / recordUsageEvent 関連エラーなし**。
+- runtime billing は **usage_only**。**billable_candidate は使っていない**。metadata は **task/model のみ**。
+- **課金処理・決済処理・サブスクリプション処理はなし**。課金/決済/サブスク/UsageEvent 管理画面は新規表示なし。
+- UsageEvent emit対象は **LeadMap export + AIOutput の2種類**。
+- 詳細は `docs/audit/14_release_stabilization.md` §29。
+- ※ 本記録は揮発環境で未push記録コミットが失われたため同一実測値で再作成（コード `11c224d` 不変）。

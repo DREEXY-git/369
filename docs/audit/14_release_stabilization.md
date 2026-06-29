@@ -716,3 +716,59 @@ Phase 1-23（**非課金 UsageEvent emit の最小実装**＝LeadMap CSV export 
 - 既存 finance / invoice / dunning / approvals / morning に**回帰なし**を実機確認。権限境界も維持。
 - 意図しない実メール送信なし。本番DB直接操作・Prisma migrate 手動実行なし。
 - 次候補は「他の安全な発火点への段階展開」（別途承認）。**実課金はさらに先で、人間承認・設計 §11 の安全条件が必要**。
+
+## 29. Phase 1-25 本番デプロイ確認完了（利用者確認・2026-06-29）
+Phase 1-25（**AIOutput 非課金 UsageEvent emit**＝`saveAIOutputStandard` で AIOutput が1件生成されたことを `ai.output.generated` / `billing=usage_only` として記録）`11c224d` を `main` へ push 後、
+利用者がブラウザ／Vercel 画面で本番（`main` ソース）を確認した結果を記録する。
+**確認は利用者の Vercel 画面・実ブラウザによるもので、サンドボックスからの本番到達確認ではない**（egress 403）。本番DB操作・実メール送信・Prisma migrate 手動実行は発生していない。
+`11c224d` は apps/web のコード変更（AIOutput emit 1箇所＋テスト/docs）のみで schema 変更・migration 追加はない。
+※ 本記録は、未push のローカル記録コミットが揮発環境で失われたため、同一の受領実測値に基づき再作成したもの（コード `11c224d` は不変）。
+
+### 29.1 Vercel Production Deployment
+| 項目 | 確認結果 |
+|------|----------|
+| Commit | **`11c224d`** |
+| Branch | **`main`** |
+| Status | **Ready** |
+| Build | **成功** |
+| Prisma `migrate deploy` | **不要** |
+| Migration pending | **なし** |
+| Prisma engine error | **なし** |
+| Runtime error | **なし** |
+| UsageEvent / AIOutput related error | **なし** |
+
+### 29.2 AIOutput / UsageEvent emit 確認
+| 観点 | 結果 |
+|------|------|
+| AI出力が発生する既存機能 | ✅ OK |
+| LeadMap AI分析など `saveAIOutputStandard` 経由のAI生成 | ✅ OK |
+| AIOutput 保存後に画面エラーが出ない | ✅ OK |
+| AIOutput 保存後に runtime error が出ない | ✅ OK |
+| UsageEvent / recordUsageEvent 関連エラー | ✅ なし |
+
+### 29.3 UsageEvent emit の安全確認
+| 観点 | 結果 |
+|------|------|
+| UsageEvent emit対象に AIOutput が追加されている | ✅ OK |
+| 既存の LeadMap export emit は維持されている | ✅ OK |
+| billing が usage_only | ✅ OK |
+| billable_candidate が使われていない | ✅ OK |
+| 課金処理 | ✅ なし |
+| 決済処理 | ✅ なし |
+| サブスクリプション処理 | ✅ なし |
+
+### 29.4 UI / Monetization 非表示確認
+| 観点 | 結果 |
+|------|------|
+| UsageEvent管理画面が新規表示されていない | ✅ OK |
+| 課金画面が新規表示されていない | ✅ OK |
+| 決済画面が新規表示されていない | ✅ OK |
+| サブスク画面が新規表示されていない | ✅ OK |
+
+### 29.5 判定
+- **Phase 1-25 本番反映 完了（GO）**。本番ソース＝`main`（`11c224d`）。
+- AIOutput emit が本番で動作。`saveAIOutputStandard` 経由のAI生成が従来どおり動作。UsageEvent / recordUsageEvent 関連エラーなし。
+- UsageEvent emit対象は **LeadMap export + AIOutput の2種類**。
+- runtime route / runtime emit の billing は **usage_only**。**billable_candidate は使っていない**。metadata は **task/model のみ**。
+- **課金・決済・サブスクは未実装のまま**。UsageEvent 管理画面は新規表示なし。
+- 次候補は P1 候補（danger-actions export / 外部送信 sent / Webhook など）への段階展開（別途承認）。**実課金はさらに先で、人間承認・設計 §11 の安全条件が必要**。

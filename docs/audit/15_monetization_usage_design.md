@@ -405,3 +405,14 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - テスト: `packages/db/src/__tests__/p1_29_usage_event_outreach.itest.ts`（payload 仕様／metadata=channel,status のみ／usage_only／emit 条件 logged|sent のみ・suppressed/failed/rejected は emit しない／二重計上不可／別tenant同key可）。
 - 現在の emit 対象は **LeadMap export + AIOutput + admin danger-actions export + approvals outreach の4種類**。
 - 次候補は別途監査・承認（A' invoice-send/dunning ／ B Webhook delivery）。実課金はさらに先（§11 の安全条件＋人間承認が前提）。
+
+### 22.1 本番確認（GO・2026-06-29・利用者ブラウザ/Vercel）
+- **本番確認 GO**（2026-06-29・利用者ブラウザ確認）。`986e738` を Vercel Production（`main`）で確認。
+- approvals outreach 送信が**従来どおり動作**。**logged / sent のみ emit**・**suppressed / failed / rejected は emit しない**。
+- **UsageEvent / recordUsageEvent 関連エラーなし**。
+- runtime billing は **usage_only**。**billable_candidate は使っていない**。metadata は **channel/status のみ**。
+- toAddress / subject / body / draftId / leadId / 顧客情報 / 金額 / secret は入れていない。
+- **課金処理・決済処理・サブスクリプション処理はなし**。
+- UsageEvent emit対象は **LeadMap export + AIOutput + admin danger-actions export + approvals outreach の4種類**。
+- 既存機能・既存権限境界に影響なし。
+- 詳細は `docs/audit/14_release_stabilization.md` §31。

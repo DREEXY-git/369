@@ -18,12 +18,12 @@
 - Phase 1-26「UsageEvent emit 拡張方針の記録・監査（docs-only）」: `057d314` push 済み。Phase 1-25 完了状態を固定（`11c224d`+`9944f0e`、旧 a9643a4 を基準にしない）＋次候補を横断監査。**次の P0 = danger-actions export**。`docs/audit/16` 作成。
 - Phase 1-27「admin danger-actions export の非課金 UsageEvent emit」: `35cd384` push 済み・**Vercel 本番確認 GO（2026-06-29）**。`executeApprovedExportAction` で `export.generated`（billing=usage_only・metadata=固定値 scope/format/source）を記録。**emit対象は LeadMap export + AIOutput + admin danger-actions export の3種類／課金なし／決済なし／billable_candidate なし／金額なし／payloadAfter 実値 metadata 不可／helper・LeadMap・AIOutput emit 不変**。
 - Phase 1-28「次の UsageEvent emit 拡張候補の横断監査（読み取り専用）」: 監査完了（GO）。次の P0 = approvals outreach 送信。外部送信の分類設計（logged/sent=usage_only emit・suppressed/failed=emit しない）を確定。ファイル変更なし。
-- Phase 1-29「approvals outreach 送信の非課金 UsageEvent emit」: `decideApprovalAction` で `external_send.outreach`（billing=usage_only・metadata=channel/status のみ・logged/sent のみ emit）を記録。**emit対象は LeadMap export + AIOutput + admin danger-actions export + approvals outreach の4種類／課金なし／決済なし／billable_candidate なし／金額なし／suppressed・failed は emit しない／helper・既存3 emit 不変**。ローカル実装・検証完了／push 未実施（人間承認待ち）。本番確認未実施。
+- Phase 1-29「approvals outreach 送信の非課金 UsageEvent emit」: `986e738` push 済み・**Vercel 本番確認 GO（2026-06-29）**。`decideApprovalAction` で `external_send.outreach`（billing=usage_only・metadata=channel/status のみ・logged/sent のみ emit）を記録。**emit対象は LeadMap export + AIOutput + admin danger-actions export + approvals outreach の4種類／課金なし／決済なし／billable_candidate なし／金額なし／suppressed・failed は emit しない／helper・既存3 emit 不変**。
 
 ## Phase 1-29 — approvals outreach 送信の非課金 UsageEvent emit
 
-状態: **ローカル実装・検証完了／push 未実施（人間承認待ち）**／本番確認未実施（apps/web のコード変更を含む・ただし課金/決済/emit拡大なし・実メール送信なし）
-
+状態: **本番確認完了（GO）** — `986e738` を `main` へ push 済み・Vercel 本番確認 GO（2026-06-29・利用者ブラウザ確認）。詳細 `docs/audit/14` §31 / `docs/audit/15` §22.1。
+- 実機確認: Vercel `986e738`/Ready/Build成功・migrate deploy 不要・migration pending なし・engine/runtime/UsageEvent/approvals outreach error なし。`/login`・OWNERログイン・`/approvals` OK。outreach_send 承認処理・outreach 送信が logged/sent として従来どおり処理・suppressed は emit されない・処理後の画面/runtime error なし・UsageEvent/recordUsageEvent 関連エラーなし。emit対象に approvals outreach 追加・既存3 emit(LeadMap/AIOutput/admin export)維持・billing=usage_only・billable_candidate 未使用・metadata=channel/status のみ・toAddress/subject/body/draftId/leadId/顧客情報/金額/secret 不在・suppressed/failed/rejected は emit されない。課金/決済/サブスク/各 Monetization 画面の新規表示なし。既存機能（/leadmap・/invoices・/finance・/approvals・/reports/morning・#dunning・LeadMap export CSV・AIOutput生成・admin export）回帰なし。権限境界維持。実メール送信なし・本番DB直接操作なし・Prisma migrate 手動実行なし。
 - 🧩 `apps/web/app/(app)/approvals/actions.ts`: `decideApprovalAction`（outreach_send 承認）の `OutreachSendLog.create` を `const outreachLog = ...` で受け、直後・`outreachDraft.update` 前に `recordUsageEvent` を追加。
   eventType=`external_send.outreach` / category=`external_send` / **billing=`usage_only`** / unit=`count` / quantity=`1` / sourceType=`OutreachSendLog` / sourceId=`outreachLog.id` / idempotencyKey=`usage:external_send.outreach:<id>` / metadata=`{channel:'email', status: sendStatus}`（非PII）。
   記録失敗で承認・送信主処理を壊さない（helper は例外を投げない）。**実メール送信は起こさない**（既存挙動不変）。

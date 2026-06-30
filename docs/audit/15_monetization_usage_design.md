@@ -542,3 +542,13 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - テスト: `packages/db/src/__tests__/p1_37_usage_event_webhook.itest.ts`（`processOutboxBatch` を実DBで実行・**fetch は mock（実Webhook送信なし）**。success で webhook.delivered 1件＋payload 仕様／metadata=eventType のみ・禁止キーなし／failed で emit しない／dead で emit しない／retry で最終成功1回（二重計上しない・配送主処理は継続）／別tenant独立）。
 - **現在の emit 対象は7種類**: 1) LeadMap export 2) AIOutput 3) admin danger-actions export 4) approvals outreach 5) invoice-send 6) dunning 7) **Webhook success**。
 - 次候補は **Phase 1-38 JobRun succeeded emit**（対象 jobType ホワイトリスト）だが**別途監査・人間承認が必要**。実課金はさらに先（§11 の安全条件＋人間承認が前提）。
+
+### 27.1 本番確認（GO・2026-06-29・利用者/Vercel・CI）
+- **本番確認 GO**（2026-06-29・利用者 Vercel/CI・本番動作確認）。`cc5a433` を Vercel Production（`main`）/ CI で確認。Status Ready・Build 成功・migrate deploy 不要・migration pending なし・Prisma engine error なし・Runtime error なし・UsageEvent/Webhook 関連エラーなし。
+- Webhook success emit は反映済み。**success のみ emit**。**failed / dead / retry失敗 は emit しない**。**retry ごとに二重計上されない**（idempotencyKey=eventId:subscriptionId・最終成功1回）。
+- Webhook 配送の既存挙動（送信・status 更新・retry/dead-letter 制御・戻り値・JobRun 記録）に回帰なし。
+- metadata は **eventType のみ**。**url / secret / signature / payload / body / statusCode / error / eventId / subscriptionId / 金額 / 実ID は metadata に入れていない**。
+- UsageEvent emit 対象は **7種類**（LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning + Webhook success）。**既存6 emit は維持**。**JobRun emit なし**。
+- **課金なし／決済なし／サブスクなし／billable_candidate・never_billable runtime 使用なし**。
+- 実メール送信・意図しない Webhook 実送信・worker/outbox dispatch 手動実行・本番DB直接操作・Prisma migrate 手動実行なし。
+- 詳細は `docs/audit/14_release_stabilization.md` §35。

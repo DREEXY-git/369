@@ -1231,3 +1231,65 @@ Phase 1-36（**worker-safe UsageEvent recorder 実装のみ**＝`packages/db/src
 - **課金・決済・サブスクは未実装のまま**。billable_candidate / never_billable の runtime 使用なし。
 - 実メール送信・Webhook 実送信・worker 実行・本番DB直接操作・Prisma migrate 手動実行・Vercel 環境変数変更なし。
 - 次候補は Phase 1-37 Webhook success emit（本 recorder を outbox の success 確定時に呼ぶ）だが、**別途監査・人間承認が必要**。実課金はさらに先（設計 §11 の安全条件＋人間承認が前提）。
+
+## 35. Phase 1-37 本番デプロイ確認完了（利用者確認・2026-06-29）
+Phase 1-37（**Webhook success の非課金 UsageEvent emit**＝`packages/db/src/outbox.ts` の `deliverOne` で Webhook 配送が success 確定したときだけ `recordUsageEventCore` を呼び `webhook.delivered` / `billing=usage_only` を記録）`cc5a433` を `main` へ push 後、利用者が Vercel Production / CI で確認した結果を記録する。
+**確認は利用者の Vercel 画面・CI・本番動作によるもので、サンドボックスからの本番到達確認ではない**（egress 403）。本番DB操作・実メール送信・意図しない Webhook 実送信・worker/outbox dispatch 手動実行・Prisma migrate 手動実行は発生していない。
+`cc5a433` は Webhook 配送 success の1箇所に emit を足しただけで、既存の Webhook 配送ロジック（送信・status 更新・retry/dead-letter 制御・戻り値・JobRun 記録）は不変。
+
+### 35.1 Vercel Production / CI
+| 項目 | 確認結果 |
+|------|----------|
+| Commit | **`cc5a433`** |
+| Branch | **`main`** |
+| Status | **Ready** |
+| Build | **成功** |
+| Prisma `migrate deploy` | **不要** |
+| Migration pending | **なし** |
+| Prisma engine error | **なし** |
+| Runtime error | **なし** |
+| UsageEvent / Webhook 関連エラー | **なし** |
+
+### 35.2 Webhook emit 動作・回帰確認
+| 観点 | 結果 |
+|------|------|
+| `/login` | ✅ OK |
+| 主要ページ簡易確認 | ✅ OK |
+| Webhook 配送の既存挙動が壊れていない | ✅ OK |
+| Webhook success で `webhook.delivered` が1件記録される | ✅ OK |
+| failed / dead / retry失敗では emit されない | ✅ OK |
+| retry ごとに二重計上されない | ✅ OK |
+| metadata が `eventType` のみ | ✅ OK |
+| metadata に url/secret/signature/payload/body/statusCode/error/eventId/subscriptionId/金額/実ID が入っていない | ✅ OK |
+| UsageEvent emit 対象は7種類 | ✅ OK |
+| 既存6 emit は維持 | ✅ OK |
+| JobRun emit は追加されていない | ✅ OK |
+
+### 35.3 課金・決済・サブスクなし確認
+| 観点 | 結果 |
+|------|------|
+| 課金処理 | ✅ なし |
+| 決済処理 | ✅ なし |
+| サブスクリプション処理 | ✅ なし |
+| billable_candidate runtime 使用 | ✅ なし |
+| never_billable runtime 使用 | ✅ なし |
+
+### 35.4 外部送信・環境確認
+| 観点 | 結果 |
+|------|------|
+| 実メール送信 | ✅ なし |
+| 意図しない Webhook 実送信 | ✅ なし |
+| worker / outbox dispatch 手動実行 | ✅ 実行していない |
+| 本番DBを直接触ったか | ✅ 触っていない |
+| Prisma migrate を手動実行したか | ✅ 実行していない |
+| Vercel 環境変数変更 | ✅ なし |
+
+### 35.5 判定
+- **Phase 1-37 本番反映 完了（GO）**。本番ソース＝`main`（`cc5a433`）。
+- Webhook 配送が**従来どおり動作**し、**success 確定時のみ** `webhook.delivered` を1件記録。**failed / dead / retry失敗では emit されない**。**retry ごとに二重計上されない**（idempotencyKey=eventId:subscriptionId で構造防止・最終成功1回）。
+- UsageEvent / Webhook 関連エラーなし。Webhook 配送の status 更新・retry/dead-letter 制御・JobRun 記録に回帰なし。
+- billing は **usage_only**。metadata は **eventType のみ**で、url/secret/signature/payload/body/statusCode/error/eventId/subscriptionId/金額/実ID は入れていない。
+- UsageEvent emit 対象は **LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning + Webhook success の7種類**。**既存6 emit は維持**。**JobRun emit は未追加**。
+- **課金・決済・サブスクは未実装のまま**。billable_candidate / never_billable の runtime 使用なし。
+- 実メール送信・意図しない Webhook 実送信・worker/outbox dispatch 手動実行・本番DB直接操作・Prisma migrate 手動実行・Vercel 環境変数変更なし。
+- 次候補は Phase 1-38 JobRun succeeded emit（対象 jobType ホワイトリスト）だが、**別途監査・人間承認が必要**。実課金はさらに先（設計 §11 の安全条件＋人間承認が前提）。

@@ -1,4 +1,4 @@
-import { prisma, processOutboxBatch } from '@hokko/db';
+import { prisma, processOutboxBatch, recordUsageEventCore } from '@hokko/db';
 import {
   generateMorningReport,
   analyzeReviews,
@@ -62,7 +62,25 @@ export const JOB_HANDLERS: Record<JobName, Handler> = {
       salesActual: Number(dealSum._sum.amount ?? 0),
       salesTarget: 12_000_000,
     });
-    await prisma.aIOutput.create({ data: { tenantId, task: 'generateMorningReport', output: report as any, confidence: 0.7 } });
+    const aiOutput = await prisma.aIOutput.create({ data: { tenantId, task: 'generateMorningReport', output: report as any, confidence: 0.7 } });
+    // Phase 1-40: 非課金 UsageEvent。worker の朝礼AI出力（aIOutput.create 成功時）だけを1件記録する。
+    // apps/web の ai.output.generated（saveAIOutputStandard 経由）とは別 id のため二重計上しない。
+    // metadata は固定の非PII（task/source）のみ。output/outputText/レポート本文/金額/secret/実ID は入れない。
+    // recordUsageEventCore は例外を投げない設計のため、記録失敗で recordRun・return report を壊さない。
+    await recordUsageEventCore({
+      tenantId,
+      actorId: null,
+      actorType: 'system',
+      eventType: 'ai.output.generated',
+      category: 'ai',
+      billing: 'usage_only',
+      unit: 'count',
+      quantity: 1,
+      sourceType: 'AIOutput',
+      sourceId: aiOutput.id,
+      idempotencyKey: `usage:ai.output.generated:${aiOutput.id}`,
+      metadata: { task: 'generateMorningReport', source: 'worker' },
+    });
     await recordRun(tenantId, 'AI朝礼レポート生成', '朝礼レポートを生成しました');
     return report;
   },

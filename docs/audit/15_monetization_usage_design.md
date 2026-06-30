@@ -581,3 +581,23 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - **P0_IMPLEMENTABLE_NEXT は1つ**: **MORNING_REPORT_JOB の `aIOutput` emit**（eventType=`ai.output.generated`・category=`ai`・billing=`usage_only`・sourceType=`AIOutput`・sourceId=`aIOutput.id`・idempotencyKey=`usage:ai.output.generated:<aIOutput.id>`・actorType=`system`・metadata=`{ task, source }` のみ・**output 本文は入れない**・succeeded のみ・二重計上なし）。実装は Phase 1-40・別承認。
 - **課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。
 - **詳細は `docs/audit/19_worker_emit_gap_audit.md`**。実装は別フェーズ・別承認。
+
+---
+
+## 30. Phase 1-40 実装状況（worker MORNING_REPORT_JOB の AIOutput 非課金 usage emit）
+
+- 実装範囲: **`apps/worker/src/jobs.ts` の `MORNING_REPORT_JOB` の1箇所のみ**。emit 対象に「worker 朝礼AI出力」を追加。
+- 配線: MORNING_REPORT_JOB で `prisma.aIOutput.create(...)` の戻り値を捕捉し、**成功後**に Phase 1-36 の `recordUsageEventCore` を1回呼ぶ。`recordUsageEventCore` は `@hokko/db` から import。
+  - eventType=`ai.output.generated` / category=`ai` / **billing=`usage_only`（固定）** / unit=`count` / quantity=`1` /
+    sourceType=`AIOutput` / sourceId=`aIOutput.id` / actorType=`system` / actorId=`null` / tenantId=`JobData.tenantId` /
+    idempotencyKey=`usage:ai.output.generated:<aIOutput.id>`。
+  - metadata=`{ task: 'generateMorningReport', source: 'worker' }`（**固定の非PIIのみ**）。
+- **emit は aIOutput.create 成功後のみ**。create 前に失敗した場合は emit されない。**skipped / failed は emit しない**。
+- metadata に **output / outputText / レポート本文 / report / prompt / inputHash / salesActual / salesTarget / 金額 / secret / URL / payload / 実ID を入れない**（sourceId に aIOutput.id は使うが metadata には入れない）。
+- **二重計上なし**: apps/web の `ai.output.generated`（`saveAIOutputStandard` 経由）とは**別の aIOutput.id**であり、worker の aIOutput は saveAIOutputStandard を通らない。idempotencyKey=aIOutput.id ベースで `@@unique([tenantId, idempotencyKey])` により構造防止。
+- **既存 worker ロジック（generateMorningReport / aIOutput.create / recordRun / return report）は不変**。`recordUsageEventCore` は例外を投げない設計のため、**記録失敗で worker 主処理・recordRun・戻り値を壊さない**。**実 worker 実行・実AI実行・外部送信なし**。
+- **他 jobType への emit 追加なし**（EXPORT/LEAD/EMBEDDING/DYNAMIC_PRICING/PROFIT_LEAK/ANOMALY/BACKUP/OUTBOX は不変）。**JobRun emit なし**。**共通 recorder `usage.ts`・`outbox.ts`・`jobrun.ts`・apps/web helper・既存7 emit は不変**。
+- schema / migration / RBAC / ABAC / package / lock 変更なし。**課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／金額なし**。
+- テスト: `packages/db/src/__tests__/p1_40_usage_event_worker_aioutput.itest.ts`（payload 仕様／metadata=task,source のみ・禁止キーなし／二重計上不可／別tenant独立／金額カラム不在。**実 worker/queue 起動なし・実AI実行なし・外部送信なし**）。
+- **現在の emit 対象は8種類**: 1) LeadMap export 2) AIOutput（apps/web）3) admin danger-actions export 4) approvals outreach 5) invoice-send 6) dunning 7) Webhook success 8) **worker 朝礼AI出力（MORNING_REPORT）**。
+- 次候補は別途監査・承認（EXPORT_JOB は enqueue トリガー実装が前提／recordRun 系は実体実装後）。実課金はさらに先（§11 の安全条件＋人間承認が前提）。

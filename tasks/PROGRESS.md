@@ -30,6 +30,27 @@
 - Phase 1-38「JobRun UsageEvent emit 候補監査・ホワイトリスト設計（docs-only）」: `docs/audit/18_jobrun_usage_event_emit_design.md` 作成＋doc15 §28＋本ファイル。**監査のみ／実装なし／emit 追加なし／JobRun emit なし／emit 対象は7種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。実コード監査の結論: JobRun 行は `outbox.ts` の `OUTBOX_DISPATCH`（内部インフラ・tenantId なし・webhook.delivered と二重計上）の1種類のみ＝EXCLUDE_INTERNAL。worker 19 jobType は JobRun を作らない。**P0 実装候補なし＝JobRun emit は HOLD**。`ff188a5` push 済み。
 - Phase 1-39「worker 経由 UsageEvent 計測漏れ監査（docs-only）」: `docs/audit/19_worker_emit_gap_audit.md` 作成＋doc15 §29＋本ファイル。**監査のみ／実装なし／emit 追加なし／emit 対象は7種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。実コード監査の結論: worker が直接 `aIOutput.create`/`exportJob.create` した成果物は apps/web の既存 emit 経路を通らず**未計測（emit-gap）**。**P0 実装候補は1つ＝MORNING_REPORT_JOB の aIOutput emit**（到達性あり・未計測・metadata=task/source のみ・output 本文を入れない・二重計上なし）。本文/PII 近接（lead/outreach/embedding）・金額近接（dynamic pricing/profit leak）は DO_NOT_TOUCH_NOW、内部処理（backup/embedding/anomaly/OUTBOX）は EXCLUDE_INTERNAL。ローカル監査・設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）。
 
+- Phase 1-40「worker MORNING_REPORT_JOB の AIOutput 非課金 UsageEvent emit」: `apps/worker/src/jobs.ts` の `MORNING_REPORT_JOB` で `aIOutput.create` 成功後に `recordUsageEventCore`（`@hokko/db`）を呼び `ai.output.generated`（billing=usage_only・category=ai・sourceType=AIOutput・sourceId=aIOutput.id・actorType=system・metadata=task/source のみ）を記録。**emit 対象は 上記7種類 + worker 朝礼AI出力の8種類／他 jobType emit なし／既存7 emit・usage.ts・outbox.ts・jobrun.ts・apps/web helper 不変／metadata に output 本文・金額・secret・実ID を入れない／二重計上なし（apps/web の AIOutput とは別 id・saveAIOutputStandard 非経由）／skipped・create前失敗は emit しない／実 worker 実行・実AI実行・外部送信なし／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。ローカル実装・検証完了／push 未実施（人間承認待ち）。
+
+## Phase 1-40 — worker MORNING_REPORT_JOB の AIOutput 非課金 UsageEvent emit
+
+状態: **ローカル実装・検証完了／push 未実施（人間承認待ち）／本番確認未実施**（apps/worker に emit を1箇所追加するコード変更を含む・ただし MORNING_REPORT_JOB の既存ロジック不変・aIOutput.create 成功後のみ emit・実 worker/AI 実行なし・外部送信なし。push 後は CI/build 確認）
+
+- 🧩 `apps/worker/src/jobs.ts`: import に `recordUsageEventCore` 追加（`@hokko/db`）。`MORNING_REPORT_JOB` で `aIOutput.create` の戻り値を捕捉し、**成功後に** `recordUsageEventCore` を1回呼ぶ。
+  eventType=`ai.output.generated` / category=`ai` / **billing=`usage_only`** / unit=`count` / quantity=`1` / sourceType=`AIOutput` / sourceId=`aIOutput.id` / actorType=`system` / actorId=`null` / tenantId=`JobData.tenantId` / idempotencyKey=`usage:ai.output.generated:<aIOutput.id>` / metadata=`{ task:'generateMorningReport', source:'worker' }`（固定非PII）。
+  記録失敗で worker 主処理・recordRun・`return report` を壊さない（recorder は例外を投げない）。**実 worker 実行・実AI実行・外部送信なし**。
+- **emit は aIOutput.create 成功後のみ**。**skipped / create前失敗 は emit しない**。
+- metadata に output/outputText/レポート本文/report/prompt/inputHash/salesActual/salesTarget/金額/secret/URL/payload/実ID を入れない（sourceId に aIOutput.id は使うが metadata には入れない）。
+- **二重計上なし**: apps/web の `ai.output.generated`（saveAIOutputStandard 経由）とは別 aIOutput.id・worker は saveAIOutputStandard を通らない。
+- **他 jobType への emit 追加なし**。**JobRun emit なし**。**usage.ts・outbox.ts・jobrun.ts・apps/web helper・既存7 emit は不変**。
+- 課金なし／決済なし／`billable_candidate`・`never_billable` runtime 使用なし／金額(amount/price/currency)なし。
+- 🧪 `packages/db/src/__tests__/p1_40_usage_event_worker_aioutput.itest.ts`: payload 仕様／metadata=task,source のみ・禁止キーなし／二重計上不可／別tenant独立／金額カラム不在（実 worker/queue/AI なし）。
+- schema/migration/RBAC/ABAC/package/lock 変更なし。
+- 検証（全 green）: db:generate / 統合 25ファイル160（p1_40 5 含む・回帰）/ `./scripts/verify.sh`（typecheck/lint/unit211/build）。
+- 詳細: `docs/audit/15_monetization_usage_design.md` §30。
+- 現在の UsageEvent emit 対象は **8種類**（LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning + Webhook success + worker 朝礼AI出力）。
+- 次候補: EXPORT_JOB（enqueue トリガー実装が前提）／recordRun 系（実体実装後）だが別途監査・承認。実課金はさらに先（設計 §11 安全条件＋人間承認が前提）。
+
 ## Phase 1-39 — worker 経由 UsageEvent 計測漏れ監査（docs-only）
 
 状態: **ローカル監査・設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）**

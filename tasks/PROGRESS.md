@@ -26,6 +26,25 @@
 - Phase 1-34「Webhook/JobRun/worker・packages 経路の次候補 横断監査（読み取り専用）」: 監査完了（GO）。Webhook 本番経路=`packages/db/src/outbox.ts::processOutboxBatch`（worker・admin手動）、JobRun=`packages/db/src/jobrun.ts`（worker は actorId なし）。`recordUsageEvent` は apps/web 専用で worker/packages から import 不可。次は実装ではなく packages/db 層 worker-safe recorder の docs-only 設計と判定。ファイル変更なし。
 - Phase 1-35「worker/packages UsageEvent recorder architecture design（docs-only）」: `cca2e5a` push 済み・**本番確認不要（docs-only・コード挙動不変）**。`docs/audit/17_worker_usage_recorder_design.md` 作成＋doc15 §25＋本ファイル。**設計のみ／実装なし／emit 追加なし／emit 対象は6種類のまま／課金なし／決済なし／billable_candidate なし／never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。
 - Phase 1-36「worker-safe UsageEvent recorder 実装のみ」: `60a202d` push 済み・**Vercel/CI 本番確認 GO（2026-06-29）**。`packages/db/src/usage.ts` の `recordUsageEventCore`（apps/web 非依存・prisma は `./client`）を追加＋index.ts に export＋DB統合テスト。**runtime emit 追加なし／Webhook emit なし／JobRun emit なし／runtime call site なし（本番挙動不変）／apps/web helper 不変／既存6 emit 不変／emit 対象は6種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／金額なし／schema・migration・package・lock 変更なし**。metadata 禁止 top-level key ガード・P2002 duplicate・missing_required_field・例外を投げない設計。
+- Phase 1-37「Webhook send 成功の非課金 UsageEvent emit」: `packages/db/src/outbox.ts` の `deliverOne` で Webhook 配送 **success のときだけ** `recordUsageEventCore` を呼び `webhook.delivered`（billing=usage_only・category=webhook・sourceType=WebhookDelivery・sourceId=delivery.id・actorType=system・metadata=eventType のみ）を記録。**emit 対象は 上記6種類 + Webhook success の7種類／failed・dead・retry失敗は emit しない／retry の二重計上を idempotencyKey=usage:webhook.delivered:<eventId>:<subscriptionId> で構造防止（最終成功1回）／metadata に url・secret・signature・payload・statusCode・error・実ID・金額を入れない／既存 Webhook 配送ロジック・recorder・apps/web helper・既存6 emit・apps/worker・jobrun.ts 不変／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。ローカル実装・検証完了／push 未実施（人間承認待ち）。
+
+## Phase 1-37 — Webhook send 成功の非課金 UsageEvent emit
+
+状態: **ローカル実装・検証完了／push 未実施（人間承認待ち）／本番確認未実施**（packages/db/src/outbox.ts に emit を1箇所追加するコード変更を含む・ただし Webhook 配送ロジック不変・success のみ emit・実Webhook送信なし・worker 実行なし。push 後は CI/build 確認）
+
+- 🧩 `packages/db/src/outbox.ts`: `deliverOne` で `webhookDelivery.create` の戻り値を捕捉し、**`delivered===true` のときだけ** `recordUsageEventCore` を1回呼ぶ。`import { recordUsageEventCore } from './usage';` を追加。
+  eventType=`webhook.delivered` / category=`webhook` / **billing=`usage_only`** / unit=`count` / quantity=`1` / sourceType=`WebhookDelivery` / sourceId=`delivery.id` / actorType=`system` / actorId=`null` / tenantId=`subscription.tenantId` / idempotencyKey=`usage:webhook.delivered:<eventId>:<subscriptionId>` / metadata=`{ eventType }`（固定非PII）。
+  記録失敗で配送主処理・status 更新・retry/dead-letter 制御・戻り値を壊さない（recorder は例外を投げない）。**実Webhook送信は起こさない**（既存配送挙動不変）。
+- **emit 条件は success のみ**。**failed / dead / retry失敗 は emit しない**。retry で同じ宛先に再度 success が起きても idempotencyKey が同一なので**二重計上しない（最終成功1回）**。
+- metadata に url/secret/signature/payload/body/statusCode/error/eventId/subscriptionId/金額/実ID を入れない（sourceId に delivery.id・idempotencyKey に eventId/subscriptionId は使うが metadata には入れない）。
+- **共通 recorder（usage.ts）・jobrun.ts・apps/worker・apps/web helper・既存6 emit は不変**。**JobRun emit なし**。
+- 課金なし／決済なし／`billable_candidate`・`never_billable` の runtime 使用なし／金額(amount/price/currency)なし。
+- 🧪 `packages/db/src/__tests__/p1_37_usage_event_webhook.itest.ts`: `processOutboxBatch` を実DBで実行・**fetch は mock（実Webhook送信なし）**。success で1件＋payload 仕様／metadata=eventType のみ・禁止キーなし／failed で emit しない／dead で emit しない／retry で最終成功1回（二重計上しない・配送継続）／別tenant独立（計6テスト）。
+- schema/migration/RBAC/ABAC/package/lock 変更なし。
+- 検証（全 green）: db:generate / 統合 24ファイル155（p1_37 6 含む・回帰）/ `./scripts/verify.sh`（typecheck/lint/unit/build）。
+- 詳細: `docs/audit/15_monetization_usage_design.md` §27。
+- 現在の UsageEvent emit 対象は **7種類**（LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning + Webhook success）。
+- 次候補: Phase 1-38 JobRun succeeded emit（対象 jobType ホワイトリスト）だが別途監査・人間承認。実課金はさらに先（設計 §11 安全条件＋人間承認が前提）。
 
 ## Phase 1-36 — worker-safe UsageEvent recorder 実装のみ
 

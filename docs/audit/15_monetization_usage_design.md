@@ -521,3 +521,24 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - **課金なし／決済なし／サブスクなし／billable_candidate・never_billable runtime 使用なし**。metadata 安全方針（禁止 top-level key ガード・非PII）維持。
 - 実メール送信・Webhook 実送信・worker/outbox dispatch 実行・本番DB直接操作・Prisma migrate 手動実行なし。
 - 詳細は `docs/audit/14_release_stabilization.md` §34。
+
+---
+
+## 27. Phase 1-37 実装状況（Webhook success の非課金 usage emit）
+
+- 実装範囲: **`packages/db/src/outbox.ts` の Webhook 配送 success の1箇所のみ**。emit 対象に「Webhook success」を追加。
+- 配線: `deliverOne` で `prisma.webhookDelivery.create(...)` の戻り値を捕捉し、**`delivered === true`（HTTP ok）のときだけ** Phase 1-36 の `recordUsageEventCore` を1回呼ぶ。
+  - eventType=`webhook.delivered` / category=`webhook` / **billing=`usage_only`（固定）** / unit=`count` / quantity=`1` /
+    sourceType=`WebhookDelivery` / sourceId=`WebhookDelivery.id`（生成された配送行のid）/
+    actorType=`system` / actorId=`null`（worker/system 経路）/ tenantId=`subscription.tenantId` /
+    idempotencyKey=`usage:webhook.delivered:<eventId>:<subscriptionId>`。
+  - metadata=`{ eventType: <OutboxMessage/DomainEvent の eventType> }`（**固定の非PIIラベルのみ**）。
+- **emit 条件は success のみ**。**failed / dead / retry失敗 は emit しない**（`delivered=false` の配送行は status=failed で作られるが emit しない。リトライ上限超過の dead もそもそも success が無いので emit しない）。
+- **retry の二重計上防止**: idempotencyKey は `eventId:subscriptionId` で安定。部分失敗の再試行で**同じ宛先に再度 success が起きても**、`@@unique([tenantId, idempotencyKey])` により2件目は duplicate となり**最終成功1回だけ**記録される（retry ごとに記録しない）。
+- metadata に **url / secret / signature / payload / body / statusCode / error / eventId / subscriptionId / 金額 / 実ID を入れない**（sourceId に delivery.id・idempotencyKey に eventId/subscriptionId は使うが metadata には入れない）。
+- **既存 Webhook 配送ロジック（送信・status 更新・retry/dead-letter 制御・戻り値・JobRun 記録）は不変**。`recordUsageEventCore` は例外を投げない設計のため、**記録失敗で配送主処理を壊さない**。
+- **共通 recorder `recordUsageEventCore`（packages/db/src/usage.ts）は変更なし**。**JobRun emit なし／apps/worker 変更なし／jobrun.ts 変更なし／apps/web helper 不変／既存6 emit 不変**。
+- schema / migration / RBAC / ABAC / package / lock 変更なし。**課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／金額なし**。
+- テスト: `packages/db/src/__tests__/p1_37_usage_event_webhook.itest.ts`（`processOutboxBatch` を実DBで実行・**fetch は mock（実Webhook送信なし）**。success で webhook.delivered 1件＋payload 仕様／metadata=eventType のみ・禁止キーなし／failed で emit しない／dead で emit しない／retry で最終成功1回（二重計上しない・配送主処理は継続）／別tenant独立）。
+- **現在の emit 対象は7種類**: 1) LeadMap export 2) AIOutput 3) admin danger-actions export 4) approvals outreach 5) invoice-send 6) dunning 7) **Webhook success**。
+- 次候補は **Phase 1-38 JobRun succeeded emit**（対象 jobType ホワイトリスト）だが**別途監査・人間承認が必要**。実課金はさらに先（§11 の安全条件＋人間承認が前提）。

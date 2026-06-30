@@ -567,3 +567,17 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - 将来方針: JobRun ベース計測を進めるなら、まず「worker ジョブの JobRun 計装＋既存 emit との二重計上回避」の **docs-only 設計（P0_DESIGN_ONLY）**が前提。実装ではない。
 - **課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。
 - **詳細は `docs/audit/18_jobrun_usage_event_emit_design.md`**。実装（または計装設計フェーズ）は別フェーズ・別承認。
+
+---
+
+## 29. Phase 1-39 実装状況（worker 経由 UsageEvent 計測漏れ監査 / docs-only）
+
+- **docs-only**。**実装なし／emit 追加なし／runtime call site なし**。`apps/worker` / `usage.ts` / 既存7 emit は不変。
+- **現在の UsageEvent emit 対象は7種類のまま**（LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning + Webhook success）。
+- 監査結果（実コード根拠）:
+  - 既存 `ai.output.generated` は `apps/web/lib/ai-safety-server.ts::saveAIOutputStandard` の中だけ・既存 `export.generated` は apps/web の2経路だけで発火。**worker が直接 `aIOutput.create` / `exportJob.create` した成果物は未計測（emit-gap）**。
+  - worker のうち到達性のある定期ジョブは MORNING_REPORT / ANOMALY / PROFIT_LEAK / DYNAMIC_PRICING。**MORNING_REPORT_JOB は `aIOutput.create` を直接呼び（saveAIOutputStandard を通さない）未計測**＝安全な計測漏れ。EXPORT_JOB は未計測だが enqueue されず現状未到達。
+  - リード分析/メール下書き/返信分類/埋め込み（本文・PII 近接）・動的価格/利益漏れ（金額近接）は **DO_NOT_TOUCH_NOW**。バックアップ/分類/異常検知/OUTBOX は **EXCLUDE_INTERNAL**（OUTBOX は webhook.delivered で計測済み・二重計上）。
+- **P0_IMPLEMENTABLE_NEXT は1つ**: **MORNING_REPORT_JOB の `aIOutput` emit**（eventType=`ai.output.generated`・category=`ai`・billing=`usage_only`・sourceType=`AIOutput`・sourceId=`aIOutput.id`・idempotencyKey=`usage:ai.output.generated:<aIOutput.id>`・actorType=`system`・metadata=`{ task, source }` のみ・**output 本文は入れない**・succeeded のみ・二重計上なし）。実装は Phase 1-40・別承認。
+- **課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。
+- **詳細は `docs/audit/19_worker_emit_gap_audit.md`**。実装は別フェーズ・別承認。

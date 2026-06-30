@@ -27,7 +27,23 @@
 - Phase 1-35「worker/packages UsageEvent recorder architecture design（docs-only）」: `cca2e5a` push 済み・**本番確認不要（docs-only・コード挙動不変）**。`docs/audit/17_worker_usage_recorder_design.md` 作成＋doc15 §25＋本ファイル。**設計のみ／実装なし／emit 追加なし／emit 対象は6種類のまま／課金なし／決済なし／billable_candidate なし／never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。
 - Phase 1-36「worker-safe UsageEvent recorder 実装のみ」: `60a202d` push 済み・**Vercel/CI 本番確認 GO（2026-06-29）**。`packages/db/src/usage.ts` の `recordUsageEventCore`（apps/web 非依存・prisma は `./client`）を追加＋index.ts に export＋DB統合テスト。**runtime emit 追加なし／Webhook emit なし／JobRun emit なし／runtime call site なし（本番挙動不変）／apps/web helper 不変／既存6 emit 不変／emit 対象は6種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／金額なし／schema・migration・package・lock 変更なし**。metadata 禁止 top-level key ガード・P2002 duplicate・missing_required_field・例外を投げない設計。
 - Phase 1-37「Webhook send 成功の非課金 UsageEvent emit」: `cc5a433` push 済み・**Vercel/CI 本番確認 GO（2026-06-29）**。`packages/db/src/outbox.ts` の `deliverOne` で Webhook 配送 **success のときだけ** `recordUsageEventCore` を呼び `webhook.delivered`（billing=usage_only・category=webhook・sourceType=WebhookDelivery・sourceId=delivery.id・actorType=system・metadata=eventType のみ）を記録。**emit 対象は 上記6種類 + Webhook success の7種類／failed・dead・retry失敗は emit しない／retry の二重計上を idempotencyKey=usage:webhook.delivered:<eventId>:<subscriptionId> で構造防止（最終成功1回）／metadata に url・secret・signature・payload・statusCode・error・実ID・金額を入れない／既存 Webhook 配送ロジック・recorder・apps/web helper・既存6 emit・apps/worker・jobrun.ts 不変／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。
-- Phase 1-38「JobRun UsageEvent emit 候補監査・ホワイトリスト設計（docs-only）」: `docs/audit/18_jobrun_usage_event_emit_design.md` 作成＋doc15 §28＋本ファイル。**監査のみ／実装なし／emit 追加なし／JobRun emit なし／emit 対象は7種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。実コード監査の結論: JobRun 行は `outbox.ts` の `OUTBOX_DISPATCH`（内部インフラ・tenantId なし・webhook.delivered と二重計上）の1種類のみ＝EXCLUDE_INTERNAL。worker 19 jobType は JobRun を作らない。**P0 実装候補なし＝JobRun emit は HOLD**。ローカル監査・設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）。
+- Phase 1-38「JobRun UsageEvent emit 候補監査・ホワイトリスト設計（docs-only）」: `docs/audit/18_jobrun_usage_event_emit_design.md` 作成＋doc15 §28＋本ファイル。**監査のみ／実装なし／emit 追加なし／JobRun emit なし／emit 対象は7種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。実コード監査の結論: JobRun 行は `outbox.ts` の `OUTBOX_DISPATCH`（内部インフラ・tenantId なし・webhook.delivered と二重計上）の1種類のみ＝EXCLUDE_INTERNAL。worker 19 jobType は JobRun を作らない。**P0 実装候補なし＝JobRun emit は HOLD**。`ff188a5` push 済み。
+- Phase 1-39「worker 経由 UsageEvent 計測漏れ監査（docs-only）」: `docs/audit/19_worker_emit_gap_audit.md` 作成＋doc15 §29＋本ファイル。**監査のみ／実装なし／emit 追加なし／emit 対象は7種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。実コード監査の結論: worker が直接 `aIOutput.create`/`exportJob.create` した成果物は apps/web の既存 emit 経路を通らず**未計測（emit-gap）**。**P0 実装候補は1つ＝MORNING_REPORT_JOB の aIOutput emit**（到達性あり・未計測・metadata=task/source のみ・output 本文を入れない・二重計上なし）。本文/PII 近接（lead/outreach/embedding）・金額近接（dynamic pricing/profit leak）は DO_NOT_TOUCH_NOW、内部処理（backup/embedding/anomaly/OUTBOX）は EXCLUDE_INTERNAL。ローカル監査・設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）。
+
+## Phase 1-39 — worker 経由 UsageEvent 計測漏れ監査（docs-only）
+
+状態: **ローカル監査・設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）**
+
+- 🎯 目的: worker が生成する成果物が既存7 emit で計測されているかを監査し、emit-gap と次の P0 候補（最大1つ）を確定。**実装しない・emit 追加しない**。
+- 📄 `docs/audit/19_worker_emit_gap_audit.md` 新規作成（非エンジニア向け要約＋既存 emit 発火経路＋jobType 成果物表＋重要候補詳細＋P0/分類＋metadata 可否＋idempotency 方針＋二重計上回避＋次フェーズ方針＋GO 判定）。
+- 📄 `docs/audit/15_monetization_usage_design.md` §29 追記。
+- 監査の確定事実: 既存 `ai.output.generated` は apps/web `saveAIOutputStandard` のみ・`export.generated` は apps/web 2経路のみで発火。**worker の `MORNING_REPORT_JOB` は `aIOutput.create` を直接呼ぶ（saveAIOutputStandard 非経由）ため未計測**＝安全な emit-gap。worker 定期ジョブは MORNING_REPORT/ANOMALY/PROFIT_LEAK/DYNAMIC_PRICING。
+- **P0_IMPLEMENTABLE_NEXT: MORNING_REPORT_JOB の aIOutput emit**（`ai.output.generated`/category=ai/usage_only/sourceType=AIOutput/sourceId=aIOutput.id/idempotencyKey=`usage:ai.output.generated:<aIOutput.id>`/actorType=system/actorId=null/tenantId=JobData.tenantId/metadata=`{task,source}` のみ・**output/outputText 本文は入れない**・succeeded のみ・二重計上なし）。
+- 分類: P1=EXPORT_JOB（enqueue トリガー実装が前提）／P2=recordRun 系（実体実装後）／DO_NOT_TOUCH_NOW=lead 分析・outreach 下書き・返信分類（本文/PII）・dynamic pricing・profit leak（金額）／EXCLUDE_INTERNAL=backup・embedding・communication classification・anomaly・OUTBOX（webhook.delivered で計測済み）／NEVER_BILLABLE=failed/skipped/error。
+- 課金なし／決済なし／`billable_candidate`・`never_billable` runtime 使用なし。
+- 現在の UsageEvent emit 対象は **7種類のまま**。
+- 詳細: `docs/audit/19_worker_emit_gap_audit.md`。
+- 次候補: Phase 1-40 = MORNING_REPORT_JOB の aIOutput emit 最小実装（別承認）。実課金はさらに先（設計 §11 安全条件＋人間承認が前提）。
 
 ## Phase 1-38 — JobRun UsageEvent emit 候補監査・ホワイトリスト設計（docs-only）
 

@@ -552,3 +552,18 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - **課金なし／決済なし／サブスクなし／billable_candidate・never_billable runtime 使用なし**。
 - 実メール送信・意図しない Webhook 実送信・worker/outbox dispatch 手動実行・本番DB直接操作・Prisma migrate 手動実行なし。
 - 詳細は `docs/audit/14_release_stabilization.md` §35。
+
+---
+
+## 28. Phase 1-38 実装状況（JobRun UsageEvent emit 候補監査・ホワイトリスト設計 / docs-only）
+
+- **docs-only**。**実装なし／emit 追加なし／JobRun emit なし／runtime call site なし**。`jobrun.ts` / `usage.ts` / `outbox.ts` / `apps/worker` は不変。
+- **現在の UsageEvent emit 対象は7種類のまま**（LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning + Webhook success）。
+- 監査結果（実コード根拠）:
+  - `JobRun` 行を実際に作っているのは **`packages/db/src/outbox.ts` の `OUTBOX_DISPATCH` 1箇所のみ**（内部インフラ・**tenantId なし**・全テナント横断バッチ）。その実体（Webhook 配送）は **Phase 1-37 の `webhook.delivered` で既に計測済み**＝JobRun でも数えると二重計上。→ **EXCLUDE_INTERNAL**。
+  - worker（`apps/worker/src/jobs.ts`）の 19 jobType は BullMQ ジョブ名で、ハンドラは **`createJobRun`/`finishJobRun` を呼ばない＝JobRun 行を作らない**。よって JobRun 経由では計測できない。
+- **P0_IMPLEMENTABLE_NEXT は無し（JobRun emit は HOLD）**。安全に実装できる JobRun 候補が現状存在しない。
+- 除外: EXCLUDE_INTERNAL（OUTBOX_DISPATCH / BACKUP / EMBEDDING・KNOWLEDGE / ANOMALY・PROFIT_LEAK・DYNAMIC_PRICING）、DO_NOT_TOUCH_NOW（金額・本文・PII 近接）、NEVER_BILLABLE（failed / dead / retry失敗 / error / 監査ログ）。
+- 将来方針: JobRun ベース計測を進めるなら、まず「worker ジョブの JobRun 計装＋既存 emit との二重計上回避」の **docs-only 設計（P0_DESIGN_ONLY）**が前提。実装ではない。
+- **課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。
+- **詳細は `docs/audit/18_jobrun_usage_event_emit_design.md`**。実装（または計装設計フェーズ）は別フェーズ・別承認。

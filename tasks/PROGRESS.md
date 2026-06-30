@@ -27,6 +27,22 @@
 - Phase 1-35「worker/packages UsageEvent recorder architecture design（docs-only）」: `cca2e5a` push 済み・**本番確認不要（docs-only・コード挙動不変）**。`docs/audit/17_worker_usage_recorder_design.md` 作成＋doc15 §25＋本ファイル。**設計のみ／実装なし／emit 追加なし／emit 対象は6種類のまま／課金なし／決済なし／billable_candidate なし／never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。
 - Phase 1-36「worker-safe UsageEvent recorder 実装のみ」: `60a202d` push 済み・**Vercel/CI 本番確認 GO（2026-06-29）**。`packages/db/src/usage.ts` の `recordUsageEventCore`（apps/web 非依存・prisma は `./client`）を追加＋index.ts に export＋DB統合テスト。**runtime emit 追加なし／Webhook emit なし／JobRun emit なし／runtime call site なし（本番挙動不変）／apps/web helper 不変／既存6 emit 不変／emit 対象は6種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／金額なし／schema・migration・package・lock 変更なし**。metadata 禁止 top-level key ガード・P2002 duplicate・missing_required_field・例外を投げない設計。
 - Phase 1-37「Webhook send 成功の非課金 UsageEvent emit」: `cc5a433` push 済み・**Vercel/CI 本番確認 GO（2026-06-29）**。`packages/db/src/outbox.ts` の `deliverOne` で Webhook 配送 **success のときだけ** `recordUsageEventCore` を呼び `webhook.delivered`（billing=usage_only・category=webhook・sourceType=WebhookDelivery・sourceId=delivery.id・actorType=system・metadata=eventType のみ）を記録。**emit 対象は 上記6種類 + Webhook success の7種類／failed・dead・retry失敗は emit しない／retry の二重計上を idempotencyKey=usage:webhook.delivered:<eventId>:<subscriptionId> で構造防止（最終成功1回）／metadata に url・secret・signature・payload・statusCode・error・実ID・金額を入れない／既存 Webhook 配送ロジック・recorder・apps/web helper・既存6 emit・apps/worker・jobrun.ts 不変／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。
+- Phase 1-38「JobRun UsageEvent emit 候補監査・ホワイトリスト設計（docs-only）」: `docs/audit/18_jobrun_usage_event_emit_design.md` 作成＋doc15 §28＋本ファイル。**監査のみ／実装なし／emit 追加なし／JobRun emit なし／emit 対象は7種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。実コード監査の結論: JobRun 行は `outbox.ts` の `OUTBOX_DISPATCH`（内部インフラ・tenantId なし・webhook.delivered と二重計上）の1種類のみ＝EXCLUDE_INTERNAL。worker 19 jobType は JobRun を作らない。**P0 実装候補なし＝JobRun emit は HOLD**。ローカル監査・設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）。
+
+## Phase 1-38 — JobRun UsageEvent emit 候補監査・ホワイトリスト設計（docs-only）
+
+状態: **ローカル監査・設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）**
+
+- 🎯 目的: JobRun emit の候補を実コードで監査し、jobType ホワイトリスト（記録してよい／いけない）を設計。**実装しない・emit 追加しない**。
+- 📄 `docs/audit/18_jobrun_usage_event_emit_design.md` 新規作成（非エンジニア向け要約＋JobRun/worker 構造＋jobType 分類表＋P0/除外/HOLD＋metadata 可否＋idempotency 方針＋failed/dead 方針＋次フェーズ方針＋GO/HOLD 判定）。
+- 📄 `docs/audit/15_monetization_usage_design.md` §28 追記。
+- 監査の確定事実: `JobRun` 行を作るのは `packages/db/src/outbox.ts` の **`OUTBOX_DISPATCH` 1箇所のみ**（内部インフラ・tenantId なし・全テナント横断）。その実体（Webhook 配送）は **Phase 1-37 `webhook.delivered` で既に計測済み**＝二重計上になるため **EXCLUDE_INTERNAL**。worker（`apps/worker/src/jobs.ts`）の 19 jobType は `createJobRun`/`finishJobRun` を呼ばず **JobRun 行を作らない**ため JobRun 経由で計測不可。
+- 分類: **P0_IMPLEMENTABLE_NEXT なし（HOLD）**／EXCLUDE_INTERNAL（OUTBOX_DISPATCH/BACKUP/EMBEDDING/KNOWLEDGE/ANOMALY/PROFIT_LEAK/DYNAMIC_PRICING）／DO_NOT_TOUCH_NOW（金額・本文・PII 近接）／NEVER_BILLABLE（failed/dead/retry失敗/error/監査ログ）。
+- 将来方針: JobRun 計測を進めるなら、まず worker ジョブの JobRun 計装＋既存 emit（ai.output.generated/export.generated/webhook.delivered）との**二重計上回避**の docs-only 設計（P0_DESIGN_ONLY）が前提。実装ではない。
+- 課金なし／決済なし／`billable_candidate`・`never_billable` runtime 使用なし。
+- 現在の UsageEvent emit 対象は **7種類のまま**。
+- 詳細: `docs/audit/18_jobrun_usage_event_emit_design.md`。
+- 次候補: P0 が無いため実装プロンプトは作らない。進めるなら JobRun 計装の docs-only 設計フェーズ（別承認）。実課金はさらに先（設計 §11 安全条件＋人間承認が前提）。
 
 ## Phase 1-37 — Webhook send 成功の非課金 UsageEvent emit
 

@@ -10,20 +10,23 @@
 - 一時的な状態（未push・承認待ち 等）は**原則として永続表現に残しません**。必要なときは最終報告で扱います。
 - このファイルは**大きな節目ごと**に更新します（毎コミットでは更新しません）。
 
-## Git 現在地（2026-07-01 時点）
+## Git 反映状態の扱い
 
-- HEAD: `3e3409f`
-- origin/main: `3e3409f`
-- branch: `claude/progress-report-cm9e1y`
-- unpushed commits: なし（HEAD は origin/main に含まれる）
-- working tree: clean
+- **現在の HEAD ／ origin/main ／ 未push有無 ／ 作業ツリー状態は、常に git コマンドの結果を正**とします。このファイルには、コミットごとに変わる現在値を固定しません（このファイル自身を更新すると位置が変わるため、固定値を書くと即座に古くなります）。
+- 反映状態を確認するコマンド:
+  - `git rev-parse --short HEAD`
+  - `git rev-parse --short origin/main`
+  - `git log --oneline origin/main..HEAD`（未pushの一覧。空なら未pushなし）
+  - `git status --short`（作業ツリー。空なら clean）
+- branch: `claude/progress-report-cm9e1y`（作業ブランチ名は固定してよい）。
+- **固定してよいのは下記「最新完了基準」の commit だけ**です。それ以外の現在位置は git を参照してください。
 
 ## 最新完了 Phase
 
-- 最新完了 Phase: **Phase 1-44**
+- 最新完了基準: **Phase 1-44**
 - 内容: **Phase 1-43 read-only UsageEvent 利用量サマリー（`/admin/usage`）の本番確認 GO 記録**
-- 実装 commit: `ce858c7`
-- 本番確認記録 commit: `3e3409f`
+- Phase 1-43 実装 commit: `ce858c7`
+- Phase 1-44 完了基準 commit（本番確認 GO 記録）: `3e3409f`（※これは「現在 HEAD」ではなく Phase 1-44 の完了基準 commit。現在位置は git を参照）
 - 本番確認: 利用者の Vercel Production `main` / CI / 本番画面確認による **GO（2026-07-01）**。AI が本番接続確認したものではない。
 - 詳細:
   - `docs/audit/14_release_stabilization.md` §37

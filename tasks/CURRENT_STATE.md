@@ -18,12 +18,12 @@
   - `git rev-parse --short origin/main`
   - `git log --oneline origin/main..HEAD`（未pushの一覧。空なら未pushなし）
   - `git status --short`（作業ツリー。空なら clean）
-- branch: `claude/progress-report-cm9e1y`（作業ブランチ名は固定してよい）。
-- **固定してよいのは下記「最新完了基準」の commit だけ**です。それ以外の現在位置は git を参照してください。
+- 現在の作業ブランチも `git branch --show-current` を正とし、このファイルには固定しません。
+- **このファイルに固定してよい commit は、下記「最新の本番確認GO済みプロダクト基準」の2つ（実装 commit / 完了基準 commit）だけ**です。現在 HEAD・origin/main・作業ブランチ・未push などの現在位置は git を参照してください。
 
-## 最新完了 Phase
+## 最新の本番確認GO済みプロダクト基準
 
-- 最新完了基準: **Phase 1-44**
+- 最新の本番確認 GO 済みプロダクト基準: **Phase 1-44**
 - 内容: **Phase 1-43 read-only UsageEvent 利用量サマリー（`/admin/usage`）の本番確認 GO 記録**
 - Phase 1-43 実装 commit: `ce858c7`
 - Phase 1-44 完了基準 commit（本番確認 GO 記録）: `3e3409f`（※これは「現在 HEAD」ではなく Phase 1-44 の完了基準 commit。現在位置は git を参照）
@@ -68,7 +68,7 @@
 
 | Phase | 内容 | 状態 |
 |-------|------|------|
-| Phase 1-45 | `tasks/CURRENT_STATE.md` 作成（本ファイル） | 今回 |
+| Phase 1-45 | `tasks/CURRENT_STATE.md` 作成・非陳腐化（本ファイル） | 作成済み（反映状態は git refs を正とする） |
 | Phase 1-46 | `docs/audit/usage_event_emit_matrix.md` 作成（8 emit を1表に固定） | 次 |
 | Phase 1-47 | Phase 1 の役割・境界の固定（PROGRESS / CURRENT_STATE / emit matrix の分担） | 予定 |
 | Phase 1-48 | Phase 1 最終セキュリティ・権限・非課金監査 | 予定 |

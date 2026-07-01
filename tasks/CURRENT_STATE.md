@@ -69,15 +69,15 @@
 | Phase | 内容 | 状態 |
 |-------|------|------|
 | Phase 1-45 | `tasks/CURRENT_STATE.md` 作成・非陳腐化（本ファイル） | 作成済み（反映状態は git refs を正とする） |
-| Phase 1-46 | `docs/audit/usage_event_emit_matrix.md` 作成（8 emit を1表に固定） | 次 |
-| Phase 1-47 | Phase 1 の役割・境界の固定（PROGRESS / CURRENT_STATE / emit matrix の分担） | 予定 |
+| Phase 1-46 | `docs/audit/usage_event_emit_matrix.md` 作成（8 emit を1表に固定） | 作成済み（反映状態は git refs を正とする） |
+| Phase 1-47 | Phase 1 の役割・境界の固定（PROGRESS / CURRENT_STATE / emit matrix の分担） | 次 |
 | Phase 1-48 | Phase 1 最終セキュリティ・権限・非課金監査 | 予定 |
 | Phase 1-49 | Phase 1 完了判定レポート | 予定 |
 | Phase 1-50 | Phase 1 完了記録・次 Phase 選定 | 予定 |
 
 ## 次にやること（1つだけ）
 
-- **Phase 1-46: `docs/audit/usage_event_emit_matrix.md` の作成**（UsageEvent 8種類を metadata安全性・billing・発火場所・本番GO の1表に固定）。別承認。
+- **Phase 1-47: PROGRESS / CURRENT_STATE / `docs/audit/usage_event_emit_matrix.md` の役割固定**（履歴 / 現在地 / 一覧 の三分割を明文化）。別承認。
 
 ## 今は絶対にやらないこと
 

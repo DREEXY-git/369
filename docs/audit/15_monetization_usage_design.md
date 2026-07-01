@@ -669,3 +669,21 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - **UsageEvent emit 対象は8種類のまま**・新規 emit 追加なし・既存8 emit 維持。
 - **課金なし／決済なし／サブスクなし／billable_candidate・never_billable runtime 使用なし**。本番DB直接操作・Prisma migrate 手動実行・worker/queue/outbox dispatch 手動実行・実メール送信・Webhook 実送信なし。
 - 本確認は利用者の Vercel/CI/本番画面確認によるもので、AI が本番接続確認したものではない。**詳細は doc14 §37**。
+
+---
+
+## 34. Phase 1-46 実装状況（UsageEvent emit matrix の作成 / docs-only）
+
+- **docs-only**。**実装なし／emit 追加なし／emit 対象は8種類のまま**。`docs/audit/usage_event_emit_matrix.md` を新規作成し、実コード監査に基づき8種類の emit を1表に固定。
+- 実コードで確認した8種類（発火場所・eventType・category・sourceType・idempotencyKey方式・metadata 固定キー・発火条件・billing=usage_only・本番GO）:
+  1. LeadMap export（`export.generated`/export/ExportJob/`apps/web/app/api/leadmap/export/route.ts`）
+  2. AIOutput apps/web（`ai.output.generated`/ai/AIOutput/`apps/web/lib/ai-safety-server.ts`）
+  3. admin danger-actions export（`export.generated`/export/ExportJob/`apps/web/app/(app)/admin/danger-actions/actions.ts`）
+  4. approvals outreach（`external_send.outreach`/external_send/OutreachSendLog/`apps/web/app/(app)/approvals/actions.ts`・logged/sent のみ）
+  5. invoice-send（`external_send.invoice`/external_send/Invoice/`apps/web/lib/domains/finance/invoice-send.ts`・logged/sent のみ）
+  6. dunning（`external_send.dunning`/external_send/CollectionReminder/`apps/web/lib/domains/finance/dunning.ts`・logged/sent のみ）
+  7. Webhook success（`webhook.delivered`/webhook/WebhookDelivery/`packages/db/src/outbox.ts`・delivered のみ・key=`event.id:sub.id`）
+  8. worker 朝礼AI出力（`ai.output.generated`/ai/AIOutput/`apps/worker/src/jobs.ts`・aIOutput.create 成功時）
+- metadata は全件**固定の非PIIラベルのみ**。本文/顧客情報/email/金額/secret/URL/fileKey/実ID は入れない（実コードのコメントでも明記）。二重計上は `@@unique([tenantId, idempotencyKey])` で構造防止。
+- **課金なし／決済なし／サブスクなし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。
+- **詳細は `docs/audit/usage_event_emit_matrix.md`**。役割固定（PROGRESS=履歴 / CURRENT_STATE=現在地 / matrix=一覧）は Phase 1-47・別承認。

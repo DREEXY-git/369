@@ -68,7 +68,7 @@
 
 ## Phase 1-38 — JobRun UsageEvent emit 候補監査・ホワイトリスト設計（docs-only）
 
-状態: **ローカル監査・設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）**
+状態: **push完了／本番確認不要（docs-only・コード挙動不変）** — `ff188a5` を `main` へ push 済み。詳細 `docs/audit/18_jobrun_usage_event_emit_design.md` / `docs/audit/15_monetization_usage_design.md` §28。
 
 - 🎯 目的: JobRun emit の候補を実コードで監査し、jobType ホワイトリスト（記録してよい／いけない）を設計。**実装しない・emit 追加しない**。
 - 📄 `docs/audit/18_jobrun_usage_event_emit_design.md` 新規作成（非エンジニア向け要約＋JobRun/worker 構造＋jobType 分類表＋P0/除外/HOLD＋metadata 可否＋idempotency 方針＋failed/dead 方針＋次フェーズ方針＋GO/HOLD 判定）。

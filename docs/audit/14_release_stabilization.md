@@ -1356,3 +1356,71 @@ Phase 1-40（**worker `MORNING_REPORT_JOB` の AIOutput 非課金 UsageEvent emi
 - **課金・決済・サブスクは未実装のまま**。billable_candidate / never_billable の runtime 使用なし。
 - 実メール送信・Webhook 実送信・worker/queue/outbox dispatch 手動実行・本番DB直接操作・Prisma migrate 手動実行・Vercel 環境変数変更なし。
 - 次候補は EXPORT_JOB（enqueue トリガー実装が前提）／recordRun 系（実体実装後）だが、**別途監査・人間承認が必要**。実課金はさらに先（設計 §11 の安全条件＋人間承認が前提）。
+
+## 37. Phase 1-43 本番デプロイ確認完了（利用者確認・2026-07-01）
+Phase 1-43（**非課金 UsageEvent 利用量サマリー read-only 最小実装**＝`apps/web/app/(app)/admin/usage/page.tsx`。tenant admin 向けに直近30日の UsageEvent を eventType/category/日別で**件数と quantity 合計のみ**集計表示する read-only 画面）の実装 `ce858c7` を含む `b08c939` を `main` へ push 後、利用者が Vercel Production / CI / 本番画面で確認した結果を記録する。
+**本確認は利用者の Vercel 画面・CI・本番画面確認によるものであり、AI（サンドボックス）が本番接続確認したものではない**（egress 403）。本番DB直接操作・実メール送信・Webhook 実送信・worker/queue/outbox dispatch 手動実行・Prisma migrate 手動実行・Vercel 環境変数変更は発生していない。
+Phase 1-43 は `/admin/usage` の read-only 画面追加と admin トップの導線リンク1本のみで、**書き込み・Server Action・UsageEvent emit 追加はなく、既存8 emit・schema・migration・RBAC は不変**。
+
+### 37.1 Vercel Production / CI
+| 項目 | 確認結果 |
+|------|----------|
+| Production Branch | **`main`** |
+| Latest Production Deployment Commit | **`b08c939`** |
+| Implementation Commit | **`ce858c7`** |
+| Status | **Ready** |
+| Build | **成功** |
+| Prisma `migrate deploy` | **不要** |
+| Migration pending | **なし** |
+| Prisma engine error | **なし** |
+| Runtime error | **なし** |
+| UsageEvent summary related error | **なし** |
+
+### 37.2 /admin/usage 画面・権限確認
+| 観点 | 結果 |
+|------|------|
+| /login | **OK** |
+| 主要ページ簡易確認 | **OK** |
+| admin トップに「利用量監査 →」リンク表示 | **OK** |
+| /admin/usage が表示できる | **OK** |
+| audit:read 権限**あり**ユーザーで利用量監査が表示される | **OK** |
+| audit:read 権限**なし**ユーザーでは集計が表示されない | **OK** |
+| 権限なしユーザーでは「閲覧権限がありません」を表示 | **OK** |
+| 表示は eventType / category / 日別の件数と quantity 合計のみ | **OK** |
+| 「この画面は請求額を示すものではありません」を表示 | **OK** |
+| usage_only が非課金記録として説明されている | **OK** |
+| quantity は数量であり金額として表示されていない | **OK** |
+
+### 37.3 tenant 分離・PII/金額 非表示確認
+| 観点 | 結果 |
+|------|------|
+| tenantId スコープが守られている | **OK** |
+| 他テナントの UsageEvent が表示されていない | **OK** |
+| raw metadata の実値が表示されていない | **OK** |
+| sourceId / idempotencyKey / actorId の実値が表示されていない | **OK** |
+| prompt / output / payload / 本文 の実値が表示されていない | **OK** |
+| URL / secret / signature / fileKey の実値が表示されていない | **OK** |
+| email / 顧客名 / invoice id / lead id / reminder id の実値が表示されていない | **OK** |
+| amount / price / currency / total が金額として表示されていない | **OK** |
+
+### 37.4 非課金・安全境界の維持確認
+| 観点 | 結果 |
+|------|------|
+| UsageEvent emit 対象は8種類のまま（LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning + Webhook success + worker 朝礼AI出力） | **維持** |
+| 既存8 emit | **維持** |
+| 新規 emit 追加 | **なし** |
+| 課金処理 | **なし** |
+| 決済処理 | **なし** |
+| サブスクリプション処理 | **なし** |
+| billable_candidate runtime 使用 | **なし** |
+| never_billable runtime 使用 | **なし** |
+| 本番DB直接操作 | **なし** |
+| Prisma migrate 手動実行 | **なし** |
+| worker / queue / outbox dispatch 手動実行 | **なし** |
+| 実メール送信 | **なし** |
+| Webhook 実送信 | **なし** |
+
+### 37.5 判定
+- **総合判定: GO**（利用者確認・2026-07-01）。気になった点: なし。
+- Phase 1-43 `/admin/usage` は read-only 利用量監査画面として本番で安全に表示され、audit:read ガード・tenantId スコープ・PII/金額/secret 実値の非表示・非課金記録（usage_only）表示・emit対象8種類維持が確認された。**課金・決済・emit 追加・schema/migration 変更なし**。
+- 次候補は Phase 1-45（`tasks/CURRENT_STATE.md` 作成）／Phase 1-46（`docs/audit/usage_event_emit_matrix.md` 作成）だが、**別途人間承認が必要**。実課金はさらに先（設計 §11 の安全条件＋人間承認が前提）。

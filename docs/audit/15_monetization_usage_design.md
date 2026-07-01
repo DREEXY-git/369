@@ -660,5 +660,12 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - **課金なし／決済なし／サブスクなし／billable_candidate・never_billable runtime 使用なし／金額なし／schema・migration・RBAC・package・lock 変更なし**。実メール送信・Webhook 実送信・worker 実行・本番DB直接操作・Prisma migrate 手動実行なし。
 - 本番確認は **Phase 1-44・別承認**（利用者 Vercel 確認 → GO 記録）。
 
-### 33.1 本番確認（保留・Phase 1-44 で記録）
-- 本フェーズはローカル実装のみ。**本番確認 GO は未取得**。利用者の Vercel/ブラウザ確認後に Phase 1-44 で GO/HOLD を記録する（値の捏造はしない）。
+### 33.1 本番確認（GO・2026-07-01・利用者/Vercel・CI）
+- **本番確認 GO**（2026-07-01・利用者 Vercel/CI・本番画面確認）。`b08c939`（Phase 1-43 implementation commit = `ce858c7`）を Vercel Production `main` / CI で確認。Status Ready・Build 成功・migrate deploy 不要・migration pending なし・Prisma engine error なし・Runtime error なし・UsageEvent summary related error なし。
+- `/admin/usage` read-only 利用量監査画面が表示可能。**audit:read ガード**確認（権限ありで表示・権限なしでは集計非表示＋「閲覧権限がありません」表示）。admin トップの「利用量監査 →」導線リンク表示。
+- **tenantId スコープ**確認（他テナントの UsageEvent は表示されない）。
+- **raw metadata / sourceId / idempotencyKey / actorId / 本文（prompt/output/payload）/ URL・secret・signature・fileKey / email・顧客名・invoice/lead/reminder id / 金額（amount/price/currency/total）の実値は非表示**。表示は eventType/category/日別の**件数と quantity 合計のみ**（quantity は数量であり金額表示ではない）。
+- 「**この画面は請求額を示すものではありません**」注記あり。`usage_only` は**非課金記録**として説明。**課金画面ではない**。
+- **UsageEvent emit 対象は8種類のまま**・新規 emit 追加なし・既存8 emit 維持。
+- **課金なし／決済なし／サブスクなし／billable_candidate・never_billable runtime 使用なし**。本番DB直接操作・Prisma migrate 手動実行・worker/queue/outbox dispatch 手動実行・実メール送信・Webhook 実送信なし。
+- 本確認は利用者の Vercel/CI/本番画面確認によるもので、AI が本番接続確認したものではない。**詳細は doc14 §37**。

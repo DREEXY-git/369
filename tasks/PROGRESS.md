@@ -38,11 +38,11 @@
 
 - Phase 1-42「UsageEvent 可視化・集計の安全設計（docs-only）」: `docs/audit/21_usage_event_visualization_design.md` 作成＋doc15 §32＋本ファイル。**設計のみ／実装なし／emit 追加なし／UI・API・dashboard 実装なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。UsageEvent は全 index が tenantId 先頭で集計は tenant スコープが効く・金額カラムなし・現状書き込み専用。安全方針＝tenantId 必須／raw metadata 非表示／金額なし／usage_only は「非課金記録」と明記。**P0 は tenant admin 向け read-only usage summary（audit:read 流用・件数/quantity 合計のみ・raw metadata/sourceId/金額なし）**、実装は Phase 1-43。docs-only 設計記録完了／本番確認不要（docs-only・コード挙動不変）。反映状態は git refs を正とする。
 
-- Phase 1-43「非課金 UsageEvent 利用量サマリー read-only 最小実装」: `apps/web/app/(app)/admin/usage/page.tsx`（read-only 集計ページ）新規＋`apps/web/app/(app)/admin/page.tsx` に `利用量監査 →` リンク1本＋doc15 §33＋本ファイル。**read-only／書き込みなし／Server Action なし／emit 追加なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／金額なし／schema・migration・RBAC・package・lock 変更なし**。ガード=`requireUser()`＋`hasPermission(user,'audit','read')`（RBAC 定義変更なし）。**tenantId 必須・直近30日**で `groupBy(eventType)`／`groupBy(category)`（件数＋quantity 合計）＋日別は非PIIの2列（occurredAt/quantity）のみ取得しサーバ側でバケツ化。**raw metadata／sourceId／idempotencyKey／actorId／本文／金額（amount/price/currency）を表示しない**。「この画面は請求額を示すものではありません」明記・`usage_only`=「非課金記録」。read-only 実装・検証完了／本番確認は Phase 1-44 で別承認（GO 未取得・捏造しない）。反映状態は git refs を正とする。
+- Phase 1-43「非課金 UsageEvent 利用量サマリー read-only 最小実装」: `apps/web/app/(app)/admin/usage/page.tsx`（read-only 集計ページ）新規＋`apps/web/app/(app)/admin/page.tsx` に `利用量監査 →` リンク1本＋doc15 §33＋本ファイル。**read-only／書き込みなし／Server Action なし／emit 追加なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／金額なし／schema・migration・RBAC・package・lock 変更なし**。ガード=`requireUser()`＋`hasPermission(user,'audit','read')`（RBAC 定義変更なし）。**tenantId 必須・直近30日**で `groupBy(eventType)`／`groupBy(category)`（件数＋quantity 合計）＋日別は非PIIの2列（occurredAt/quantity）のみ取得しサーバ側でバケツ化。**raw metadata／sourceId／idempotencyKey／actorId／本文／金額（amount/price/currency）を表示しない**。「この画面は請求額を示すものではありません」明記・`usage_only`=「非課金記録」。**本番確認完了（GO・2026-07-01）** — `b08c939`（implementation `ce858c7`）を利用者が Vercel/CI/本番画面で確認（audit:read ガード・tenantId スコープ・raw metadata/sourceId/本文/金額/secret実値非表示・非課金記録表示・emit対象8種類維持）。詳細 doc14 §37 / doc15 §33.1。反映状態は git refs を正とする。
 
 ## Phase 1-43 — 非課金 UsageEvent 利用量サマリー read-only 最小実装
 
-状態: **read-only 実装・検証完了／本番確認は Phase 1-44 で別承認（GO 未取得）** — 詳細 `docs/audit/15_monetization_usage_design.md` §33。反映状態は git refs を正とする。
+状態: **本番確認完了（GO）** — `b08c939`（implementation commit `ce858c7`）の Phase 1-43 read-only 利用量監査画面を利用者が Vercel/CI/本番画面で確認。audit:read ガード・tenantId スコープ・raw metadata/sourceId/本文/金額/secret実値 非表示・非課金記録（usage_only）表示・emit対象8種類維持を確認済み。詳細 `docs/audit/14_release_stabilization.md` §37 / `docs/audit/15_monetization_usage_design.md` §33.1。反映状態は git refs を正とする。
 
 - 🎯 目的: Phase 1-42 §12 の P0（候補A＝tenant admin 向け read-only UsageEvent summary）を、課金せず・PII/本文/金額/secret を出さず・テナント分離を守って最小実装する。
 - 📄 `apps/web/app/(app)/admin/usage/page.tsx` 新規（read-only）。`requireUser()`＋`hasPermission(user,'audit','read')` ガード（権限なしは集計を出さず「閲覧権限がありません」表示）。
@@ -52,8 +52,9 @@
 - **表示しない**: raw metadata／sourceId／idempotencyKey／actorId／本文／prompt／output／payload／URL／secret／fileKey／email／顧客名／実ID／**金額（amount/price/currency）**。quantity は `toNumber()` で数量表示（金額ではない）。
 - 課金誤認防止: 画面名「利用量監査（非課金 UsageEvent 集計）」＋「この画面は請求額を示すものではありません」明記＋`usage_only`=「非課金記録」。
 - **read-only／書き込みなし／Server Action なし／新 API route なし／emit 追加なし／emit 対象は8種類のまま**。課金なし／決済なし／`billable_candidate`・`never_billable` runtime 使用なし／schema・migration・RBAC・package・lock 変更なし。
-- 検証: `./scripts/verify.sh`（db:generate/typecheck/lint/unit/build）で確認。
-- 次候補: Phase 1-44 = 本フェーズの本番確認記録（利用者 Vercel 確認 → GO/HOLD）。実課金はさらに先（別設計・人間承認前提）。
+- 検証: `./scripts/verify.sh`（db:generate/typecheck/lint/unit/build）で確認。本番確認は Phase 1-44 で GO 記録（doc14 §37 / doc15 §33.1）。
+- 本番確認（Phase 1-44・GO・2026-07-01）: `b08c939`（implementation `ce858c7`）を利用者が Vercel Production `main`/CI/本番画面で確認。Status Ready・Build 成功・migrate deploy 不要・Runtime error なし。/admin/usage 表示 OK・audit:read あり表示/なし非表示（「閲覧権限がありません」）OK・件数と quantity 合計のみ・「請求額ではありません」表示・tenantId スコープ OK・他テナント非表示・raw metadata/sourceId/idempotencyKey/actorId/本文/URL/secret/fileKey/email/顧客名/各種id/金額 実値非表示 OK・emit対象8種類維持・新規emitなし・課金/決済/サブスクなし・billable_candidate/never_billable runtime 使用なし・本番DB操作/Prisma migrate手動/worker手動/実メール/Webhook実送信なし。総合判定 GO。
+- 次候補: **Phase 1-45 = `tasks/CURRENT_STATE.md` 作成**（origin/main・HEAD・未push・本番確認状況・emit対象・次にやることを1枚に集約）／**Phase 1-46 = `docs/audit/usage_event_emit_matrix.md` 作成**（8 emit を1表に固定）。いずれも別承認。実課金はさらに先（別設計・人間承認前提）。
 
 ## Phase 1-42 — UsageEvent 可視化・集計の安全設計（docs-only）
 

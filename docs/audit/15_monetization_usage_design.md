@@ -611,3 +611,18 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - **課金なし／決済なし／サブスクなし／billable_candidate・never_billable runtime 使用なし**。
 - 実メール送信・Webhook 実送信・worker/queue/outbox dispatch 手動実行・本番DB直接操作・Prisma migrate 手動実行なし。
 - 詳細は `docs/audit/14_release_stabilization.md` §36。
+
+---
+
+## 31. Phase 1-41 実装状況（worker EXPORT_JOB trigger / UsageEvent emit可否監査 / docs-only）
+
+- **docs-only**。**実装なし／emit 追加なし／runtime call site なし**。`apps/worker` / `usage.ts` / 既存8 emit は不変。
+- **現在の UsageEvent emit 対象は8種類のまま**（LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning + Webhook success + worker 朝礼AI出力）。
+- 監査結果（実コード根拠）:
+  - `EXPORT_JOB` の参照は `apps/worker/src/jobs.ts` の2箇所のみ（JOB_NAMES 登録＋handler 定義）。**`queue.add('EXPORT_JOB', ...)` は存在せず、apps/web にも enqueue 経路が無い**。worker が enqueue するのは MORNING_REPORT / ANOMALY / PROFIT_LEAK / DYNAMIC_PRICING（＋OUTBOX）のみ。→ **worker EXPORT_JOB は未到達（dead / unreachable）**。
+  - 実利用のエクスポート（LeadMap export route・admin danger-actions）は apps/web の `export.generated` で**計測済み**（sourceId=exportJob.id）。worker EXPORT_JOB は別 id なので将来 emit しても二重計上にはならないが、**現状は走らないため計測対象化しても意味がない**。
+- **判定: HOLD**（worker EXPORT_JOB は trigger / enqueue 経路が無く未到達・本番確認不可）。実利用のエクスポートは計測済みで計測漏れではない。
+- 将来方針: worker EXPORT_JOB を実際に enqueue する経路が実装された場合のみ、`export.generated` / usage_only / sourceType=ExportJob / sourceId=exportJob.id / idempotencyKey=`usage:export.generated:<exportJob.id>` / metadata=`{ scope, format, source }` のみ（**fileKey / CSV本文 / 顧客情報 / 金額 は入れない**）で1箇所 emit。それまで実装しない。
+- metadata 安全方針: 可＝scope/format/source/status の固定非PII。不可＝CSV本文/fileKey/顧客情報/実ID/金額/URL/secret/token/payload/error。
+- **課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。
+- **詳細は `docs/audit/20_export_job_trigger_audit.md`**。実装は別フェーズ・別承認。

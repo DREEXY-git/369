@@ -32,6 +32,22 @@
 
 - Phase 1-40「worker MORNING_REPORT_JOB の AIOutput 非課金 UsageEvent emit」: `c0a563b` push 済み・**Vercel/CI 本番確認 GO（2026-07-01）**。`apps/worker/src/jobs.ts` の `MORNING_REPORT_JOB` で `aIOutput.create` 成功後に `recordUsageEventCore`（`@hokko/db`）を呼び `ai.output.generated`（billing=usage_only・category=ai・sourceType=AIOutput・sourceId=aIOutput.id・actorType=system・metadata=task/source のみ）を記録。**emit 対象は 上記7種類 + worker 朝礼AI出力の8種類／他 jobType emit なし／既存7 emit・usage.ts・outbox.ts・jobrun.ts・apps/web helper 不変／metadata に output 本文・金額・secret・実ID を入れない／二重計上なし（apps/web の AIOutput とは別 id・saveAIOutputStandard 非経由）／skipped・create前失敗は emit しない／実 worker 実行・実AI実行・外部送信なし／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。
 
+- Phase 1-41「worker EXPORT_JOB trigger / UsageEvent emit可否監査（docs-only）」: `docs/audit/20_export_job_trigger_audit.md` 作成＋doc15 §31＋本ファイル。**監査のみ／実装なし／emit 追加なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。実コード監査の結論: `EXPORT_JOB` は `apps/worker/src/jobs.ts` の handler+JOB_NAMES のみで **`queue.add('EXPORT_JOB')` が存在せず未到達（dead）**。apps/web にも enqueue 経路なし。実利用のエクスポート（LeadMap export/admin export）は apps/web の `export.generated` で計測済み＝計測漏れではない。**判定 HOLD**（未到達・本番確認不可）。ローカル監査・設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）。
+
+## Phase 1-41 — worker EXPORT_JOB trigger / UsageEvent emit可否監査（docs-only）
+
+状態: **ローカル監査・設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）**
+
+- 🎯 目的: worker `EXPORT_JOB` に trigger / enqueue 経路が実在するか、安全に UsageEvent emit 候補へ昇格できるかを実コードで監査。**実装しない・emit 追加しない**。
+- 📄 `docs/audit/20_export_job_trigger_audit.md` 新規作成（非エンジニア向け要約＋EXPORT_JOB 構造＋trigger 監査＋既存 export.generated との関係＋metadata 可否＋P0/HOLD 判定＋将来方針）。
+- 📄 `docs/audit/15_monetization_usage_design.md` §31 追記。
+- 監査の確定事実: `EXPORT_JOB` の参照は `apps/worker/src/jobs.ts` の2箇所のみ（handler+JOB_NAMES）。**`queue.add('EXPORT_JOB', ...)` はリポジトリ全体に存在しない**（worker が積むのは MORNING_REPORT/ANOMALY/PROFIT_LEAK/DYNAMIC_PRICING+OUTBOX のみ／apps/web に BullMQ enqueue なし）。→ worker EXPORT_JOB は**未到達（dead）**。実利用のエクスポートは apps/web の `export.generated`（LeadMap export/admin danger-actions・sourceId=exportJob.id）で計測済み。
+- **判定: HOLD**（未到達・本番確認不可）。将来 enqueue 経路が実装されたら `export.generated`/usage_only/sourceType=ExportJob/sourceId=exportJob.id/metadata=scope,format,source のみ（fileKey/CSV本文/顧客情報/金額を入れない）で1箇所 emit を再評価。
+- 課金なし／決済なし／`billable_candidate`・`never_billable` runtime 使用なし。
+- 現在の UsageEvent emit 対象は **8種類のまま**。
+- 詳細: `docs/audit/20_export_job_trigger_audit.md`。
+- 次候補: EXPORT_JOB は trigger 実装後に再評価。本文/金額/PII 近接候補は据え置き。実課金はさらに先（設計 §11 安全条件＋人間承認が前提）。
+
 ## Phase 1-40 — worker MORNING_REPORT_JOB の AIOutput 非課金 UsageEvent emit
 
 状態: **本番確認完了（GO）** — `c0a563b` を `main` へ push 済み・Vercel/CI 本番確認 GO（2026-07-01・利用者確認）。worker 朝礼AI出力（aIOutput.create 成功時）のみ `ai.output.generated` を記録（skipped/create前失敗は emit しない・metadata=task/source のみ・同一 AIOutput で二重計上なし）。既存7 emit 維持・他jobType emit なし・JobRun emit なし・emit 対象は8種類。詳細 `docs/audit/14` §36 / `docs/audit/15` §30.1。

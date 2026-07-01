@@ -85,3 +85,10 @@ pnpm test:e2e                               # Playwright（要 chromium）
 - `prisma migrate reset`（= `pnpm db:reset`）は Claude Code 実行を検知して**安全ガードで拒否**される。クリーンに再投入したい時は `pnpm db:seed`（内部で `TRUNCATE ... CASCADE` してから再生成）を使う。通常のユーザー環境では `db:reset` も動作する。
 - 機能拡張は「動く薄い縦切り」で。巨大な未完成より、CRUD+権限+監査+デモデータの一気通貫を優先。
 - **Vercel デプロイ/チェックの責務分離**: `lint`/`typecheck` は **`prisma generate` のみ**前段で実行し（`prelint`/`pretypecheck`）、`prisma migrate deploy`/`vercel-setup` は実行しない。DB スキーマ反映（migrate/seed）は **`build` の `prebuild`（= generate + vercel-setup）でのみ**実行し、`vercel-setup.mjs` は `VERCEL` 未設定または `SKIP_DB_SETUP=1` でスキップする。typecheck は `@hokko/db` 経由で `@prisma/client` 型に依存するため、生成済みクライアントが無い環境（Vercel Native Checks の隔離 install で postinstall が走らない等）でも落ちないよう pre フックで generate を保証している。**lint/typecheck に migrate/seed を足さない。**
+
+## 知識ベース（369-vault）との同期ルール
+- **369の知識・思想・プロンプトを更新・追加したら、その内容を `369-vault` にも Markdown で反映し、commit & push すること。**
+- ファイルは **Obsidian で読む前提**で、**日本語・Markdown・`[[リンク]]`** を活用する。新しいノートは必ず `369-vault/index.md` からリンクを張り、迷子ノートを作らない。
+- `369-vault` の構成: `index.md`（目次）/ `README.md`（目的）/ `思想/`（思想・哲学・世界観・ビジョン）/ `プロンプト/`（1プロンプト1ファイル）/ `知識/`（設計判断・用語集・意思決定の記録）。
+- 一時状態（未push・承認待ち等）はヴォルトに固定しない。**現在地は `tasks/CURRENT_STATE.md`＋git refs を正**とする。
+- 補足: `369-vault` は独立 private リポジトリを目指すが、初期構築時点ではセッションのGitHub連携が `369` スコープのみで新規リポジトリを作成できなかったため、`369-vault/` フォルダとして本リポジトリ内に置いている。独立リポジトリへ移行後は、そのリポジトリへ反映する。

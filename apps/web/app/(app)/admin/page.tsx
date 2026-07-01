@@ -44,6 +44,7 @@ export default async function AdminPage() {
               <Link href="/admin/audit" className="text-primary hover:underline">監査ログ →</Link>
               <Link href="/admin/ai-safety" className="text-primary hover:underline">AI安全ログ →</Link>
               <Link href="/admin/ai-outputs" className="text-primary hover:underline">AI出力ログ →</Link>
+              <Link href="/admin/usage" className="text-primary hover:underline">利用量監査 →</Link>
             </div>
           </CardContent>
         </Card>

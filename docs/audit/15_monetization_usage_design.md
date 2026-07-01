@@ -641,3 +641,24 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - 除外: platform 横断 overview / billing dashboard / cap・alert / invoice・customer 連動 = **DO_NOT_TOUCH_NOW**。raw metadata・payload・prompt viewer / secret・URL 表示 / 金額混在 / tenantId なし全件 / usage→請求額自動計算 = **NEVER**。
 - **課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。
 - **詳細は `docs/audit/21_usage_event_visualization_design.md`**。実装は別フェーズ・別承認。
+
+---
+
+## 33. Phase 1-43 実装状況（非課金 UsageEvent 利用量サマリー read-only 最小実装）
+
+- 実装範囲: **`apps/web/app/(app)/admin/usage/page.tsx` の read-only ページ1つのみ**（Phase 1-42 §12 の P0＝候補A「tenant admin 向け read-only UsageEvent summary」）。加えて `apps/web/app/(app)/admin/page.tsx` の管理コンソールに `利用量監査 →` リンクを1本追加（到達性のため）。
+- **read-only**。**書き込みなし／Server Action なし／emit 追加なし／新 API route なし**。UsageEvent の emit 対象は**8種類のまま不変**。
+- ガード: `requireUser()` ＋ `hasPermission(user, 'audit', 'read')`（`admin/audit`・`admin/data-access-logs` と**同型**）。権限が無ければ集計を出さず「閲覧権限がありません」を表示。**RBAC 定義変更なし・新 permission 追加なし**。
+- **tenantId 必須**: すべての query は `where: { tenantId: user.tenantId, occurredAt: { gte: 直近30日 } }`。**テナント横断表示なし**。既存 index（`[tenantId, occurredAt]`/`[tenantId, eventType]`/`[tenantId, category]`）で効く。
+- 集計内容（3表・**件数と quantity 合計のみ**）:
+  - eventType 別: `prisma.usageEvent.groupBy({ by:['eventType'], where, _count:true, _sum:{ quantity } })`。
+  - category 別: `groupBy({ by:['category'], ... })`。
+  - 日別（直近30日）: 非PIIの2列（`occurredAt` / `quantity`）のみ `findMany` で取得し、**サーバ側で YYYY-MM-DD 単位にバケツ化**して件数・quantity 合計を算出。
+- **表示しないもの**: raw metadata / sourceId / idempotencyKey / actorId / 本文 / prompt / output / transcript / payload / URL / secret / signature / fileKey / email / 顧客名 / lead・invoice・reminder 実ID / **金額（amount/price/currency）**。`quantity` は Decimal を `toNumber()` で数量として表示（**金額ではない**）。
+- 課金誤認防止: 画面名は「**利用量監査（非課金 UsageEvent 集計）**」。「**この画面は請求額を示すものではありません**」を明記し、`usage_only` を「**非課金記録**」と説明。「請求」「課金」「料金」「決済」「サブスク」を表示に使わない。
+- 期間: 直近30日（`WINDOW_DAYS=30`）に限定して重くしない。
+- **課金なし／決済なし／サブスクなし／billable_candidate・never_billable runtime 使用なし／金額なし／schema・migration・RBAC・package・lock 変更なし**。実メール送信・Webhook 実送信・worker 実行・本番DB直接操作・Prisma migrate 手動実行なし。
+- 本番確認は **Phase 1-44・別承認**（利用者 Vercel 確認 → GO 記録）。
+
+### 33.1 本番確認（保留・Phase 1-44 で記録）
+- 本フェーズはローカル実装のみ。**本番確認 GO は未取得**。利用者の Vercel/ブラウザ確認後に Phase 1-44 で GO/HOLD を記録する（値の捏造はしない）。

@@ -36,6 +36,23 @@
 
 - Phase 1-42「UsageEvent 可視化・集計の安全設計（docs-only）」: `docs/audit/21_usage_event_visualization_design.md` 作成＋doc15 §32＋本ファイル。**設計のみ／実装なし／emit 追加なし／UI・API・dashboard 実装なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。UsageEvent は全 index が tenantId 先頭で集計は tenant スコープが効く・金額カラムなし・現状書き込み専用。安全方針＝tenantId 必須／raw metadata 非表示／金額なし／usage_only は「非課金記録」と明記。**P0 は tenant admin 向け read-only usage summary（audit:read 流用・件数/quantity 合計のみ・raw metadata/sourceId/金額なし）**、実装は Phase 1-43 別承認。ローカル監査・設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）。
 
+- Phase 1-43「非課金 UsageEvent 利用量サマリー read-only 最小実装」: `apps/web/app/(app)/admin/usage/page.tsx`（read-only 集計ページ）新規＋`apps/web/app/(app)/admin/page.tsx` に `利用量監査 →` リンク1本＋doc15 §33＋本ファイル。**read-only／書き込みなし／Server Action なし／emit 追加なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／金額なし／schema・migration・RBAC・package・lock 変更なし**。ガード=`requireUser()`＋`hasPermission(user,'audit','read')`（RBAC 定義変更なし）。**tenantId 必須・直近30日**で `groupBy(eventType)`／`groupBy(category)`（件数＋quantity 合計）＋日別は非PIIの2列（occurredAt/quantity）のみ取得しサーバ側でバケツ化。**raw metadata／sourceId／idempotencyKey／actorId／本文／金額（amount/price/currency）を表示しない**。「この画面は請求額を示すものではありません」明記・`usage_only`=「非課金記録」。ローカル実装・検証完了／push 未実施（人間承認待ち）／本番確認は Phase 1-44 別承認（GO 未取得・捏造しない）。
+
+## Phase 1-43 — 非課金 UsageEvent 利用量サマリー read-only 最小実装
+
+状態: **ローカル実装・検証完了／push 未実施（人間承認待ち）／本番確認は Phase 1-44 別承認（GO 未取得）**
+
+- 🎯 目的: Phase 1-42 §12 の P0（候補A＝tenant admin 向け read-only UsageEvent summary）を、課金せず・PII/本文/金額/secret を出さず・テナント分離を守って最小実装する。
+- 📄 `apps/web/app/(app)/admin/usage/page.tsx` 新規（read-only）。`requireUser()`＋`hasPermission(user,'audit','read')` ガード（権限なしは集計を出さず「閲覧権限がありません」表示）。
+- 📄 `apps/web/app/(app)/admin/page.tsx` の管理コンソール セキュリティ状況カードに `利用量監査 →` リンクを1本追加（到達性確保）。
+- 📄 `docs/audit/15_monetization_usage_design.md` §33 追記。
+- 集計: **tenantId 必須・直近30日**。`groupBy(['eventType'])`／`groupBy(['category'])` で件数（`_count`）＋quantity 合計（`_sum.quantity`）。日別は `findMany({ select:{ occurredAt, quantity } })`（非PII2列のみ）を取得しサーバ側で YYYY-MM-DD にバケツ化。既存 index（`[tenantId, occurredAt]`/`[tenantId, eventType]`/`[tenantId, category]`）で効く。
+- **表示しない**: raw metadata／sourceId／idempotencyKey／actorId／本文／prompt／output／payload／URL／secret／fileKey／email／顧客名／実ID／**金額（amount/price/currency）**。quantity は `toNumber()` で数量表示（金額ではない）。
+- 課金誤認防止: 画面名「利用量監査（非課金 UsageEvent 集計）」＋「この画面は請求額を示すものではありません」明記＋`usage_only`=「非課金記録」。
+- **read-only／書き込みなし／Server Action なし／新 API route なし／emit 追加なし／emit 対象は8種類のまま**。課金なし／決済なし／`billable_candidate`・`never_billable` runtime 使用なし／schema・migration・RBAC・package・lock 変更なし。
+- 検証: `./scripts/verify.sh`（db:generate/typecheck/lint/unit/build）で確認。
+- 次候補: Phase 1-44 = 本フェーズの本番確認記録（利用者 Vercel 確認 → GO/HOLD）。実課金はさらに先（別設計・人間承認前提）。
+
 ## Phase 1-42 — UsageEvent 可視化・集計の安全設計（docs-only）
 
 状態: **ローカル監査・設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）**

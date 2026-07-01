@@ -34,6 +34,24 @@
 
 - Phase 1-41「worker EXPORT_JOB trigger / UsageEvent emit可否監査（docs-only）」: `docs/audit/20_export_job_trigger_audit.md` 作成＋doc15 §31＋本ファイル。**監査のみ／実装なし／emit 追加なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。実コード監査の結論: `EXPORT_JOB` は `apps/worker/src/jobs.ts` の handler+JOB_NAMES のみで **`queue.add('EXPORT_JOB')` が存在せず未到達（dead）**。apps/web にも enqueue 経路なし。実利用のエクスポート（LeadMap export/admin export）は apps/web の `export.generated` で計測済み＝計測漏れではない。**判定 HOLD**（未到達・本番確認不可）。ローカル監査・設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）。
 
+- Phase 1-42「UsageEvent 可視化・集計の安全設計（docs-only）」: `docs/audit/21_usage_event_visualization_design.md` 作成＋doc15 §32＋本ファイル。**設計のみ／実装なし／emit 追加なし／UI・API・dashboard 実装なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。UsageEvent は全 index が tenantId 先頭で集計は tenant スコープが効く・金額カラムなし・現状書き込み専用。安全方針＝tenantId 必須／raw metadata 非表示／金額なし／usage_only は「非課金記録」と明記。**P0 は tenant admin 向け read-only usage summary（audit:read 流用・件数/quantity 合計のみ・raw metadata/sourceId/金額なし）**、実装は Phase 1-43 別承認。ローカル監査・設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）。
+
+## Phase 1-42 — UsageEvent 可視化・集計の安全設計（docs-only）
+
+状態: **ローカル監査・設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）**
+
+- 🎯 目的: 貯めた UsageEvent 8種類を、非課金のまま・PII/本文/金額/secret を出さず・テナント分離を守って安全に可視化する方針を設計。**実装しない・emit 追加しない・画面/APIを作らない**。
+- 📄 `docs/audit/21_usage_event_visualization_design.md` 新規作成（非エンジニア向け要約＋model/index 監査＋安全な集計軸＋tenant 分離＋RBAC＋metadata 表示可否＋課金誤認防止文言＋集計ビュー候補比較＋P0 判定＋DO_NOT_TOUCH_NOW/NEVER＋段階導入＋GO 判定）。
+- 📄 `docs/audit/15_monetization_usage_design.md` §32 追記。
+- 監査の確定事実: UsageEvent の index は全て tenantId 先頭で**テナントスコープ集計が index で効く**／**金額カラムなし**（quantity は量）／**現状書き込み専用**（読み取りなし）／RBAC は既存 `hasPermission(user,'audit','read')` を流用でき**RBAC 定義変更不要**。
+- 安全方針: tenantId 必須（横断表示禁止）／raw metadata 非表示（prompt/output/payload/URL/secret/signature/fileKey/email/顧客名/sourceId を出さない）／金額(amount/price/currency)を混ぜない／`usage_only`=「非課金記録」＋「請求額ではない」注記／集計は eventType/category/日別の件数・quantity 合計のみ。
+- **P0_IMPLEMENTABLE_NEXT: tenant admin 向け read-only UsageEvent summary**（`admin/usage` 相当・audit:read ガード・直近30日・groupBy eventType/category・件数/quantity 合計のみ）。実装は Phase 1-43・別承認。
+- 除外: platform 横断/billing dashboard/cap・alert/invoice・customer 連動＝DO_NOT_TOUCH_NOW。raw metadata・payload・prompt viewer/secret・URL 表示/金額混在/tenantId なし全件/usage→請求額自動計算＝NEVER。
+- 課金なし／決済なし／`billable_candidate`・`never_billable` runtime 使用なし。
+- 現在の UsageEvent emit 対象は **8種類のまま**。
+- 詳細: `docs/audit/21_usage_event_visualization_design.md`。
+- 次候補: Phase 1-43 = read-only tenant-scoped usage summary の最小実装（別承認）。実課金はさらに先（設計 §11 安全条件＋人間承認が前提）。
+
 ## Phase 1-41 — worker EXPORT_JOB trigger / UsageEvent emit可否監査（docs-only）
 
 状態: **ローカル監査・設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）**

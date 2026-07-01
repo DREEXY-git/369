@@ -626,3 +626,18 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - metadata 安全方針: 可＝scope/format/source/status の固定非PII。不可＝CSV本文/fileKey/顧客情報/実ID/金額/URL/secret/token/payload/error。
 - **課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。
 - **詳細は `docs/audit/20_export_job_trigger_audit.md`**。実装は別フェーズ・別承認。
+
+---
+
+## 32. Phase 1-42 実装状況（UsageEvent 可視化・集計の安全設計 / docs-only）
+
+- **docs-only**。**実装なし／emit 追加なし／UI・API・query 実装なし／usage dashboard 未実装**。apps/packages・既存8 emit は不変。
+- **現在の emit 対象は8種類のまま**（LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning + Webhook success + worker 朝礼AI出力）。
+- 監査結果（実コード根拠）:
+  - `UsageEvent` の index は全て tenantId 先頭（`[tenantId, occurredAt]`/`[tenantId, eventType]`/`[tenantId, category]`/`[tenantId, billing]`）＝**テナントスコープ集計が index で効く**。金額カラム（amount/price/currency）は存在しない。`quantity` は Decimal だが**量であり金額ではない**。
+  - UsageEvent は**現状 書き込み専用**（読み取り/集計コードなし）。RBAC は既存 `requireUser()`＋`hasPermission(user,'audit','read')`（`admin/audit`・`admin/data-access-logs` と同型）を流用できる＝**RBAC 定義変更不要**。
+- 安全方針: **tenantId 必須**（横断表示禁止）／**raw metadata 非表示**（prompt/output/payload/URL/secret/signature/fileKey/email/顧客名/sourceId を出さない）／**金額なし**（amount/price/currency を混ぜない）／`usage_only` を「非課金記録」と明記し「請求額ではない」注記／集計は eventType/category/日別の件数・quantity 合計のみ。
+- **P0_IMPLEMENTABLE_NEXT は1つ**: **tenant admin 向け read-only UsageEvent summary**（`admin/usage` 相当・`audit:read` ガード・直近30日・groupBy eventType/category・件数/quantity 合計のみ・raw metadata/sourceId/金額なし）。実装は **Phase 1-43・別承認**。
+- 除外: platform 横断 overview / billing dashboard / cap・alert / invoice・customer 連動 = **DO_NOT_TOUCH_NOW**。raw metadata・payload・prompt viewer / secret・URL 表示 / 金額混在 / tenantId なし全件 / usage→請求額自動計算 = **NEVER**。
+- **課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。
+- **詳細は `docs/audit/21_usage_event_visualization_design.md`**。実装は別フェーズ・別承認。

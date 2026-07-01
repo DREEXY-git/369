@@ -2,6 +2,8 @@
 
 > 進捗・タスク・完了履歴の最小トラッカー（Claude Code / Codex 共通）。詳細仕様は `docs/`、監査は `docs/audit/`。
 
+> 状態管理メモ: `PROGRESS.md` は履歴・判断メモであり、現在の git 反映状態そのものではありません。現在の push 反映状態は git refs（`git rev-parse HEAD` / `git rev-parse origin/main` / `git log origin/main`）を正とします。今後の Phase 状態行では、原則として `push 未実施` / `人間承認待ち` などの一時状態を永続表現として残さず、必要な場合は最終報告または CURRENT_STATE 系の別記録で扱います。
+
 ## 現在地
 - 本番系列: `main`（Vercel Production）。**Phase 1-16候補まで本番反映・本番確認完了（`addbd82`）**。
 - Phase 1-15「督促（Dunning）」: `9e27a21`＋`ed1c30d` push 済み・Vercel 本番確認 GO。
@@ -34,13 +36,13 @@
 
 - Phase 1-41「worker EXPORT_JOB trigger / UsageEvent emit可否監査（docs-only）」: `87635bb` push 済み・**本番確認不要（docs-only・コード挙動不変）**。`docs/audit/20_export_job_trigger_audit.md` 作成＋doc15 §31＋本ファイル。**監査のみ／実装なし／emit 追加なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。実コード監査の結論: `EXPORT_JOB` は `apps/worker/src/jobs.ts` の handler+JOB_NAMES のみで **`queue.add('EXPORT_JOB')` が存在せず未到達（dead）**。apps/web にも enqueue 経路なし。実利用のエクスポート（LeadMap export/admin export）は apps/web の `export.generated` で計測済み＝計測漏れではない。**判定 HOLD**（未到達・本番確認不可）。
 
-- Phase 1-42「UsageEvent 可視化・集計の安全設計（docs-only）」: `docs/audit/21_usage_event_visualization_design.md` 作成＋doc15 §32＋本ファイル。**設計のみ／実装なし／emit 追加なし／UI・API・dashboard 実装なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。UsageEvent は全 index が tenantId 先頭で集計は tenant スコープが効く・金額カラムなし・現状書き込み専用。安全方針＝tenantId 必須／raw metadata 非表示／金額なし／usage_only は「非課金記録」と明記。**P0 は tenant admin 向け read-only usage summary（audit:read 流用・件数/quantity 合計のみ・raw metadata/sourceId/金額なし）**、実装は Phase 1-43 別承認。ローカル監査・設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）。
+- Phase 1-42「UsageEvent 可視化・集計の安全設計（docs-only）」: `docs/audit/21_usage_event_visualization_design.md` 作成＋doc15 §32＋本ファイル。**設計のみ／実装なし／emit 追加なし／UI・API・dashboard 実装なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。UsageEvent は全 index が tenantId 先頭で集計は tenant スコープが効く・金額カラムなし・現状書き込み専用。安全方針＝tenantId 必須／raw metadata 非表示／金額なし／usage_only は「非課金記録」と明記。**P0 は tenant admin 向け read-only usage summary（audit:read 流用・件数/quantity 合計のみ・raw metadata/sourceId/金額なし）**、実装は Phase 1-43。docs-only 設計記録完了／本番確認不要（docs-only・コード挙動不変）。反映状態は git refs を正とする。
 
-- Phase 1-43「非課金 UsageEvent 利用量サマリー read-only 最小実装」: `apps/web/app/(app)/admin/usage/page.tsx`（read-only 集計ページ）新規＋`apps/web/app/(app)/admin/page.tsx` に `利用量監査 →` リンク1本＋doc15 §33＋本ファイル。**read-only／書き込みなし／Server Action なし／emit 追加なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／金額なし／schema・migration・RBAC・package・lock 変更なし**。ガード=`requireUser()`＋`hasPermission(user,'audit','read')`（RBAC 定義変更なし）。**tenantId 必須・直近30日**で `groupBy(eventType)`／`groupBy(category)`（件数＋quantity 合計）＋日別は非PIIの2列（occurredAt/quantity）のみ取得しサーバ側でバケツ化。**raw metadata／sourceId／idempotencyKey／actorId／本文／金額（amount/price/currency）を表示しない**。「この画面は請求額を示すものではありません」明記・`usage_only`=「非課金記録」。ローカル実装・検証完了／push 未実施（人間承認待ち）／本番確認は Phase 1-44 別承認（GO 未取得・捏造しない）。
+- Phase 1-43「非課金 UsageEvent 利用量サマリー read-only 最小実装」: `apps/web/app/(app)/admin/usage/page.tsx`（read-only 集計ページ）新規＋`apps/web/app/(app)/admin/page.tsx` に `利用量監査 →` リンク1本＋doc15 §33＋本ファイル。**read-only／書き込みなし／Server Action なし／emit 追加なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／金額なし／schema・migration・RBAC・package・lock 変更なし**。ガード=`requireUser()`＋`hasPermission(user,'audit','read')`（RBAC 定義変更なし）。**tenantId 必須・直近30日**で `groupBy(eventType)`／`groupBy(category)`（件数＋quantity 合計）＋日別は非PIIの2列（occurredAt/quantity）のみ取得しサーバ側でバケツ化。**raw metadata／sourceId／idempotencyKey／actorId／本文／金額（amount/price/currency）を表示しない**。「この画面は請求額を示すものではありません」明記・`usage_only`=「非課金記録」。read-only 実装・検証完了／本番確認は Phase 1-44 で別承認（GO 未取得・捏造しない）。反映状態は git refs を正とする。
 
 ## Phase 1-43 — 非課金 UsageEvent 利用量サマリー read-only 最小実装
 
-状態: **ローカル実装・検証完了／push 未実施（人間承認待ち）／本番確認は Phase 1-44 別承認（GO 未取得）**
+状態: **read-only 実装・検証完了／本番確認は Phase 1-44 で別承認（GO 未取得）** — 詳細 `docs/audit/15_monetization_usage_design.md` §33。反映状態は git refs を正とする。
 
 - 🎯 目的: Phase 1-42 §12 の P0（候補A＝tenant admin 向け read-only UsageEvent summary）を、課金せず・PII/本文/金額/secret を出さず・テナント分離を守って最小実装する。
 - 📄 `apps/web/app/(app)/admin/usage/page.tsx` 新規（read-only）。`requireUser()`＋`hasPermission(user,'audit','read')` ガード（権限なしは集計を出さず「閲覧権限がありません」表示）。
@@ -55,7 +57,7 @@
 
 ## Phase 1-42 — UsageEvent 可視化・集計の安全設計（docs-only）
 
-状態: **ローカル監査・設計記録完了／push 未実施（人間承認待ち）／本番確認不要（docs-only・コード挙動不変）**
+状態: **docs-only 設計記録完了／本番確認不要（docs-only・コード挙動不変）** — 詳細 `docs/audit/21_usage_event_visualization_design.md` / `docs/audit/15_monetization_usage_design.md` §32。反映状態は git refs を正とする。
 
 - 🎯 目的: 貯めた UsageEvent 8種類を、非課金のまま・PII/本文/金額/secret を出さず・テナント分離を守って安全に可視化する方針を設計。**実装しない・emit 追加しない・画面/APIを作らない**。
 - 📄 `docs/audit/21_usage_event_visualization_design.md` 新規作成（非エンジニア向け要約＋model/index 監査＋安全な集計軸＋tenant 分離＋RBAC＋metadata 表示可否＋課金誤認防止文言＋集計ビュー候補比較＋P0 判定＋DO_NOT_TOUCH_NOW/NEVER＋段階導入＋GO 判定）。

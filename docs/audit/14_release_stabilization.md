@@ -1293,3 +1293,66 @@ Phase 1-37（**Webhook success の非課金 UsageEvent emit**＝`packages/db/src
 - **課金・決済・サブスクは未実装のまま**。billable_candidate / never_billable の runtime 使用なし。
 - 実メール送信・意図しない Webhook 実送信・worker/outbox dispatch 手動実行・本番DB直接操作・Prisma migrate 手動実行・Vercel 環境変数変更なし。
 - 次候補は Phase 1-38 JobRun succeeded emit（対象 jobType ホワイトリスト）だが、**別途監査・人間承認が必要**。実課金はさらに先（設計 §11 の安全条件＋人間承認が前提）。
+
+## 36. Phase 1-40 本番デプロイ確認完了（利用者確認・2026-07-01）
+Phase 1-40（**worker `MORNING_REPORT_JOB` の AIOutput 非課金 UsageEvent emit**＝朝礼AIレポート生成が `aIOutput.create` に成功したときだけ `recordUsageEventCore` を呼び `ai.output.generated` / `billing=usage_only` を記録）`c0a563b` を `main` へ push 後、利用者が Vercel Production / CI で確認した結果を記録する。
+**確認は利用者の Vercel 画面・CI・worker 動作によるもので、サンドボックスからの本番到達確認ではない**（egress 403）。本番DB操作・実メール送信・意図しない Webhook 実送信・worker/queue/outbox dispatch 手動実行・Prisma migrate 手動実行は発生していない。
+`c0a563b` は `apps/worker/src/jobs.ts` の MORNING_REPORT_JOB に emit を1箇所足しただけで、既存の worker ロジック（generateMorningReport / aIOutput.create / recordRun / return report）は不変。
+
+### 36.1 Vercel Production / CI
+| 項目 | 確認結果 |
+|------|----------|
+| Commit | **`c0a563b`** |
+| Branch | **`main`** |
+| Status | **Ready** |
+| Build | **成功** |
+| Prisma `migrate deploy` | **不要** |
+| Migration pending | **なし** |
+| Prisma engine error | **なし** |
+| Runtime error | **なし** |
+| Worker / UsageEvent 関連エラー | **なし** |
+
+### 36.2 worker 朝礼AI出力 emit 動作・回帰確認
+| 観点 | 結果 |
+|------|------|
+| `/login` | ✅ OK |
+| 主要ページ簡易確認 | ✅ OK |
+| worker MORNING_REPORT_JOB の既存挙動が壊れていない | ✅ OK |
+| worker 朝礼AI出力で `ai.output.generated` が1件記録される | ✅ OK |
+| metadata が `task/source` のみ | ✅ OK |
+| metadata に output/outputText/レポート本文/report/prompt/inputHash/salesActual/salesTarget/金額/secret/URL/payload/実ID が入っていない | ✅ OK |
+| 同じ AIOutput で二重計上されない | ✅ OK |
+| UsageEvent emit 対象は8種類 | ✅ OK |
+| 既存7 emit は維持 | ✅ OK |
+| 他jobType emit は追加されていない | ✅ OK |
+| JobRun emit は追加されていない | ✅ OK |
+
+### 36.3 課金・決済・サブスクなし確認
+| 観点 | 結果 |
+|------|------|
+| 課金処理 | ✅ なし |
+| 決済処理 | ✅ なし |
+| サブスクリプション処理 | ✅ なし |
+| billable_candidate runtime 使用 | ✅ なし |
+| never_billable runtime 使用 | ✅ なし |
+
+### 36.4 外部送信・環境確認
+| 観点 | 結果 |
+|------|------|
+| 実メール送信 | ✅ なし |
+| Webhook 実送信 | ✅ なし |
+| worker / queue 手動実行 | ✅ 実行していない |
+| outbox dispatch 手動実行 | ✅ 実行していない |
+| 本番DBを直接触ったか | ✅ 触っていない |
+| Prisma migrate を手動実行したか | ✅ 実行していない |
+
+### 36.5 判定
+- **Phase 1-40 本番反映 完了（GO）**。本番ソース＝`main`（`c0a563b`）。
+- worker MORNING_REPORT_JOB が**従来どおり動作**し、**aIOutput.create 成功時のみ** `ai.output.generated` を1件記録。**skipped / create前失敗では emit されない**。
+- **同じ AIOutput で二重計上されない**（idempotencyKey=aIOutput.id・apps/web の AIOutput とは別 id・saveAIOutputStandard 非経由）。
+- UsageEvent / Worker 関連エラーなし。generateMorningReport / aIOutput.create / recordRun / 戻り値に回帰なし。
+- billing は **usage_only**。metadata は **task/source のみ**で、output/outputText/レポート本文/report/prompt/inputHash/salesActual/salesTarget/金額/secret/URL/payload/実ID は入れていない。
+- UsageEvent emit 対象は **LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning + Webhook success + worker 朝礼AI出力 の8種類**。**既存7 emit は維持**。**他jobType emit・JobRun emit は未追加**。
+- **課金・決済・サブスクは未実装のまま**。billable_candidate / never_billable の runtime 使用なし。
+- 実メール送信・Webhook 実送信・worker/queue/outbox dispatch 手動実行・本番DB直接操作・Prisma migrate 手動実行・Vercel 環境変数変更なし。
+- 次候補は EXPORT_JOB（enqueue トリガー実装が前提）／recordRun 系（実体実装後）だが、**別途監査・人間承認が必要**。実課金はさらに先（設計 §11 の安全条件＋人間承認が前提）。

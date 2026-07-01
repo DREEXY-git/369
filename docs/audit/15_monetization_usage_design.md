@@ -601,3 +601,13 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - テスト: `packages/db/src/__tests__/p1_40_usage_event_worker_aioutput.itest.ts`（payload 仕様／metadata=task,source のみ・禁止キーなし／二重計上不可／別tenant独立／金額カラム不在。**実 worker/queue 起動なし・実AI実行なし・外部送信なし**）。
 - **現在の emit 対象は8種類**: 1) LeadMap export 2) AIOutput（apps/web）3) admin danger-actions export 4) approvals outreach 5) invoice-send 6) dunning 7) Webhook success 8) **worker 朝礼AI出力（MORNING_REPORT）**。
 - 次候補は別途監査・承認（EXPORT_JOB は enqueue トリガー実装が前提／recordRun 系は実体実装後）。実課金はさらに先（§11 の安全条件＋人間承認が前提）。
+
+### 30.1 本番確認（GO・2026-07-01・利用者/Vercel・CI）
+- **本番確認 GO**（2026-07-01・利用者 Vercel/CI・worker 動作確認）。`c0a563b` を Vercel Production（`main`）/ CI で確認。Status Ready・Build 成功・migrate deploy 不要・migration pending なし・Prisma engine error なし・Runtime error なし・Worker/UsageEvent 関連エラーなし。
+- worker MORNING_REPORT_JOB の AIOutput emit は反映済み。**aIOutput.create 成功時のみ** `ai.output.generated` を1件記録。MORNING_REPORT_JOB の既存挙動（generateMorningReport / aIOutput.create / recordRun / 戻り値）に回帰なし。
+- metadata は **task/source のみ**。**output/outputText/レポート本文/report/prompt/inputHash/salesActual/salesTarget/金額/secret/URL/payload/実ID は metadata に入れていない**。
+- **同じ AIOutput で二重計上されない**（idempotencyKey=aIOutput.id・apps/web の AIOutput とは別 id・saveAIOutputStandard 非経由）。
+- UsageEvent emit 対象は **8種類**（LeadMap export + AIOutput + admin danger-actions export + approvals outreach + invoice-send + dunning + Webhook success + worker 朝礼AI出力）。**既存7 emit は維持**。**他jobType emit なし／JobRun emit なし**。
+- **課金なし／決済なし／サブスクなし／billable_candidate・never_billable runtime 使用なし**。
+- 実メール送信・Webhook 実送信・worker/queue/outbox dispatch 手動実行・本番DB直接操作・Prisma migrate 手動実行なし。
+- 詳細は `docs/audit/14_release_stabilization.md` §36。

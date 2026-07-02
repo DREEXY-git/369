@@ -39,6 +39,7 @@
 - [[長期構想とPhase2ロードマップ]] — 追加構想17領域の非破壊統合と Phase 2 設計図（Phase X-RM-01）。
 - [[PhaseXRM02ロードマップレビュー]] — 追加構想リストとの突合・表記統一・分類23項目の固定（Phase X-RM-02）。
 - [[PhaseX03E2EGreen化]] — E2E smoke 初の 11/11 green：red の剥がし方と修正先の見極め（Phase X-03）。
+- [[PhaseXRM03Phase2入口条件]] — Phase 2 入口レビュー READY／実装は人間承認待ち（Phase X-RM-03）。
 
 ## 🔗 コード側の正（source of truth）
 

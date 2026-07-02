@@ -60,6 +60,18 @@
 
 - Phase X-03「E2E smoke green 化（X-03＋X-03b）」: `apps/web/app/login/page.tsx`（label関連付け・X-03）＋`apps/web/tests/e2e/smoke.spec.ts`（地図CRMセレクタ1行明確化・X-03b）＋`docs/audit/30_phase_x03_e2e_green.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/PhaseX03E2EGreen化.md`（index からリンク）＋本ファイル。**smoke 0/11 → 10/11 → 11/11 green（初の全green・9.1s）**。red の原因は2つ（アプリ側 label 関連付け欠如／テスト側セレクタ曖昧性）で、それぞれ正しい側を最小修正。test 211・typecheck・lint・build 全green。**schema・migration作成・認証・RBAC・課金・決済・外部送信・package/lock・playwright install: すべてなし／本番接触ゼロ**。E2E は Phase 2 出口条件（smoke green 維持）を支える回帰ゲートとして稼働開始。次は Phase X-04 または Phase X-RM-03・別承認。詳細 `docs/audit/30_phase_x03_e2e_green.md`。反映状態は git refs を正とする。
 
+- Phase X-RM-03「Phase 2入口条件の最終確定・Phase 2-A準備メモ（docs-only）」: `docs/audit/31_phase_x_rm_03_phase2_entry_review.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/PhaseXRM03Phase2入口条件.md`（index からリンク）＋本ファイル。**入口条件4項目を証拠付きで判定 — 条件1〜3 GO（smoke 11/11 green=doc30／roadmap main反映＋突合=doc29／安全境界12項目維持）・条件4 HOLD（Phase 2-A 個別人間承認は未取得）。総合=入口レビュー READY・GO、Phase 2-A 実装は HOLD until human approval**。Phase 2-A 準備メモ（Company Brain 5テーブル候補・安全設計・三段承認・禁止7項目）を承認材料として整備。**実装なし／DB・schema・migration なし／課金・決済・外部送信なし／package/lock 変更なし**。次は人間判断（2-A設計 or X-04 or Enshin資料提供）・別承認。詳細 `docs/audit/31_phase_x_rm_03_phase2_entry_review.md`。反映状態は git refs を正とする。
+
+## Phase X-RM-03 — Phase 2入口条件の最終確定・Phase 2-A準備メモ（docs-only）
+
+状態: **入口レビュー GO（READY）／Phase 2-A 実装は人間の個別承認待ち（HOLD）・Phase 2実装には進んでいない** — 詳細 `docs/audit/31_phase_x_rm_03_phase2_entry_review.md`。反映状態は git refs を正とする。
+
+- 🎯 目的: doc01 §2 で事前に固定した Phase 2 入口条件4項目を証拠と突合し、Phase 2-A の承認判断材料を人間に渡す。
+- ✅ 判定: 条件1（X-03 smoke 11/11 green=doc30）GO／条件2（roadmap main反映＋X-RM-02 全件突合=doc29）GO／条件3（CURRENT_STATE 安全境界12項目の維持）GO／**条件4（Phase 2-A 個別人間承認）HOLD=未取得**。総合=**入口レビュー READY・実装 HOLD**。
+- 📄 Phase 2-A 準備メモ: Company Brain 5テーブル候補（Policy DB / Product Catalog / Case Study DB / Customer Pain DB / Sales Playbook）＋安全設計（tenantId・機密ラベル・外部AI送信可否・RBAC・writeDataAccess・label関連付け）＋**三段承認**（設計docs→schema→実装）＋絶対にやらないこと7項目。
+- 🔒 遵守: docs/tasks/vault のみ。コード・DB・schema・migration・課金・決済・外部送信・package/lock: **すべてなし**。
+- 次: 人間判断（①Phase 2-A 設計へ進む ②先に Phase X-04 ③Enshin OS 資料の提供時期）・別承認。
+
 ## Phase X-03 — E2E smoke green 化（X-03＋X-03b）
 
 状態: **green 化完了（GO）／smoke 11/11 passed（初の全green）** — 詳細 `docs/audit/30_phase_x03_e2e_green.md`。反映状態は git refs を正とする。

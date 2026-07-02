@@ -82,14 +82,16 @@
 | Phase X-RM-01 | 長期構想17領域の非破壊統合＋Phase 2 ロードマップ／Feature Registry／各種 Matrix 作成（`docs/roadmap/00〜08`・`docs/audit/28_long_term_strategy_integration.md`） | 統合完了（反映状態は git refs を正とする） |
 | Phase X-RM-02 | Roadmap Review / Gap Reconciliation（追加構想リストとの突合・IKEZAKI MCP/API Gateway 表記統一・分類23項目と Enshin OS 表記ルールの明文化。`docs/audit/29_phase_x_rm_02_roadmap_review.md`） | レビュー完了（反映状態は git refs を正とする） |
 | Phase X-03 | E2E smoke green 化（X-03: label関連付け＋X-03b: セレクタ明確化。`docs/audit/30_phase_x03_e2e_green.md`・**smoke 11/11 green**） | green化完了（反映状態は git refs を正とする） |
-| Phase X-RM-03 | Phase 2 入口条件の最終確定・Phase 2-A 準備（docs-only。入口条件の1つ「smoke green」は X-03 で充足） | 次候補（別承認） |
-| Phase X-04 | 本番スモーク定型化／検証準備 script 化／残り E2E 11スペックの段階実行 | 次候補（別承認） |
+| Phase X-RM-03 | Phase 2 入口条件の最終確定（`docs/audit/31_phase_x_rm_03_phase2_entry_review.md`・**入口レビュー READY/GO・Phase 2-A 実装は人間承認待ち HOLD**） | 判定完了（反映状態は git refs を正とする） |
+| Phase 2-A | Company Brain foundation の設計準備（doc31 §5 準備メモあり。三段承認: 設計docs→schema→実装） | 候補（**人間の個別承認待ち**） |
+| Phase X-04 | 本番スモーク定型化／検証準備 script 化／残り E2E 11スペックの段階実行 | 候補（別承認） |
 
 ## 次にやること（人間がどちらかを選択）
 
-- **Phase X-RM-03: Phase 2 入口条件の最終確定・Phase 2-A 準備**（roadmap 一式は X-RM-02 で突合済み・smoke green は X-03 で充足済み。入口条件の充足判定と 2-A の設計準備。docs-only）。別承認。
+- **Phase 2-A 設計準備へ進む**（doc31 §5 の準備メモを承認材料に、まず「2-A schema 設計 docs」の作成から。実装・schema変更はさらに個別承認）。別承認。
 - または **Phase X-04: 本番スモーク定型化／残り E2E 段階実行**（smoke 以外のドメイン別 11 スペックの段階実行・検証手順の script 化）。別承認。
-- いずれの場合も **Phase 2 実装・Phase 8 実課金には進まない**。
+- あわせて **Enshin OS 資料の提供時期**の判断（Phase 2-F の入力。現状は証拠不足）。
+- いずれの場合も **Phase 2 実装（承認前）・Phase 8 実課金には進まない**。
 
 ## 今は絶対にやらないこと
 

@@ -25,7 +25,7 @@
 
 - **Phase 1: 正式完了（Phase 1-50・判定根拠は doc24 の GO）。完了基準 commit: `e95f887`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/25_phase1_completion_record.md`）。
 - **Phase X: 完了済み（Phase X-CLOSE-01・判定 GO）。完了基準 commit: `70d4d06`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/32_phase_x_completion_record.md`）。恒久資産=E2E smoke green 回帰ゲート（11/11）＋roadmap 9本＋Feature Registry＋各種 Matrix＋Phase 2 entry review。
-- **現在地: Phase 2-A 進行中 — 2-A-2（schema 変更＋本番確認 GO）まで完了**。CompanyPolicy＋ProductCatalogItem の2モデルが schema に追加され（記録: doc34・設計: doc33）、**本番反映も利用者実測で確認 GO（2026-07-02・doc35＋doc14 §38）**。検証全green・smoke 11本 green 維持・破壊的操作ゼロ。**seed・UI・Server Action・API の実装は 2-A-3 の個別人間承認まで行わない**（三段承認の第二段＋本番確認まで完了）。
+- **現在地: Phase 2-A 進行中 — 2-A-3a（Company Brain read-only 可視化）まで完了**。seed に架空デモデータ（CompanyPolicy 5件＋ProductCatalogItem 8件・全件 externalAiAllowed=false・PII/secret/実価格なし）が入り、read-only 一覧2画面（`/brain/policies`・`/brain/catalog`・knowledge:read＋tenantId スコープ）とナビ1行（会社の頭脳）が実装済み（記録: doc36）。**smoke は12本体制で 12/12 green（既存11本回帰なし）**。schema・migration・RBAC・labels は 2-A-2 から無変更。**作成・編集・Server Action・writeAudit/writeDataAccess の本実装は 2-A-3b の個別人間承認まで行わない**（read-only 可視化完了、作成/編集は 2-A-3b 承認待ち）。前段: 2-A-2 schema 変更＋本番確認 GO（doc34・doc35・doc14 §38）。
 - **Phase 8（実課金・Stripe・usage billing・credits・cap/alert）には進まない**（別設計・別承認が前提）。
 
 ## 最新の本番確認GO済みプロダクト基準
@@ -93,10 +93,11 @@
 
 ## 次にやること（人間が選択）
 
-1. **Phase 2-A-3: seed・一覧UI・Server Action・監査・E2E経路の実装承認**（三段承認の第三段。薄い縦切り: seed デモデータ→read-only 一覧→詳細→作成/編集。smoke への Company Brain 経路追加もここで判断）。別承認。
-2. **Phase X-04: 本番スモーク定型化・残り E2E 段階実行**（任意の品質追加候補・2-A と並行可）。別承認。
-3. **Enshin OS 資料の提供**（Phase 2-F の入力。現状は証拠不足のため棚卸しを開始できない）。
-- いずれの場合も **2-A-3 承認前の実装・Phase 8 実課金には進まない**。
+1. **Phase 2-A-3a の main 反映（push 承認）**と本番確認。
+2. **Phase 2-A-3b: 作成・編集・アーカイブ（Server Action＋入力検証＋writeAudit）＋機密参照ログ（writeDataAccess）の実装承認**（三段承認の第三段の後半。2-A-3a は read-only 可視化で完了済み）。別承認。
+3. **Phase X-04: 本番スモーク定型化・残り E2E 段階実行**（任意の品質追加候補・2-A と並行可）。別承認。
+4. **Enshin OS 資料の提供**（Phase 2-F の入力。現状は証拠不足のため棚卸しを開始できない）。
+- いずれの場合も **2-A-3b 承認前の書き込み系実装・Phase 8 実課金には進まない**。
 
 ## 今は絶対にやらないこと
 

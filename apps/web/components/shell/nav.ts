@@ -48,6 +48,7 @@ import {
   PlayCircle,
   ArrowLeftRight,
   BookText,
+  Brain,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -142,6 +143,7 @@ export const NAV: NavGroup[] = [
       { label: '議事録の取込', href: '/meetings/upload', icon: Upload },
       { label: 'タスク', href: '/tasks', icon: ListTodo },
       { label: 'ナレッジ検索', href: '/knowledge/search', icon: Search },
+      { label: '会社の頭脳', href: '/brain/policies', icon: Brain },
     ],
   },
   {

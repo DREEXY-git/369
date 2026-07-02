@@ -676,6 +676,29 @@ async function main() {
     await prisma.profitLeakFinding.create({ data: { tenantId, type: lk.type, title: lk.title, impactJpy: lk.impactJpy, severity: lk.severity, detail: lk.detail, recommendation: lk.recommendation, entityId: lk.entityId } });
   }
 
+  // ---- Company Brain（Phase 2-A: 会社方針・商品カタログ。架空デモデータのみ / PII・実価格なし） ----
+  await prisma.companyPolicy.createMany({
+    data: [
+      { tenantId, title: '経営理念：現場の時間を取り戻す', body: '私たちは中小企業の「人にしかできない仕事」の時間を増やすために、記録・集計・下書きをAIと仕組みに任せる。判断と責任は常に人間が持つ。', category: '経営方針', tags: ['理念'], label: 'NORMAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, title: 'AIと人間の役割分担ポリシー', body: 'AIは分析・下書き・推奨まで。外部送信・承認・削除・契約・人事の決定は必ず人間が行う。AIの生成物は必ず下書きとして扱い、承認なしに社外へ出さない。', category: '社内ルール', tags: ['AI', '安全'], label: 'INTERNAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, title: '値引き承認ルール', body: '値引きは20%を上限とし、超える場合は承認が必要。低粗利案件は付帯サービスで粗利を確保する。承認は見積画面の承認フローを使う。', category: '営業方針', tags: ['見積', '承認'], label: 'INTERNAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, title: '顧客情報の取り扱い基本方針', body: '顧客の連絡先・商談内容は業務目的以外で参照しない。機密ラベルに従いアクセスし、外部AIへ送る場合は必ずマスキングを通す。', category: '社内ルール', tags: ['個人情報'], label: 'INTERNAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, title: '品質確認の基本：検証してから完了報告', body: '「動くはず」ではなく「動いた証拠」で完了報告する。検証していないものを成功扱いしない。問題は隠さず早く共有する。', category: '品質方針', tags: ['品質'], label: 'NORMAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+    ],
+  });
+  await prisma.productCatalogItem.createMany({
+    data: [
+      { tenantId, name: 'Web制作パック', description: '店舗・中小企業向けのWebサイト制作。予約導線とスマホ表示を最適化し、更新しやすい構成で納品する。', category: 'Web支援', targetPain: 'Webサイトが古く、予約や問い合わせにつながらない', strengths: '地域業種ごとのテンプレートと運用サポート', priceNote: '規模により個別見積り。営業資料の料金表を参照。', tags: ['web'], label: 'NORMAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, name: 'MEO対策プラン', description: 'Google マップでの露出改善。口コミ返信の運用支援と情報整備をセットで行う。', category: 'Web支援', targetPain: '近隣検索で競合より下に表示される', strengths: '口コミ分析に基づく改善提案', priceNote: '月額制。詳細は営業資料を参照。', tags: ['meo'], label: 'NORMAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, name: '予約システム導入支援', description: '電話中心の予約をオンライン予約に移行。無断キャンセル対策の設定まで支援する。', category: 'Web支援', targetPain: '営業中に電話予約対応で手が止まる', strengths: '既存サイト・SNSとの連携設定込み', priceNote: '初期費用＋月額。個別見積り。', tags: ['予約'], label: 'INTERNAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, name: 'イベント企画・運営', description: '展示会・地域イベントの企画から当日運営まで一括対応。機材と人員をまとめて手配する。', category: 'イベント', targetPain: 'イベントの準備に社内の手が回らない', strengths: '自社レンタル資材との一括手配で調整が速い', priceNote: '内容により個別見積り。', tags: ['イベント'], label: 'INTERNAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, name: '音響・照明レンタルプラン', description: '催事・式典向けの音響照明機材レンタル。設営・オペレーター派遣もセットで対応可能。', category: 'レンタル', targetPain: '機材の手配先がバラバラで当日トラブルが不安', strengths: '設営から撤収まで自社スタッフで一貫', priceNote: '機材構成により個別見積り。', tags: ['レンタル'], label: 'INTERNAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, name: 'テント・ステージ設営', description: '屋外イベント用テント・ステージの設営撤去。安全基準に沿った施工計画を含む。', category: 'レンタル', targetPain: '屋外イベントの安全な設営先を探している', strengths: '施工計画書と保険対応の実績', priceNote: '規模・日数により個別見積り。', tags: ['設営'], label: 'INTERNAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, name: 'SNS運用支援', description: '店舗のSNS投稿計画と運用の伴走支援。投稿はすべて店舗側の承認後に公開する運用。', category: 'Web支援', targetPain: 'SNSを始めたが続かない・効果が見えない', strengths: '業種別の投稿テンプレートと月次レポート', priceNote: '月額制。詳細は営業資料を参照。', tags: ['sns'], label: 'NORMAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, name: '看板・サインデザイン', description: '店舗看板・催事サインのデザインと製作手配。設置工事の調整まで対応する。', category: 'イベント', targetPain: '店の場所が分かりにくく初来店につながらない', strengths: 'イベント装飾と合わせた一体デザイン', priceNote: 'サイズ・素材により個別見積り。', tags: ['デザイン'], label: 'NORMAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+    ],
+  });
+
   // ---- Seed audit logs ----
   await prisma.auditLog.createMany({
     data: [
@@ -693,6 +716,8 @@ async function main() {
     drafts: await prisma.outreachDraft.count(),
     assets: await prisma.productAsset.count(),
     meetings: await prisma.meeting.count(),
+    policies: await prisma.companyPolicy.count(),
+    catalogItems: await prisma.productCatalogItem.count(),
   };
   console.log('✅ seed done', counts, firstDraftId ? `firstDraft=${firstDraftId}` : '');
 }

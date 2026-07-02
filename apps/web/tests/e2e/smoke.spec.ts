@@ -83,3 +83,10 @@ test('ナレッジ検索でAI回答が出る', async ({ page }) => {
   await page.goto('/knowledge/search?q=' + encodeURIComponent('美容室の営業切り口'));
   await expect(page.getByText('AIの回答', { exact: false })).toBeVisible();
 });
+
+test('Company Brain の会社方針一覧が表示される', async ({ page }) => {
+  await login(page);
+  await page.goto('/brain/policies');
+  await expect(page.getByRole('heading', { name: '会社の頭脳（会社方針）' })).toBeVisible();
+  await expect(page.getByText('AIと人間の役割分担ポリシー')).toBeVisible();
+});

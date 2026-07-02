@@ -70,6 +70,18 @@
 
 - Phase 2-A-2-PROD「Company Brain schema 変更の本番確認記録（docs-only）」: `docs/audit/35_phase2a2_production_confirmation.md` 新規＋doc14 §38 追記＋CURRENT_STATE 更新＋`369-vault/知識/Phase2A2本番確認.md`（index からリンク）＋本ファイル。**commit `ca18450` の本番反映を利用者実測で確認し GO を記録（2026-07-02）**: Vercel Ready / build green・latest commit ca18450・既存画面すべて OK・Company Brain UI 未実装は正常。**AI が本番接続確認したものではない**。コード変更なし・DB操作なし・schema/migration 変更なし・課金・決済・外部送信なし。次は Phase 2-A-3 または Phase X-04・別承認。詳細 `docs/audit/35_phase2a2_production_confirmation.md`。反映状態は git refs を正とする。
 
+- Phase 2-A-3a「Company Brain 最小可視化（seed＋read-only 一覧）」: `packages/db/prisma/seed.ts`（CompanyPolicy 5件＋ProductCatalogItem 8件・全件 externalAiAllowed=false・label は NORMAL/INTERNAL のみ・PII/secret/実価格なし）＋read-only 2画面新規（`/brain/policies`・`/brain/catalog`。requireUser＋knowledge:read＋tenantId スコープ・作成/編集/削除/Server Action なし）＋ナビ1行（`components/shell/nav.ts` に「会社の頭脳」）＋smoke 末尾1本追加＋`docs/audit/36_phase2a3a_company_brain_readonly.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/Phase2A3aCompanyBrain可視化.md`（index からリンク）＋本ファイル。**検証全green（test 211・typecheck・lint・build・seed policies:5/catalogItems:8・smoke 12/12 green・既存11本回帰なし）**。**schema・migration・RBAC・labels・package/lock 無変更／作成・編集・writeAudit/writeDataAccess 本実装は 2-A-3b へ送り（別承認）／課金・決済・外部送信・本番接触なし**。詳細 `docs/audit/36_phase2a3a_company_brain_readonly.md`。反映状態は git refs を正とする。
+
+## Phase 2-A-3a — Company Brain 最小可視化（seed＋read-only 一覧）
+
+状態: **read-only 可視化完了（GO・smoke 12/12 green）／作成・編集・Server Action は 2-A-3b の個別承認まで未実装** — 詳細 `docs/audit/36_phase2a3a_company_brain_readonly.md`。反映状態は git refs を正とする。
+
+- 🎯 目的: 2-A-2 で入った Company Brain の「器」に架空デモデータを入れ、read-only 一覧で初めて目に見える状態にする（三段承認の第三段の前半）。
+- 🔧 変更: seed に **CompanyPolicy 5件＋ProductCatalogItem 8件**（全件 `externalAiAllowed: false`・NORMAL/INTERNAL のみ・PII/secret/実価格なし）＋**read-only 2画面**（`/brain/policies`・`/brain/catalog`。knowledge:read ガード・tenantId スコープ・作成/編集/削除ボタンなし・Server Action なし）＋**ナビ1行**（`components/shell/nav.ts`。sidebar/mobile 共用の NAV 定義なので1ファイルで両対応）＋**smoke 12本目**（既存11本無変更）。
+- ✅ 検証: test 211・typecheck・lint・build 全green → ローカルPG起動 → migrate deploy（pending なし）→ seed（policies:5 / catalogItems:8）→ `/login` 200 → **smoke 12/12 green（10.4s・既存11本回帰なし）** → server/PG 停止済み。修正は EmptyState の prop 名1件のみ（typecheck 検出・即収束）。
+- 🔒 遵守: **schema・migration・rbac.ts・labels.ts・package/lock 無変更／既存画面無変更（ナビ1行を除く）／外部送信・課金・決済・本番接触なし／externalAiAllowed の既定 false 維持**。
+- 次: main push（別承認）→ **Phase 2-A-3b（作成・編集・アーカイブ＋Server Action＋writeAudit＋writeDataAccess）**の承認判断。
+
 ## Phase 2-A-2-PROD — Company Brain schema 変更の本番確認（docs-only）
 
 状態: **本番確認 GO（利用者実測・2026-07-02）** — 詳細 `docs/audit/35_phase2a2_production_confirmation.md`・doc14 §38。反映状態は git refs を正とする。

@@ -64,6 +64,19 @@
 
 - Phase X-CLOSE-01「Phase X 完了記録・次アクション整理（docs-only）」: `docs/audit/32_phase_x_completion_record.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/PhaseX完了記録.md`（index からリンク）＋本ファイル。**Phase X を正式完了として記録（判定 GO・完了基準 commit `70d4d06`）**。6タスク全証拠（doc26/27/30/28/29/31）main反映済み・恒久資産11点（E2E回帰ゲート・roadmap 9本・Registry・Matrix群・entry review 等）を整理・残タスク送り先（2-A=人間の個別承認待ち／X-04=任意候補／Enshin=資料待ち／Phase 8=凍結継続）を固定。**実装なし／DB・schema・migration なし／課金・決済・外部送信なし／package/lock 変更なし／Phase 2 実装には進んでいない**。詳細 `docs/audit/32_phase_x_completion_record.md`。反映状態は git refs を正とする。
 
+- Phase 2-A-1「Company Brain schema 設計 docs（docs-only）」: `docs/audit/33_phase2a_company_brain_schema_design.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/Phase2ACompanyBrain設計.md`（index からリンク）＋本ファイル。**Phase 2 の最初の作業＝設計案のみ**。CompanyPolicy＋ProductCatalogItem の2テーブル先行案（PII近接3テーブルは後続）・既存 schema/rbac/labels の read-only 実測に基づく整合設計・機密ラベル既存流用・externalAiAllowed 既定false・knowledge 権限流用（AIは参照のみ）・監査/seed/E2E/migration三段承認の段取りを固定。**schema.prisma 無変更／migration なし／DB操作なし／コード実装なし／課金・決済・外部送信・MCP/API公開なし**。次は Phase 2-A-2（schema変更承認）・別承認。詳細 `docs/audit/33_phase2a_company_brain_schema_design.md`。反映状態は git refs を正とする。
+
+## Phase 2-A-1 — Company Brain schema 設計 docs（docs-only）
+
+状態: **設計docs 完了（GO）／schema 変更・実装は 2-A-2 / 2-A-3 の個別承認まで HOLD** — 詳細 `docs/audit/33_phase2a_company_brain_schema_design.md`。反映状態は git refs を正とする。
+
+- 🎯 目的: Phase 2-A（Company Brain foundation）の三段承認の第一段として、schema 変更前の設計案を docs に固定する。
+- 📐 設計の核心: **最初の縦切りは CompanyPolicy＋ProductCatalogItem の2テーブル先行**（PII近接の Case Study / Customer Pain / Sales Playbook は後続候補）。既存流儀を read-only 実測（195モデル・cuid・tenantId スカラ・ConfidentialityLabel enum 10種・tenantId 先頭 index・Knowledge 系・ProductAsset との住み分け）して整合。
+- 🔒 安全設計: 機密ラベル=既存 enum 流用（新設なし）／externalAiAllowed 既定 false＋maskText 前提＋高機密は送信不可／RBAC=既存 `knowledge` 権限流用案（**AI は read/ai_read のみ＝書けない・消せない・持ち出せない**・AI権限拡大なし）／writeAudit=全変更系・writeDataAccess=機密閲覧＋AI参照全件／seed=デモのみ・PII/secret なし／E2E=smoke green 維持＋新フォームは label 関連付け必須。
+- 🧭 段取り: 2-A-1 設計（本件）→ **2-A-2 schema変更・migration 承認** → 2-A-3 実装承認。未決定5点（enum化・専用リソース・参照範囲・Knowledge連携・smoke追加）は 2-A-2 以降で人間確定。
+- 🔒 遵守: **schema.prisma 無変更／migration なし／DB操作なし／コード実装なし／課金・決済・外部送信・MCP/API公開なし／package/lock 変更なし**。Enshin OS は証拠不足のため設計に含めない。
+- 次: **Phase 2-A-2（schema 変更承認）**・別承認。並行可: Phase X-04・Enshin OS 資料提供。
+
 ## Phase X-CLOSE — Phase X 完了記録（docs-only）
 
 状態: **Phase X 完了記録完了（GO）／Phase 2-A 実装は人間の個別承認待ち（HOLD）** — 詳細 `docs/audit/32_phase_x_completion_record.md`。反映状態は git refs を正とする。

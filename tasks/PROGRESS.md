@@ -68,6 +68,17 @@
 
 - Phase 2-A-2「Company Brain schema 変更・migration 作成」: `schema.prisma` に CompanyPolicy / ProductCatalogItem の2モデル追加＋migration `phase2a_company_brain` 1本＋`docs/audit/34_phase2a2_schema_change.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/Phase2A2Schema変更.md`（index からリンク）＋本ファイル。**Phase 1-22 以来初の schema 変更を、人間判断5点全遵守・破壊的操作ゼロ（migration 全文検査）・検証全green（test 211／typecheck／lint／build／smoke 11本 green 維持）で完了**。既存195モデル・RBAC・labels 無変更＝AIは新テーブルを読めるが書けない状態を維持。ローカルDBのみ・本番接触ゼロ。**seed・UI・Server Action・API・E2E追加は未実装（2-A-3 別承認）／課金・決済・外部送信なし**。詳細 `docs/audit/34_phase2a2_schema_change.md`。反映状態は git refs を正とする。
 
+- Phase 2-A-2-PROD「Company Brain schema 変更の本番確認記録（docs-only）」: `docs/audit/35_phase2a2_production_confirmation.md` 新規＋doc14 §38 追記＋CURRENT_STATE 更新＋`369-vault/知識/Phase2A2本番確認.md`（index からリンク）＋本ファイル。**commit `ca18450` の本番反映を利用者実測で確認し GO を記録（2026-07-02）**: Vercel Ready / build green・latest commit ca18450・既存画面すべて OK・Company Brain UI 未実装は正常。**AI が本番接続確認したものではない**。コード変更なし・DB操作なし・schema/migration 変更なし・課金・決済・外部送信なし。次は Phase 2-A-3 または Phase X-04・別承認。詳細 `docs/audit/35_phase2a2_production_confirmation.md`。反映状態は git refs を正とする。
+
+## Phase 2-A-2-PROD — Company Brain schema 変更の本番確認（docs-only）
+
+状態: **本番確認 GO（利用者実測・2026-07-02）** — 詳細 `docs/audit/35_phase2a2_production_confirmation.md`・doc14 §38。反映状態は git refs を正とする。
+
+- ✅ 利用者実測: Vercel Ready / build green・latest commit `ca18450`・ログイン／ダッシュボード／顧客／LeadMap すべて OK・**Company Brain UI は未実装のため見えないのが正常**。
+- 📌 注記: **AI が本番接続確認したものではない**（利用者の Vercel・本番画面実測が正）。本番への migration 適用は既存 Vercel prebuild 経路（CREATE×2＋INDEX×7・破壊的操作ゼロ＝doc34 検査済み）。
+- これで Phase 2-A-2 は「設計（doc33）→schema変更（doc34）→main反映→**本番確認 GO**」で完全クローズ。
+- 次: **Phase 2-A-3（seed・一覧UI・Server Action・監査・E2E経路）または Phase X-04**・別承認。
+
 ## Phase 2-A-2 — Company Brain schema 変更・migration 作成
 
 状態: **schema 変更完了（GO）／seed・UI・Server Action は 2-A-3 の個別承認まで未実装** — 詳細 `docs/audit/34_phase2a2_schema_change.md`。反映状態は git refs を正とする。

@@ -25,13 +25,17 @@
 
 - **Phase 1: 正式完了（Phase 1-50・判定根拠は doc24 の GO）。完了基準 commit: `e95f887`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/25_phase1_completion_record.md`）。
 - **Phase X: 完了済み（Phase X-CLOSE-01・判定 GO）。完了基準 commit: `70d4d06`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/32_phase_x_completion_record.md`）。恒久資産=E2E smoke green 回帰ゲート（11/11）＋roadmap 9本＋Feature Registry＋各種 Matrix＋Phase 2 entry review。
-- **現在地: Phase 2-A 進行中 — 2-A-2（schema 変更・migration）完了**。CompanyPolicy＋ProductCatalogItem の2モデルが schema に追加され、migration `phase2a_company_brain` 1本を作成（記録: `docs/audit/34_phase2a2_schema_change.md`・設計: doc33）。検証全green・smoke 11本 green 維持・破壊的操作ゼロ。**seed・UI・Server Action・API の実装は 2-A-3 の個別人間承認まで行わない**（三段承認の第二段まで完了）。
+- **現在地: Phase 2-A 進行中 — 2-A-2（schema 変更＋本番確認 GO）まで完了**。CompanyPolicy＋ProductCatalogItem の2モデルが schema に追加され（記録: doc34・設計: doc33）、**本番反映も利用者実測で確認 GO（2026-07-02・doc35＋doc14 §38）**。検証全green・smoke 11本 green 維持・破壊的操作ゼロ。**seed・UI・Server Action・API の実装は 2-A-3 の個別人間承認まで行わない**（三段承認の第二段＋本番確認まで完了）。
 - **Phase 8（実課金・Stripe・usage billing・credits・cap/alert）には進まない**（別設計・別承認が前提）。
 
 ## 最新の本番確認GO済みプロダクト基準
 
-- 最新の本番確認 GO 済みプロダクト基準: **Phase 1-44**
-- 内容: **Phase 1-43 read-only UsageEvent 利用量サマリー（`/admin/usage`）の本番確認 GO 記録**
+- 最新の本番確認 GO 済みプロダクト基準: **Phase 2-A-2**
+- 内容: **Company Brain schema 変更（CompanyPolicy / ProductCatalogItem の2テーブル追加・破壊的操作ゼロ）の本番確認 GO 記録**
+- Phase 2-A-2 実装 commit（本番確認 GO 済み基準）: `ca18450`（※現在 HEAD ではなく基準 commit。現在位置は git を参照）
+- 本番確認: 利用者の Vercel Production / 本番画面実測による **GO（2026-07-02）**。AI が本番接続確認したものではない。Company Brain UI は未実装のため見えないのが正常。
+- 詳細: `docs/audit/35_phase2a2_production_confirmation.md`・`docs/audit/14_release_stabilization.md` §38
+- （前基準: Phase 1-44 = Phase 1-43 `/admin/usage` の本番確認 GO。以下は当時の記録として保持）
 - Phase 1-43 実装 commit: `ce858c7`
 - Phase 1-44 完了基準 commit（本番確認 GO 記録）: `3e3409f`（※これは「現在 HEAD」ではなく Phase 1-44 の完了基準 commit。現在位置は git を参照）
 - 本番確認: 利用者の Vercel Production `main` / CI / 本番画面確認による **GO（2026-07-01）**。AI が本番接続確認したものではない。

@@ -20,6 +20,34 @@
 - **時期**: Implementation Timing（Phase 2-A 等のサブフェーズ、または future/blocked）。
 - **今回**: 今回（Phase X-RM-01）実装するか — **全行「しない」**（本書は分類のみ）。
 
+### 0.1 必須分類23項目（正式名称と本書の列の対応）
+
+今後、新規機能や設計追加を行う Claude Code 用プロンプトには、以下の23分類項目を必ず含める（Phase X-RM-02 で明文化）。本書の表は紙幅の都合で略記列を使うため、正式名称との対応を固定する:
+
+1. **Feature ID**（列: Feature ID）
+2. **機能名**（列: 機能名）
+3. **狙い・意図**（列: 狙い）
+4. **既存 IKEZAKI OS 機能との関係**（列: 既存機能との関係）
+5. **新規追加構想との関係**（各領域見出しの「個別機能」一覧＋領域プレフィックスで表現）
+6. **369統合先**（領域プレフィックス＋「既存機能との関係」で表現）
+7. **Phase分類**（列: Phase）
+8. **リスクレベル**（列: Risk）
+9. **Automation Level**（列: AL）
+10. **Human Boundary分類**（列: HB）
+11. **承認要否**（列: 承認）
+12. **監査要否**（列: 監査）
+13. **UsageEvent要否**（列: UE）
+14. **課金分類**（列: 課金）
+15. **MCP/API公開可否**（列: API）
+16. **データ種別**（列: データ）
+17. **実装可否**（列: Phase／Risk の BLOCKED 表示で表現）
+18. **今回実装するか**（列: 今回）
+19. **Phase 2以降へ送るか**（列: 時期）
+20. **変更許可ファイル**（下記の共通定義）
+21. **変更禁止ファイル**（下記の共通定義）
+22. **検証方法**（下記の共通定義）
+23. **残リスク**（列: 残リスク）
+
 共通の変更許可/禁止ファイル・検証方法（全 Feature 共通・実装時に適用）:
 
 - 変更許可: 当該 Phase の承認範囲で指定された `apps/web` / `packages` / `prisma` / docs のみ（個別承認）。
@@ -125,14 +153,14 @@
 
 ## 8. API — MCP / API / Developer Platform系
 
-**狙い**: 369 の能力を安全に外部エージェント・開発者へ開く（369 MCP/API Gateway）。
+**狙い**: 369 の能力を安全に外部エージェント・開発者へ開く（IKEZAKI MCP/API Gateway）。正式表記は **IKEZAKI MCP/API Gateway**（旧表記: 369 MCP/API Gateway。旧表記は内部名・別名として扱う）。
 **注意**: 現時点で MCP/API 公開をしない。read-only 設計・scope設計・rate limit・audit・approval・sandbox・公開可否分類に留める。詳細は `docs/roadmap/06_mcp_api_exposure_matrix.md`。
 
-個別機能（全採用・名称保持）: 369 MCP/API Gateway・Zero-Trust Agent Gateway・Business Graph API・Company Brain API / MCP・Talent Graph API / MCP・Product Recommendation API・Sales Action API・Proposal API・Developer Platform・Webhook Subscriptions・Private MCP Gateway・API Keys・OAuth Apps・MCP Server Config・Sandbox Workspace・API Usage Dashboard・Rate Limit・App Review・Permission Review・Security Scan・Developer Billing Dashboard
+個別機能（全採用・名称保持）: IKEZAKI MCP/API Gateway（旧表記: 369 MCP/API Gateway）・Zero-Trust Agent Gateway・Business Graph API・Company Brain API / MCP・Talent Graph API / MCP・Product Recommendation API・Sales Action API・Proposal API・Developer Platform・Webhook Subscriptions・Private MCP Gateway・API Keys・OAuth Apps・MCP Server Config・Sandbox Workspace・API Usage Dashboard・Rate Limit・App Review・Permission Review・Security Scan・Developer Billing Dashboard
 
 | Feature ID | 機能名 | 狙い | 既存機能との関係 | Phase | Risk | AL | HB | 承認 | 監査 | UE | 課金 | API | データ | 時期 | 今回 | 残リスク |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| API-001 | 369 MCP/API Gateway / Zero-Trust Agent Gateway | 全外部アクセスの単一入口（scope・rate limit・audit） | 既存 Webhook Subscriptions 基盤と接続 | 2設計→future公開 | HIGH | L4 | HA | 要 | 要 | 要 | usage_only→billable_candidate_future | 本体(現時点 prohibited) | 操作ログ | Phase 2-G設計 | しない | scope設計の穴が全データ露出に直結 |
+| API-001 | IKEZAKI MCP/API Gateway / Zero-Trust Agent Gateway | 全外部アクセスの単一入口（scope・rate limit・audit） | 既存 Webhook Subscriptions 基盤と接続 | 2設計→future公開 | HIGH | L4 | HA | 要 | 要 | 要 | usage_only→billable_candidate_future | 本体(現時点 prohibited) | 操作ログ | Phase 2-G設計 | しない | scope設計の穴が全データ露出に直結 |
 | API-002 | Company Brain API / Business Graph API / Talent Graph API | 知識・グラフの read-only API | BRAIN 系の公開面（内部のみ） | 2設計 | HIGH | L2 | HA | 要 | 要 | 要 | usage_only | read-only internal→future MCP candidate | 社内知識(+PII遮断) | Phase 2-G設計 | しない | PII・高機密の API 面への漏出 |
 | API-003 | Developer Platform（Sandbox Workspace / App Review / Permission Review / Security Scan） | 外部開発者の安全な受け入れ | 新規（既存なし） | future | HIGH | L4 | HA | 要 | 要 | 要 | billable_candidate_future | sandbox only(将来) | 操作ログ | future | しない | 審査体制なしの公開は不可 |
 

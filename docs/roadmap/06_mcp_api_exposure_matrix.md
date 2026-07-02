@@ -23,7 +23,7 @@
 
 | 対象 | 現時点 | 将来目標 | 条件・備考 |
 |---|---|---|---|
-| 369 MCP/API Gateway（入口本体） | 設計のみ | private internal → 段階公開 | 全外部アクセスの単一入口。scope・rate limit・audit を最初から |
+| IKEZAKI MCP/API Gateway（入口本体・正式表記。旧表記: 369 MCP/API Gateway） | 設計のみ | private internal → 段階公開 | 全外部アクセスの単一入口。scope・rate limit・audit を最初から |
 | Zero-Trust Agent Gateway | 設計のみ | approval required | エージェント単位の認証・最小権限 |
 | Company Brain API / MCP | 設計のみ | read-only internal → future MCP candidate | PII・高機密は API 面に出さない（Data Classification 連動） |
 | Business Graph API | 設計のみ | read-only internal → future MCP candidate | 同上 |

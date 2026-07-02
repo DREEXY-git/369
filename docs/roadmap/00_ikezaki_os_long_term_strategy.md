@@ -35,7 +35,7 @@
 | 5 | 会議・議事録・ナレッジ変換系（Meeting Intelligence 等） | 会議を決定・タスク・教育資産に変換 | Phase 5（設計は Phase 2） |
 | 6 | 安全実行・承認・監査系（Decision & Action Gateway 等） | 危険操作の承認・監査・停止 | Phase 2 で設計、以降全Phaseの土台 |
 | 7 | 収益化・課金基盤系（Usage-Based Billing 等） | 利用量記録→将来の課金 | **Phase 8**（実課金はここまで凍結） |
-| 8 | MCP / API / Developer Platform系（369 MCP/API Gateway 等） | 外部開発者・エージェント接続 | Phase 2 で内部scope設計、公開は将来 |
+| 8 | MCP / API / Developer Platform系（IKEZAKI MCP/API Gateway 等） | 外部開発者・エージェント接続 | Phase 2 で内部scope設計、公開は将来 |
 | 9 | 業務自動化・人間境界系（Human Boundary 等） | 何を自動化してよいかの台帳 | Phase 2 で分類確立 |
 | 10 | Workflow・業務実行系（Workflow Fabric 等） | 承認付き業務フローの実行基盤 | Phase 2 設計、実行は Phase 4 以降 |
 | 11 | 請求・売上・キャッシュ系（Revenue & Cash Autopilot 等） | 未回収・入金予測・督促下書き | Phase 3（高リスク・承認必須） |

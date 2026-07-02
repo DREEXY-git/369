@@ -80,14 +80,15 @@
 | Phase X-01 | 本番スモーク / E2E / 検証基盤整理（`docs/audit/26_phase_x01_verification_baseline.md`・GO） | 棚卸し完了（反映状態は git refs を正とする） |
 | Phase X-02 | E2E smoke 実行の実証（`docs/audit/27_phase_x02_e2e_smoke_result.md`・環境GREEN／smoke 11本RED・原因特定済み） | 実証完了（反映状態は git refs を正とする） |
 | Phase X-RM-01 | 長期構想17領域の非破壊統合＋Phase 2 ロードマップ／Feature Registry／各種 Matrix 作成（`docs/roadmap/00〜08`・`docs/audit/28_long_term_strategy_integration.md`） | 統合完了（反映状態は git refs を正とする） |
-| Phase X-RM-02 | Phase 2 入口計画レビュー（roadmap 一式の人間レビュー・入口条件の確定） | 次候補（別承認） |
+| Phase X-RM-02 | Roadmap Review / Gap Reconciliation（追加構想リストとの突合・IKEZAKI MCP/API Gateway 表記統一・分類23項目と Enshin OS 表記ルールの明文化。`docs/audit/29_phase_x_rm_02_roadmap_review.md`） | レビュー完了（反映状態は git refs を正とする） |
+| Phase X-RM-03 | Phase 2 入口条件の最終確定・Phase 2-A 準備（docs-only） | 次候補（別承認） |
 | Phase X-03 | E2E red の修正方針決定＋最小修正＋smoke 再実行（案A: ログインフォームの label 関連付け付与が推奨候補） | 次候補（別承認） |
 | Phase X-04 | 本番スモーク定型化／検証準備 script 化／残り E2E 段階実行 | 候補（X-03 後に確定） |
 
 ## 次にやること（人間がどちらかを選択）
 
-- **Phase X-RM-02: Phase 2 入口計画レビュー**（`docs/roadmap/` 9本の人間レビュー → Phase 2 入口条件の確定。docs-only）。別承認。
-- または **Phase X-03: E2E red の修正方針決定＋最小修正＋smoke 再実行**（案A=`/login` フォーム等の label に `htmlFor`＋input に `id` を付与〈アクセシビリティ改善込み・推奨候補〉／案B=テスト側セレクタ変更。人間がどちらかを選択 → 最小修正 → verify → smoke 11本再実行で green 確認）。別承認。
+- **Phase X-03: E2E red の修正方針決定＋最小修正＋smoke 再実行**（案A=`/login` フォーム等の label に `htmlFor`＋input に `id` を付与〈アクセシビリティ改善込み・推奨候補〉／案B=テスト側セレクタ変更。人間がどちらかを選択 → 最小修正 → verify → smoke 11本再実行で green 確認）。別承認。
+- または **Phase X-RM-03: Phase 2 入口条件の最終確定・Phase 2-A 準備**（roadmap 一式は X-RM-02 で突合済み。入口条件の充足判定と 2-A の設計準備。docs-only）。別承認。
 - いずれの場合も **Phase 2 実装・Phase 8 実課金には進まない**。
 
 ## 今は絶対にやらないこと

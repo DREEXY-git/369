@@ -56,6 +56,19 @@
 
 - Phase X-RM-01「長期構想統合・Phase 2 ロードマップ作成（docs-only・既存プロンプト非破壊）」: `docs/roadmap/00〜08`（9本）新規＋`docs/audit/28_long_term_strategy_integration.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/長期構想とPhase2ロードマップ.md`（index からリンク）＋本ファイル。**追加採用済み構想17領域を Feature Registry / Safety Boundary Matrix / Human Boundary Matrix / Monetization Matrix / MCP/API Exposure Matrix / Enshin OS Feature Inventory / Automation Level Taxonomy へ非破壊で分類**し、Phase 2 の目的・入口/出口条件・サブフェーズ 2-A〜2-H を設計（出口条件に E2E smoke green 維持を組み込み）。**既存プロンプト・CLAUDE.md・安全ルール・Phase管理は無変更／実装なし／DB・schema・migration なし／課金・決済なし／MCP/API公開なし／外部送信なし／L5以上自動化・ロボット実行・採否/評価/給与判断は future/blocked/human-only と明記／実課金は Phase 8 送付**。doc27 は X-02 使用済みのため監査記録は doc28。Enshin OS 詳細は未提供のため「証拠不足」と記録（推測断定なし）。次は Phase X-RM-02（Phase 2入口レビュー）または Phase X-03（E2E red 最小修正）・別承認。詳細 `docs/audit/28_long_term_strategy_integration.md`。反映状態は git refs を正とする。
 
+- Phase X-RM-02「Roadmap Review / Gap Reconciliation（docs-only）」: `docs/audit/29_phase_x_rm_02_roadmap_review.md` 新規＋roadmap 最小補完＋CURRENT_STATE 更新＋`369-vault/知識/PhaseXRM02ロードマップレビュー.md`（index からリンク）＋本ファイル。**X-RM-01 の roadmap 一式をユーザー提示の追加構想リストと突合**——17領域・代表機能37個・境界9項目は全反映済みで、差分は Gateway 表記1件のみ。**正式表記を IKEZAKI MCP/API Gateway に統一**（旧表記「369 MCP/API Gateway」6箇所を修正・別名として保持）。doc02 §0.1 に**プロンプト必須分類23項目**、doc07 §1 に **Enshin OS 表記ルール**（大文字ENSHIN＋OS禁止・検査は case-sensitive）を明文化。**実装なし／DB・schema・migration なし／課金・決済・外部送信・MCP/API公開なし／既存プロンプト非破壊**。Enshin OS 個別機能は引き続き証拠不足（仕様提供待ち）。次は Phase X-03 または Phase X-RM-03・人間選択・別承認。詳細 `docs/audit/29_phase_x_rm_02_roadmap_review.md`。反映状態は git refs を正とする。
+
+## Phase X-RM-02 — Roadmap Review / Gap Reconciliation（docs-only）
+
+状態: **レビュー完了（GO）／差分は Gateway 表記1件のみ・補完済み** — 詳細 `docs/audit/29_phase_x_rm_02_roadmap_review.md`。反映状態は git refs を正とする。
+
+- 🎯 目的: X-RM-01 の roadmap 一式を、ユーザー提示の追加構想リスト（17領域・代表機能37個・境界9項目・分類23項目）と突合し、漏れ・表記ゆれを補完する。
+- ✅ 突合結果: 17領域・個別機能名は全反映済み。唯一の差分＝Gateway 旧表記「369 MCP/API Gateway」6箇所 → 正式表記 **IKEZAKI MCP/API Gateway** へ統一（旧表記は別名として保持）。
+- 📄 明文化: doc02 §0.1 に**プロンプト必須分類23項目**の正式名称⇔列対応を新設／doc07 §1 に **Enshin OS 表記ルール**（大文字ENSHINにOSを続けない・ID プレフィックス `ENSHIN-` は対象外・検査は case-sensitive）を固定。
+- 🔒 遵守: 既存プロンプト・CLAUDE.md・doc14/15/22〜28 無変更。コード・DB・schema・package/lock 無変更。課金・決済・外部送信・MCP/API公開なし。
+- 未解決（証拠不足）: Enshin OS の個別機能インベントリは引き続き詳細未確認（ユーザーからの仕様提供待ち・推測断定なし）。
+- 次候補: **Phase X-03（E2E red 最小修正・案A推奨候補）または Phase X-RM-03（Phase 2 入口条件の最終確定）**・人間選択・別承認。
+
 ## Phase X-RM-01 — 長期構想統合・Phase 2 ロードマップ作成（docs-only）
 
 状態: **統合完了（GO）／実装なし・既存プロンプト非破壊** — 詳細 `docs/audit/28_long_term_strategy_integration.md`。反映状態は git refs を正とする。

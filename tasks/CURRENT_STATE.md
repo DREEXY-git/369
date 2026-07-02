@@ -76,13 +76,13 @@
 
 | Phase | 内容 | 状態 |
 |-------|------|------|
-| Phase X-01 | 本番スモーク / E2E / 検証基盤整理 | 次 |
-| Phase X-02 | UI確認・主要業務フロー点検 | 候補（X-01 後に確定） |
-| Phase X-03 | ドキュメント整合・旧docs整理 | 候補（X-01 後に確定） |
+| Phase X-01 | 本番スモーク / E2E / 検証基盤整理（`docs/audit/26_phase_x01_verification_baseline.md`・GO） | 棚卸し完了（反映状態は git refs を正とする） |
+| Phase X-02 | E2E 実行の実証（smoke.spec.ts から）＋本番スモーク定型化の第1段 | 次（候補・別承認） |
+| Phase X-03 | 検証準備の script 化／UI確認／docs整理 | 候補（X-02 後に確定） |
 
 ## 次にやること（1つだけ）
 
-- **Phase X-01: 本番スモーク / E2E / 検証基盤整理**（まず read-only 監査で現状の検証手段＝verify.sh・HTTPスモーク・Playwright 制約 B-02/B-03 を棚卸しし、安全に固める計画から）。別承認。
+- **Phase X-02: E2E 実行の実証＋本番スモーク定型化の第1段**（実行環境の プリインストール Chromium で `smoke.spec.ts` 1本の実行実証から。要 B-01 env＋B-02 Postgres＋build＋seed。失敗してもコードは直さず記録のみ）。別承認。
 
 ## 今は絶対にやらないこと
 

@@ -50,6 +50,20 @@
 
 - Phase 1-50「Phase 1 完了記録・次Phase選定（docs-only）」: `docs/audit/25_phase1_completion_record.md` 新規＋doc15 §38＋`tasks/CURRENT_STATE.md` を Phase 1 完了・次Phase=Phase X へ刷新＋vault ノート＋本ファイル。**Phase 1 を正式完了として記録（判定根拠=doc24 GO・完了基準 commit=`e95f887`）**。次Phase は**人間判断で Phase X（短期品質フェーズ）**を選定（最初の候補=Phase X-01「本番スモーク / E2E / 検証基盤整理」・着手は別承認）。**Phase 8（実課金・Stripe・usage billing・credits・cap/alert）には進まない**。実装なし／emit 追加なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・RBAC・package・lock 変更なし。詳細 `docs/audit/25_phase1_completion_record.md`。反映状態は git refs を正とする。
 
+- Phase X-01「本番スモーク / E2E / 検証基盤整理（read-only棚卸し＋docs-only）」: `docs/audit/26_phase_x01_verification_baseline.md` 新規＋`tasks/CURRENT_STATE.md` 次タスク更新＋vault ノート＋本ファイル。**検証手段の全量を実ファイル読解で固定**（verify.sh 5段／unit 23ファイル／integration 25ファイル（要 Postgres=B-02）／Playwright E2E 12スペック（従来 B-03 でブラウザ不可）／HTTPスモーク（doc14 §10）／CI は Vercel Native Checks のみ・`.github/` なし）。**新発見: 実行環境に Chromium プリインストール済み（PLAYWRIGHT_BROWSERS_PATH）＝B-03 解消の可能性 → E2E 実証を Phase X-02 の最優先候補（P1）に設定**。改善候補5件を優先度付きで整理。**テスト実行なし／コード変更なし／package・lock 変更なし／dependency install なし／DB・schema・migration なし／課金・決済・外部送信なし**。詳細 `docs/audit/26_phase_x01_verification_baseline.md`。Phase X-02 は別承認。反映状態は git refs を正とする。
+
+## Phase X-01 — 本番スモーク / E2E / 検証基盤整理（read-only棚卸し＋docs-only）
+
+状態: **棚卸し・記録完了（GO）／実テスト実行の GO ではない／Phase X-02 は別承認** — 詳細 `docs/audit/26_phase_x01_verification_baseline.md`。反映状態は git refs を正とする。
+
+- 🎯 目的: Phase X（短期品質フェーズ）の出発点として、検証基盤の現状・制約・改善候補を証拠付きで1枚に固定する。いきなり修正しない。
+- 📄 `docs/audit/26_phase_x01_verification_baseline.md` 新規（検証手段一覧＋安全に実行できる/条件付き/未実行の区分＋BLOCKERS＋スモーク・E2E標準手順案＋非エンジニア確認項目＋改善候補5件・優先度＋禁止事項＋GO判定）。
+- 📄 CURRENT_STATE 残タスク表を X-01 棚卸し完了・次=X-02 候補へ／`369-vault/知識/PhaseX01検証基盤整理.md` 新規＋index リンク。
+- 棚卸し結果: unit 23ファイル（DB非依存）／integration 25ファイル（`packages/db`・要 live Postgres）／E2E 12スペック（smoke＋ドメイン11・webServer=pnpm start・要 build＋seed済みDB＋chromium）／HTTPスモーク実績（doc14 §10）／verify.sh=generate→typecheck→lint→unit→build の5段／CI=Vercel Native Checks のみ。
+- **新発見**: 本実行環境は Chromium プリインストール（`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`・DL不要）→ **B-03（ブラウザDL不可）が事実上解消の可能性**。実証は未実施のため Phase X-02 の P1 候補。
+- **read-only＋docs-only／テスト実行なし（未実行を成功扱いしない）／コード・package・lock・DB・schema・migration 変更なし／課金・決済・外部送信なし**。
+- 次候補: **Phase X-02 = E2E 実行の実証（smoke.spec.ts 1本から）＋本番スモーク定型化の第1段（別承認）**。
+
 ## Phase 1-50 — Phase 1 完了記録・次Phase選定（docs-only）
 
 状態: **Phase 1 正式完了を記録（GO）／次Phase=Phase X（人間判断）／Phase X-01 の着手は別承認** — 詳細 `docs/audit/25_phase1_completion_record.md` / doc15 §38。反映状態は git refs を正とする。

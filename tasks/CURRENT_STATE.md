@@ -25,6 +25,7 @@
 
 - **Phase 1: 正式完了（Phase 1-50・判定根拠は doc24 の GO）。完了基準 commit: `e95f887`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/25_phase1_completion_record.md`）。
 - **現在の Phase: Phase X（短期品質フェーズ・人間判断で選定）**。品質改善・検証基盤・本番スモーク・E2E環境・UI確認・ドキュメント整合を短期で固める。
+- **現在の大方針: Phase X の中で Phase 2 Roadmap / Feature Registry 整備を実施済み（Phase X-RM-01）**。長期構想17領域の分類と Phase 2 設計図は `docs/roadmap/00〜08`＋`docs/audit/28_long_term_strategy_integration.md` を正とする。**Phase 2 の実装にはまだ進まない**（入口条件＋サブフェーズ個別承認が前提）。
 - **Phase 8（実課金・Stripe・usage billing・credits・cap/alert）には進まない**（Phase X 完了後も別設計・別承認が前提）。
 
 ## 最新の本番確認GO済みプロダクト基準
@@ -78,12 +79,16 @@
 |-------|------|------|
 | Phase X-01 | 本番スモーク / E2E / 検証基盤整理（`docs/audit/26_phase_x01_verification_baseline.md`・GO） | 棚卸し完了（反映状態は git refs を正とする） |
 | Phase X-02 | E2E smoke 実行の実証（`docs/audit/27_phase_x02_e2e_smoke_result.md`・環境GREEN／smoke 11本RED・原因特定済み） | 実証完了（反映状態は git refs を正とする） |
-| Phase X-03 | E2E red の修正方針決定＋最小修正＋smoke 再実行（案A: ログインフォームの label 関連付け付与が推奨候補） | 次（候補・別承認） |
+| Phase X-RM-01 | 長期構想17領域の非破壊統合＋Phase 2 ロードマップ／Feature Registry／各種 Matrix 作成（`docs/roadmap/00〜08`・`docs/audit/28_long_term_strategy_integration.md`） | 統合完了（反映状態は git refs を正とする） |
+| Phase X-RM-02 | Phase 2 入口計画レビュー（roadmap 一式の人間レビュー・入口条件の確定） | 次候補（別承認） |
+| Phase X-03 | E2E red の修正方針決定＋最小修正＋smoke 再実行（案A: ログインフォームの label 関連付け付与が推奨候補） | 次候補（別承認） |
 | Phase X-04 | 本番スモーク定型化／検証準備 script 化／残り E2E 段階実行 | 候補（X-03 後に確定） |
 
-## 次にやること（1つだけ）
+## 次にやること（人間がどちらかを選択）
 
-- **Phase X-03: E2E red の修正方針決定＋最小修正＋smoke 再実行**（案A=`/login` フォーム等の label に `htmlFor`＋input に `id` を付与〈アクセシビリティ改善込み・推奨候補〉／案B=テスト側セレクタ変更。人間がどちらかを選択 → 最小修正 → verify → smoke 11本再実行で green 確認）。別承認。
+- **Phase X-RM-02: Phase 2 入口計画レビュー**（`docs/roadmap/` 9本の人間レビュー → Phase 2 入口条件の確定。docs-only）。別承認。
+- または **Phase X-03: E2E red の修正方針決定＋最小修正＋smoke 再実行**（案A=`/login` フォーム等の label に `htmlFor`＋input に `id` を付与〈アクセシビリティ改善込み・推奨候補〉／案B=テスト側セレクタ変更。人間がどちらかを選択 → 最小修正 → verify → smoke 11本再実行で green 確認）。別承認。
+- いずれの場合も **Phase 2 実装・Phase 8 実課金には進まない**。
 
 ## 今は絶対にやらないこと
 

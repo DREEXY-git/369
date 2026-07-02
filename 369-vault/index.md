@@ -36,10 +36,12 @@
 - [[Phase1完了記録]] — Phase 1 の正式完了と次Phase=Phase X の選定記録（Phase 1-50）。
 - [[PhaseX01検証基盤整理]] — 検証の道具箱の棚卸しと E2E 実行可能性の発見（Phase X-01）。
 - [[PhaseX02E2E実行実証]] — 初の E2E 実実行：環境GREEN・smoke 11本RED の教訓（Phase X-02）。
+- [[長期構想とPhase2ロードマップ]] — 追加構想17領域の非破壊統合と Phase 2 設計図（Phase X-RM-01）。
 
 ## 🔗 コード側の正（source of truth）
 
 - 現在地: `369` リポジトリの `tasks/CURRENT_STATE.md`＋git refs。
 - 履歴: `369/tasks/PROGRESS.md`。
 - 監査記録: `369/docs/audit/*`。
+- ロードマップ: `369/docs/roadmap/*`（長期構想・Phase 2・Feature Registry・各種Matrix）。
 - 利用量一覧: `369/docs/audit/usage_event_emit_matrix.md`。

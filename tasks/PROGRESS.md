@@ -54,6 +54,18 @@
 
 - Phase X-02「E2E smoke 実行の実証（第1段）」: `docs/audit/27_phase_x02_e2e_smoke_result.md` 新規＋CURRENT_STATE 次タスク更新＋vault ノート＋本ファイル。**初の E2E 実実行**。環境5段（ローカルPostgres起動→migrate deploy→seed→build→server /login 200）**全GREEN**＋プリインストール Chromium のバージョンシム（/opt/pw-browsers 内 symlink・repo無変更）で**ブラウザ起動成功＝B-03 解消を実証**。テストは **smoke 11本全RED** — 根本原因を DOM 実測で特定: `/login` の label に for / input に id が無く `getByLabel` が構造的に不成立（E2E未実行時代からのセレクタ乖離・アクセシビリティ改善余地）。**約束どおりコード・テスト・設定・package 無修正**（red をそのまま記録）。本番DB・外部送信ゼロ・テスト後にサーバ/Postgres停止済み。修正方針（案A=フォーム label 関連付け付与〈推奨候補〉/ 案B=テスト側変更）は Phase X-03・別承認。詳細 `docs/audit/27_phase_x02_e2e_smoke_result.md`。反映状態は git refs を正とする。
 
+- Phase X-RM-01「長期構想統合・Phase 2 ロードマップ作成（docs-only・既存プロンプト非破壊）」: `docs/roadmap/00〜08`（9本）新規＋`docs/audit/28_long_term_strategy_integration.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/長期構想とPhase2ロードマップ.md`（index からリンク）＋本ファイル。**追加採用済み構想17領域を Feature Registry / Safety Boundary Matrix / Human Boundary Matrix / Monetization Matrix / MCP/API Exposure Matrix / Enshin OS Feature Inventory / Automation Level Taxonomy へ非破壊で分類**し、Phase 2 の目的・入口/出口条件・サブフェーズ 2-A〜2-H を設計（出口条件に E2E smoke green 維持を組み込み）。**既存プロンプト・CLAUDE.md・安全ルール・Phase管理は無変更／実装なし／DB・schema・migration なし／課金・決済なし／MCP/API公開なし／外部送信なし／L5以上自動化・ロボット実行・採否/評価/給与判断は future/blocked/human-only と明記／実課金は Phase 8 送付**。doc27 は X-02 使用済みのため監査記録は doc28。Enshin OS 詳細は未提供のため「証拠不足」と記録（推測断定なし）。次は Phase X-RM-02（Phase 2入口レビュー）または Phase X-03（E2E red 最小修正）・別承認。詳細 `docs/audit/28_long_term_strategy_integration.md`。反映状態は git refs を正とする。
+
+## Phase X-RM-01 — 長期構想統合・Phase 2 ロードマップ作成（docs-only）
+
+状態: **統合完了（GO）／実装なし・既存プロンプト非破壊** — 詳細 `docs/audit/28_long_term_strategy_integration.md`。反映状態は git refs を正とする。
+
+- 🎯 目的: チャットで追加採用された長期構想17領域を、既存方針を壊さずロードマップ・Feature Registry・各種 Matrix へ分類し、Phase 2 を安全に始められる設計図を固定する。
+- 📄 新規: `docs/roadmap/00_ikezaki_os_long_term_strategy.md`（長期構想全体像）／`01_phase2_master_roadmap.md`（Phase 2 設計図・2-A〜2-H）／`02_feature_registry.md`（17領域・個別機能名全数保持・代表 Feature×18分類列）／`03_safety_boundary_matrix.md`／`04_human_boundary_matrix.md`（L0〜L7・人間専権領域）／`05_monetization_matrix.md`（実課金は Phase 8）／`06_mcp_api_exposure_matrix.md`（公開なし・内部設計のみ）／`07_enshin_os_feature_inventory.md`（詳細未確認＝証拠不足）／`08_automation_level_taxonomy.md`（実装上限 L4）／`docs/audit/28_long_term_strategy_integration.md`。
+- 🔒 遵守: 既存プロンプト・CLAUDE.md・既存 docs/audit 無変更。コード・DB・schema・package/lock 無変更。課金・決済・外部送信・MCP/API公開なし。
+- 前提整備: 開始時に Phase X-02 コミットが main 未反映（Case A）だったため、承認範囲内で push 前ゲート全 green 確認のうえ prerequisite fast-forward push を実施してから着手。
+- 次候補: **Phase X-RM-02（Phase 2 入口計画レビュー）または Phase X-03（E2E red 最小修正・案A推奨候補）**・別承認。
+
 ## Phase X-02 — E2E smoke 実行の実証（第1段）
 
 状態: **実行実証 GO（環境GREEN・B-03解消を実証）／テスト結果は smoke 11本 RED（原因特定済み・修正はX-03別承認）** — 詳細 `docs/audit/27_phase_x02_e2e_smoke_result.md`。反映状態は git refs を正とする。

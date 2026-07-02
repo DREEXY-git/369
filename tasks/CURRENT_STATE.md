@@ -19,7 +19,13 @@
   - `git log --oneline origin/main..HEAD`（未pushの一覧。空なら未pushなし）
   - `git status --short`（作業ツリー。空なら clean）
 - 現在の作業ブランチも `git branch --show-current` を正とし、このファイルには固定しません。
-- **このファイルに固定してよい commit は、下記「最新の本番確認GO済みプロダクト基準」の2つ（実装 commit / 完了基準 commit）だけ**です。現在 HEAD・origin/main・作業ブランチ・未push などの現在位置は git を参照してください。
+- **このファイルに固定してよい commit は、「Phase 完了基準」と「最新の本番確認GO済みプロダクト基準」の基準 commit だけ**です。現在 HEAD・origin/main・作業ブランチ・未push などの現在位置は git を参照してください。
+
+## Phase の現在地
+
+- **Phase 1: 正式完了（Phase 1-50・判定根拠は doc24 の GO）。完了基準 commit: `e95f887`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/25_phase1_completion_record.md`）。
+- **現在の Phase: Phase X（短期品質フェーズ・人間判断で選定）**。品質改善・検証基盤・本番スモーク・E2E環境・UI確認・ドキュメント整合を短期で固める。
+- **Phase 8（実課金・Stripe・usage billing・credits・cap/alert）には進まない**（Phase X 完了後も別設計・別承認が前提）。
 
 ## 最新の本番確認GO済みプロダクト基準
 
@@ -64,20 +70,19 @@
 - Webhook 実送信なし
 - worker / queue / outbox dispatch 手動実行なし
 
-## Phase 1 終着点までの残タスク
+## Phase X（短期品質フェーズ）の残タスク
+
+> Phase 1 の残タスク表はクローズ（履歴は `tasks/PROGRESS.md`・記録は `docs/audit/25_phase1_completion_record.md`）。以下は Phase X の初期計画。X-02 以降は Phase X-01 の結果を見て確定する。
 
 | Phase | 内容 | 状態 |
 |-------|------|------|
-| Phase 1-45 | `tasks/CURRENT_STATE.md` 作成・非陳腐化（本ファイル） | 作成済み（反映状態は git refs を正とする） |
-| Phase 1-46 | `docs/audit/usage_event_emit_matrix.md` 作成（8 emit を1表に固定） | 作成済み（反映状態は git refs を正とする） |
-| Phase 1-47 | Phase 1 の役割・境界の固定（PROGRESS / CURRENT_STATE / emit matrix / vault の分担＝`docs/audit/22_docs_role_definition.md`） | 作成済み（反映状態は git refs を正とする） |
-| Phase 1-48 | Phase 1 最終セキュリティ・権限・非課金監査（`docs/audit/23_phase1_final_security_audit.md`・GO） | 監査完了（反映状態は git refs を正とする） |
-| Phase 1-49 | Phase 1 完了判定レポート（`docs/audit/24_phase1_completion_review.md`・判定GO） | 作成済み（反映状態は git refs を正とする） |
-| Phase 1-50 | Phase 1 完了記録・次 Phase 選定 | 次 |
+| Phase X-01 | 本番スモーク / E2E / 検証基盤整理 | 次 |
+| Phase X-02 | UI確認・主要業務フロー点検 | 候補（X-01 後に確定） |
+| Phase X-03 | ドキュメント整合・旧docs整理 | 候補（X-01 後に確定） |
 
 ## 次にやること（1つだけ）
 
-- **Phase 1-50: Phase 1 完了記録・次 Phase 選定**（判定GO を受けた正式クローズ＋Phase 2／X／Y いずれへ進むかの人間判断。実課金＝Phase 8 には進まない）。別承認。
+- **Phase X-01: 本番スモーク / E2E / 検証基盤整理**（まず read-only 監査で現状の検証手段＝verify.sh・HTTPスモーク・Playwright 制約 B-02/B-03 を棚卸しし、安全に固める計画から）。別承認。
 
 ## 今は絶対にやらないこと
 

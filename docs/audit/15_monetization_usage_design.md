@@ -725,3 +725,14 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - 継続安全条件（usage_only・runtime 非課金・非PII metadata・tenantId・audit:read・利用者実測のみ・git refs 正）を Phase 2 以降も不変と明記。
 - **Phase 1-50（完了記録・次Phase選定）は別承認**。実課金はさらに先（本書 §11 の安全条件＋人間承認が前提）。
 - **詳細は `docs/audit/24_phase1_completion_review.md`**。
+
+---
+
+## 38. Phase 1-50 実装状況（Phase 1 完了記録・次Phase選定 / docs-only）
+
+- **docs-only**。**実装なし／emit 追加なし／emit 対象は8種類のまま／課金なし／決済なし**。`docs/audit/25_phase1_completion_record.md` を新規作成し、**Phase 1 を正式完了として記録**。
+- 完了根拠: doc24（Phase 1-49）の**判定 GO**。**Phase 1 完了基準 commit: `e95f887`**。
+- 次Phase選定（人間判断）: **Phase X（短期品質フェーズ）**。最初の候補は Phase X-01「本番スモーク / E2E / 検証基盤整理」（着手は別承認）。
+- **Phase 8（実課金・Stripe・usage billing・credits・cap/alert）には進まない**。billable_candidate / never_billable は runtime 未使用のまま。継続安全条件（usage_only・非PII metadata・tenantId・audit:read・利用者実測のみ・git refs 正）は Phase X 以降も不変。
+- **本書（doc15）の Monetization ラインはここで Phase 1 分を完結**。再開は Phase 8 検討時（§11 の安全条件＋実課金前の追加監査＋人間承認が前提）。
+- **詳細は `docs/audit/25_phase1_completion_record.md`**。

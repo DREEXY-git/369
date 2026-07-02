@@ -33,6 +33,7 @@
 - [[状態管理とドキュメント役割]] — PROGRESS/CURRENT_STATE/matrix/vault の役割分担（Phase 1-47 で固定）。
 - [[Phase1最終セキュリティ監査]] — Phase 1 を閉じる前の6領域最終点検（Phase 1-48・GO）。
 - [[Phase1完了判定]] — Phase 1 を閉じられるかの判定と送り先整理（Phase 1-49・GO）。
+- [[Phase1完了記録]] — Phase 1 の正式完了と次Phase=Phase X の選定記録（Phase 1-50）。
 
 ## 🔗 コード側の正（source of truth）
 

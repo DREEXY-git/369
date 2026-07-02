@@ -66,6 +66,19 @@
 
 - Phase 2-A-1「Company Brain schema 設計 docs（docs-only）」: `docs/audit/33_phase2a_company_brain_schema_design.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/Phase2ACompanyBrain設計.md`（index からリンク）＋本ファイル。**Phase 2 の最初の作業＝設計案のみ**。CompanyPolicy＋ProductCatalogItem の2テーブル先行案（PII近接3テーブルは後続）・既存 schema/rbac/labels の read-only 実測に基づく整合設計・機密ラベル既存流用・externalAiAllowed 既定false・knowledge 権限流用（AIは参照のみ）・監査/seed/E2E/migration三段承認の段取りを固定。**schema.prisma 無変更／migration なし／DB操作なし／コード実装なし／課金・決済・外部送信・MCP/API公開なし**。次は Phase 2-A-2（schema変更承認）・別承認。詳細 `docs/audit/33_phase2a_company_brain_schema_design.md`。反映状態は git refs を正とする。
 
+- Phase 2-A-2「Company Brain schema 変更・migration 作成」: `schema.prisma` に CompanyPolicy / ProductCatalogItem の2モデル追加＋migration `phase2a_company_brain` 1本＋`docs/audit/34_phase2a2_schema_change.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/Phase2A2Schema変更.md`（index からリンク）＋本ファイル。**Phase 1-22 以来初の schema 変更を、人間判断5点全遵守・破壊的操作ゼロ（migration 全文検査）・検証全green（test 211／typecheck／lint／build／smoke 11本 green 維持）で完了**。既存195モデル・RBAC・labels 無変更＝AIは新テーブルを読めるが書けない状態を維持。ローカルDBのみ・本番接触ゼロ。**seed・UI・Server Action・API・E2E追加は未実装（2-A-3 別承認）／課金・決済・外部送信なし**。詳細 `docs/audit/34_phase2a2_schema_change.md`。反映状態は git refs を正とする。
+
+## Phase 2-A-2 — Company Brain schema 変更・migration 作成
+
+状態: **schema 変更完了（GO）／seed・UI・Server Action は 2-A-3 の個別承認まで未実装** — 詳細 `docs/audit/34_phase2a2_schema_change.md`。反映状態は git refs を正とする。
+
+- 🎯 目的: doc33 確定案＋人間判断5点に基づき、Company Brain の2テーブルを schema に追加する（Phase 1-22 以来初の schema 変更）。
+- 🔧 変更: `schema.prisma` に **CompanyPolicy / ProductCatalogItem の2モデルのみ追加**＋migration `20260702185440_phase2a_company_brain` **1本のみ**（CREATE TABLE×2＋INDEX×7・**DROP/RENAME/ALTER ゼロを全文検査**）。既存195モデル・ProductAsset・RBAC・labels: 無変更。
+- ✅ 検証: migrate dev（ローカルDB）→ db:generate → **test 211・typecheck・lint・build 全green** → **smoke 11本 green 維持**（seed→本番ビルド→プリインストールChromium・install なし）。本番DB接触ゼロ・テスト後にサーバ/PG停止済み。
+- 📌 人間判断5点: category=String／RBAC=knowledge流用／productAssetId スカラーのみ／Knowledge連携後回し／smoke追加は2-A-3判断 — **全遵守**。
+- ⚠️ 記録: `pnpm --filter @hokko/db migrate -- --name X` は `--` が余分に渡りハングする。正=`exec dotenv -e ../../.env -- prisma migrate dev --name X`（doc34 §5）。
+- 次: main push（別承認）→ **Phase 2-A-3（seed・一覧UI・Server Action・監査・E2E経路）**の承認判断。
+
 ## Phase 2-A-1 — Company Brain schema 設計 docs（docs-only）
 
 状態: **設計docs 完了（GO）／schema 変更・実装は 2-A-2 / 2-A-3 の個別承認まで HOLD** — 詳細 `docs/audit/33_phase2a_company_brain_schema_design.md`。反映状態は git refs を正とする。

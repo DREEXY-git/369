@@ -25,7 +25,7 @@
 
 - **Phase 1: 正式完了（Phase 1-50・判定根拠は doc24 の GO）。完了基準 commit: `e95f887`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/25_phase1_completion_record.md`）。
 - **Phase X: 完了済み（Phase X-CLOSE-01・判定 GO）。完了基準 commit: `70d4d06`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/32_phase_x_completion_record.md`）。恒久資産=E2E smoke green 回帰ゲート（11/11）＋roadmap 9本＋Feature Registry＋各種 Matrix＋Phase 2 entry review。
-- **現在地: Phase 2-A 進行中 — 2-A-1（Company Brain schema 設計 docs）作成済み／schema 変更は未承認**。設計案は `docs/audit/33_phase2a_company_brain_schema_design.md` を正とする（CompanyPolicy＋ProductCatalogItem の2テーブル先行案）。**schema.prisma への変更・migration・実装は、2-A-2 / 2-A-3 の個別人間承認まで一切行わない**（三段承認〈設計docs→schema→実装〉の第一段まで完了）。
+- **現在地: Phase 2-A 進行中 — 2-A-2（schema 変更・migration）完了**。CompanyPolicy＋ProductCatalogItem の2モデルが schema に追加され、migration `phase2a_company_brain` 1本を作成（記録: `docs/audit/34_phase2a2_schema_change.md`・設計: doc33）。検証全green・smoke 11本 green 維持・破壊的操作ゼロ。**seed・UI・Server Action・API の実装は 2-A-3 の個別人間承認まで行わない**（三段承認の第二段まで完了）。
 - **Phase 8（実課金・Stripe・usage billing・credits・cap/alert）には進まない**（別設計・別承認が前提）。
 
 ## 最新の本番確認GO済みプロダクト基準
@@ -89,10 +89,10 @@
 
 ## 次にやること（人間が選択）
 
-1. **Phase 2-A-2: schema 変更・migration 設計の承認**（doc33 §5〜7 の確定＋未決定5点〈§16〉の判断 → schema.prisma への2モデル追加と migration 1本を個別承認のうえ実施）。別承認。
-2. **Phase X-04: 本番スモーク定型化・残り E2E 段階実行**（smoke 以外のドメイン別 11 スペックの段階実行・検証手順の script 化。任意の品質追加候補・2-A と並行可）。別承認。
+1. **Phase 2-A-3: seed・一覧UI・Server Action・監査・E2E経路の実装承認**（三段承認の第三段。薄い縦切り: seed デモデータ→read-only 一覧→詳細→作成/編集。smoke への Company Brain 経路追加もここで判断）。別承認。
+2. **Phase X-04: 本番スモーク定型化・残り E2E 段階実行**（任意の品質追加候補・2-A と並行可）。別承認。
 3. **Enshin OS 資料の提供**（Phase 2-F の入力。現状は証拠不足のため棚卸しを開始できない）。
-- いずれの場合も **Phase 2 の実装（2-A-2 / 2-A-3 承認前）・Phase 8 実課金には進まない**。
+- いずれの場合も **2-A-3 承認前の実装・Phase 8 実課金には進まない**。
 
 ## 今は絶対にやらないこと
 

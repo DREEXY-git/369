@@ -2284,6 +2284,62 @@ model KnowledgeRollbackJob {
   @@index([tenantId])
 }
 
+// ============================ Company Brain（会社知識DB・Phase 2-A） =========
+// 設計: docs/audit/33_phase2a_company_brain_schema_design.md
+// productAssetId はスカラー参照のみ（relation なし）。priceNote は説明テキストで金額計算には使わない。
+
+model CompanyPolicy {
+  id                String   @id @default(cuid())
+  tenantId          String
+  title             String
+  body              String
+  category          String
+  status            String   @default("active")
+  tags              String[]
+  label             ConfidentialityLabel @default(INTERNAL)
+  externalAiAllowed Boolean  @default(false)
+  sourceType        String?
+  sourceNote        String?
+  effectiveFrom     DateTime?
+  createdById       String?
+  updatedById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  archivedAt        DateTime?
+
+  @@index([tenantId, status])
+  @@index([tenantId, category])
+  @@index([tenantId, label])
+}
+
+model ProductCatalogItem {
+  id                String   @id @default(cuid())
+  tenantId          String
+  name              String
+  description       String
+  category          String
+  targetPain        String?
+  strengths         String?
+  priceNote         String?
+  status            String   @default("active")
+  tags              String[]
+  label             ConfidentialityLabel @default(INTERNAL)
+  externalAiAllowed Boolean  @default(false)
+  productAssetId    String?
+  sourceType        String?
+  sourceNote        String?
+  createdById       String?
+  updatedById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  archivedAt        DateTime?
+
+  @@index([tenantId, status])
+  @@index([tenantId, category])
+  @@index([tenantId, label])
+  @@index([tenantId, productAssetId])
+}
+
 // ============================ バックアップ ====================================
 
 model BackupJob {

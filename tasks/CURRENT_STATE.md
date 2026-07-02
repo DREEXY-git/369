@@ -77,12 +77,13 @@
 | Phase | 内容 | 状態 |
 |-------|------|------|
 | Phase X-01 | 本番スモーク / E2E / 検証基盤整理（`docs/audit/26_phase_x01_verification_baseline.md`・GO） | 棚卸し完了（反映状態は git refs を正とする） |
-| Phase X-02 | E2E 実行の実証（smoke.spec.ts から）＋本番スモーク定型化の第1段 | 次（候補・別承認） |
-| Phase X-03 | 検証準備の script 化／UI確認／docs整理 | 候補（X-02 後に確定） |
+| Phase X-02 | E2E smoke 実行の実証（`docs/audit/27_phase_x02_e2e_smoke_result.md`・環境GREEN／smoke 11本RED・原因特定済み） | 実証完了（反映状態は git refs を正とする） |
+| Phase X-03 | E2E red の修正方針決定＋最小修正＋smoke 再実行（案A: ログインフォームの label 関連付け付与が推奨候補） | 次（候補・別承認） |
+| Phase X-04 | 本番スモーク定型化／検証準備 script 化／残り E2E 段階実行 | 候補（X-03 後に確定） |
 
 ## 次にやること（1つだけ）
 
-- **Phase X-02: E2E 実行の実証＋本番スモーク定型化の第1段**（実行環境の プリインストール Chromium で `smoke.spec.ts` 1本の実行実証から。要 B-01 env＋B-02 Postgres＋build＋seed。失敗してもコードは直さず記録のみ）。別承認。
+- **Phase X-03: E2E red の修正方針決定＋最小修正＋smoke 再実行**（案A=`/login` フォーム等の label に `htmlFor`＋input に `id` を付与〈アクセシビリティ改善込み・推奨候補〉／案B=テスト側セレクタ変更。人間がどちらかを選択 → 最小修正 → verify → smoke 11本再実行で green 確認）。別承認。
 
 ## 今は絶対にやらないこと
 

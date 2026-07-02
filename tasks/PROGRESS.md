@@ -52,6 +52,19 @@
 
 - Phase X-01「本番スモーク / E2E / 検証基盤整理（read-only棚卸し＋docs-only）」: `docs/audit/26_phase_x01_verification_baseline.md` 新規＋`tasks/CURRENT_STATE.md` 次タスク更新＋vault ノート＋本ファイル。**検証手段の全量を実ファイル読解で固定**（verify.sh 5段／unit 23ファイル／integration 25ファイル（要 Postgres=B-02）／Playwright E2E 12スペック（従来 B-03 でブラウザ不可）／HTTPスモーク（doc14 §10）／CI は Vercel Native Checks のみ・`.github/` なし）。**新発見: 実行環境に Chromium プリインストール済み（PLAYWRIGHT_BROWSERS_PATH）＝B-03 解消の可能性 → E2E 実証を Phase X-02 の最優先候補（P1）に設定**。改善候補5件を優先度付きで整理。**テスト実行なし／コード変更なし／package・lock 変更なし／dependency install なし／DB・schema・migration なし／課金・決済・外部送信なし**。詳細 `docs/audit/26_phase_x01_verification_baseline.md`。Phase X-02 は別承認。反映状態は git refs を正とする。
 
+- Phase X-02「E2E smoke 実行の実証（第1段）」: `docs/audit/27_phase_x02_e2e_smoke_result.md` 新規＋CURRENT_STATE 次タスク更新＋vault ノート＋本ファイル。**初の E2E 実実行**。環境5段（ローカルPostgres起動→migrate deploy→seed→build→server /login 200）**全GREEN**＋プリインストール Chromium のバージョンシム（/opt/pw-browsers 内 symlink・repo無変更）で**ブラウザ起動成功＝B-03 解消を実証**。テストは **smoke 11本全RED** — 根本原因を DOM 実測で特定: `/login` の label に for / input に id が無く `getByLabel` が構造的に不成立（E2E未実行時代からのセレクタ乖離・アクセシビリティ改善余地）。**約束どおりコード・テスト・設定・package 無修正**（red をそのまま記録）。本番DB・外部送信ゼロ・テスト後にサーバ/Postgres停止済み。修正方針（案A=フォーム label 関連付け付与〈推奨候補〉/ 案B=テスト側変更）は Phase X-03・別承認。詳細 `docs/audit/27_phase_x02_e2e_smoke_result.md`。反映状態は git refs を正とする。
+
+## Phase X-02 — E2E smoke 実行の実証（第1段）
+
+状態: **実行実証 GO（環境GREEN・B-03解消を実証）／テスト結果は smoke 11本 RED（原因特定済み・修正はX-03別承認）** — 詳細 `docs/audit/27_phase_x02_e2e_smoke_result.md`。反映状態は git refs を正とする。
+
+- 🎯 目的: E2E が本当に動かせるかを smoke.spec.ts 1本で実証し、green/red を捏造せず記録する。
+- 🧪 実行条件: Playwright 1.61.0／プリインストール Chromium（DL・install なし・シム適用）／ローカル Postgres＋seed／本番ビルド `pnpm start`（/login 200 確認後）。
+- ✅ 環境実証: DB起動（socket dir＋ログ出力先の2点を解決）→ migrate deploy（pending なし）→ seed → build → server 全成功。**「Executable doesn't exist」はシムで解消しブラウザ起動**。
+- ❌ テスト結果: 11 failed / 0 passed。全件 `login()` の `getByLabel('メールアドレス')` 30s タイムアウト。DOM 実測で **label-for/input-id の関連付け欠如**を確認（アプリのクラッシュではない・サーバログ正常）。
+- 🔒 遵守: コード・テスト・設定・package/lock 無変更（git clean 実測）／playwright install 不使用／本番接続ゼロ／後片付け済み。
+- 次候補: **Phase X-03 = 修正方針決定（案A: label 関連付け付与を推奨候補）→ 最小修正 → smoke 再実行（別承認）**。
+
 ## Phase X-01 — 本番スモーク / E2E / 検証基盤整理（read-only棚卸し＋docs-only）
 
 状態: **棚卸し・記録完了（GO）／実テスト実行の GO ではない／Phase X-02 は別承認** — 詳細 `docs/audit/26_phase_x01_verification_baseline.md`。反映状態は git refs を正とする。

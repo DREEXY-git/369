@@ -35,6 +35,7 @@
 - [[Phase1完了判定]] — Phase 1 を閉じられるかの判定と送り先整理（Phase 1-49・GO）。
 - [[Phase1完了記録]] — Phase 1 の正式完了と次Phase=Phase X の選定記録（Phase 1-50）。
 - [[PhaseX01検証基盤整理]] — 検証の道具箱の棚卸しと E2E 実行可能性の発見（Phase X-01）。
+- [[PhaseX02E2E実行実証]] — 初の E2E 実実行：環境GREEN・smoke 11本RED の教訓（Phase X-02）。
 
 ## 🔗 コード側の正（source of truth）
 

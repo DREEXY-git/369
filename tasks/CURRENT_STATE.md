@@ -24,9 +24,9 @@
 ## Phase の現在地
 
 - **Phase 1: 正式完了（Phase 1-50・判定根拠は doc24 の GO）。完了基準 commit: `e95f887`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/25_phase1_completion_record.md`）。
-- **現在の Phase: Phase X（短期品質フェーズ・人間判断で選定）**。品質改善・検証基盤・本番スモーク・E2E環境・UI確認・ドキュメント整合を短期で固める。
-- **現在の大方針: Phase X の中で Phase 2 Roadmap / Feature Registry 整備を実施済み（Phase X-RM-01）**。長期構想17領域の分類と Phase 2 設計図は `docs/roadmap/00〜08`＋`docs/audit/28_long_term_strategy_integration.md` を正とする。**Phase 2 の実装にはまだ進まない**（入口条件＋サブフェーズ個別承認が前提）。
-- **Phase 8（実課金・Stripe・usage billing・credits・cap/alert）には進まない**（Phase X 完了後も別設計・別承認が前提）。
+- **Phase X: 完了済み（Phase X-CLOSE-01・判定 GO）。完了基準 commit: `70d4d06`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/32_phase_x_completion_record.md`）。恒久資産=E2E smoke green 回帰ゲート（11/11）＋roadmap 9本＋Feature Registry＋各種 Matrix＋Phase 2 entry review。
+- **現在地: Phase 2 入口 READY（doc31 で入口レビュー GO 済み）／Phase 2-A（Company Brain foundation）の実装は人間の個別承認待ち**。長期構想17領域の分類と Phase 2 設計図は `docs/roadmap/00〜08` を正とする。**Phase 2 の実装にはまだ進まない**（2-A 個別承認＋三段承認〈設計docs→schema→実装〉が前提）。
+- **Phase 8（実課金・Stripe・usage billing・credits・cap/alert）には進まない**（別設計・別承認が前提）。
 
 ## 最新の本番確認GO済みプロダクト基準
 
@@ -71,9 +71,9 @@
 - Webhook 実送信なし
 - worker / queue / outbox dispatch 手動実行なし
 
-## Phase X（短期品質フェーズ）の残タスク
+## Phase X（短期品質フェーズ）のタスク一覧（クローズ済み）
 
-> Phase 1 の残タスク表はクローズ（履歴は `tasks/PROGRESS.md`・記録は `docs/audit/25_phase1_completion_record.md`）。以下は Phase X の初期計画。X-02 以降は Phase X-01 の結果を見て確定する。
+> **Phase X の残タスク表はクローズ**（完了記録は `docs/audit/32_phase_x_completion_record.md`・履歴は `tasks/PROGRESS.md`）。以下は完了実績の一覧。X-04 のみ任意候補として残る。
 
 | Phase | 内容 | 状態 |
 |-------|------|------|
@@ -83,14 +83,15 @@
 | Phase X-RM-02 | Roadmap Review / Gap Reconciliation（追加構想リストとの突合・IKEZAKI MCP/API Gateway 表記統一・分類23項目と Enshin OS 表記ルールの明文化。`docs/audit/29_phase_x_rm_02_roadmap_review.md`） | レビュー完了（反映状態は git refs を正とする） |
 | Phase X-03 | E2E smoke green 化（X-03: label関連付け＋X-03b: セレクタ明確化。`docs/audit/30_phase_x03_e2e_green.md`・**smoke 11/11 green**） | green化完了（反映状態は git refs を正とする） |
 | Phase X-RM-03 | Phase 2 入口条件の最終確定（`docs/audit/31_phase_x_rm_03_phase2_entry_review.md`・**入口レビュー READY/GO・Phase 2-A 実装は人間承認待ち HOLD**） | 判定完了（反映状態は git refs を正とする） |
+| Phase X-CLOSE | Phase X 完了記録（`docs/audit/32_phase_x_completion_record.md`・**Phase X 完了 GO**） | 記録完了（反映状態は git refs を正とする） |
 | Phase 2-A | Company Brain foundation の設計準備（doc31 §5 準備メモあり。三段承認: 設計docs→schema→実装） | 候補（**人間の個別承認待ち**） |
-| Phase X-04 | 本番スモーク定型化／検証準備 script 化／残り E2E 11スペックの段階実行 | 候補（別承認） |
+| Phase X-04 | 本番スモーク定型化／検証準備 script 化／残り E2E 11スペックの段階実行 | 任意候補・品質追加候補（別承認） |
 
-## 次にやること（人間がどちらかを選択）
+## 次にやること（人間が選択）
 
-- **Phase 2-A 設計準備へ進む**（doc31 §5 の準備メモを承認材料に、まず「2-A schema 設計 docs」の作成から。実装・schema変更はさらに個別承認）。別承認。
-- または **Phase X-04: 本番スモーク定型化／残り E2E 段階実行**（smoke 以外のドメイン別 11 スペックの段階実行・検証手順の script 化）。別承認。
-- あわせて **Enshin OS 資料の提供時期**の判断（Phase 2-F の入力。現状は証拠不足）。
+1. **Phase 2-A-1: Company Brain schema 設計 docs へ進む**（doc31 §5 の準備メモを承認材料に、三段承認〈設計docs→schema→実装〉の第一段から。設計docsの段階では schema.prisma を変更しない）。別承認。
+2. **Phase X-04: 本番スモーク定型化・残り E2E 段階実行**（smoke 以外のドメイン別 11 スペックの段階実行・検証手順の script 化。任意の品質追加候補）。別承認。
+3. **Enshin OS 資料の提供**（Phase 2-F の入力。現状は証拠不足のため棚卸しを開始できない）。
 - いずれの場合も **Phase 2 実装（承認前）・Phase 8 実課金には進まない**。
 
 ## 今は絶対にやらないこと

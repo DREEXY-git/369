@@ -40,6 +40,7 @@
 - [[PhaseXRM02ロードマップレビュー]] — 追加構想リストとの突合・表記統一・分類23項目の固定（Phase X-RM-02）。
 - [[PhaseX03E2EGreen化]] — E2E smoke 初の 11/11 green：red の剥がし方と修正先の見極め（Phase X-03）。
 - [[PhaseXRM03Phase2入口条件]] — Phase 2 入口レビュー READY／実装は人間承認待ち（Phase X-RM-03）。
+- [[PhaseX完了記録]] — Phase X（短期品質フェーズ）の正式完了と恒久資産の整理（Phase X-CLOSE-01）。
 
 ## 🔗 コード側の正（source of truth）
 

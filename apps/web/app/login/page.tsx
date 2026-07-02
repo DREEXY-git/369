@@ -76,10 +76,11 @@ export default function LoginPage() {
 
           <form action={action} className="mt-5 space-y-3.5">
             <div>
-              <label className="mb-1 block text-xs font-medium text-foreground/80">
+              <label htmlFor="email" className="mb-1 block text-xs font-medium text-foreground/80">
                 メールアドレス
               </label>
               <Input
+                id="email"
                 name="email"
                 type="email"
                 value={email}
@@ -89,8 +90,11 @@ export default function LoginPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-foreground/80">パスワード</label>
+              <label htmlFor="password" className="mb-1 block text-xs font-medium text-foreground/80">
+                パスワード
+              </label>
               <Input
+                id="password"
                 name="password"
                 type="password"
                 value={password}

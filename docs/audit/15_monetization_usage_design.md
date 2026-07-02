@@ -687,3 +687,14 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - metadata は全件**固定の非PIIラベルのみ**。本文/顧客情報/email/金額/secret/URL/fileKey/実ID は入れない（実コードのコメントでも明記）。二重計上は `@@unique([tenantId, idempotencyKey])` で構造防止。
 - **課金なし／決済なし／サブスクなし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし**。
 - **詳細は `docs/audit/usage_event_emit_matrix.md`**。役割固定（PROGRESS=履歴 / CURRENT_STATE=現在地 / matrix=一覧）は Phase 1-47・別承認。
+
+---
+
+## 35. Phase 1-47 実装状況（状態管理ドキュメントの役割固定 / docs-only）
+
+- **docs-only**。**実装なし／emit 追加なし／emit 対象は8種類のまま**。`docs/audit/22_docs_role_definition.md` を新規作成し、状態管理ドキュメントの役割・更新タイミング・禁止表現を固定。
+- 役割分担: **PROGRESS=履歴／CURRENT_STATE=現在地／`usage_event_emit_matrix.md`=emit一覧の正本／doc14=本番確認記録（利用者実測のみ）／doc15（本書）=UsageEvent・Monetization 詳細設計史／369-vault=思想・プロンプト・知識**。現在の git 反映状態は git refs を正とする。
+- 禁止運用を明文化: 一時状態（push未実施・人間承認待ち等）の永続化禁止／現在HEAD固定値の記載禁止（固定可は実装commit・完了基準commitのみ）／未確認GO禁止／secret・PII・raw metadata・課金額の記載禁止。
+- 369-vault にも `知識/状態管理とドキュメント役割.md` として同期し、`369-vault/index.md` からリンク（迷子ノートなし）。
+- **課金なし／決済なし／サブスクなし／billable_candidate・never_billable runtime 使用なし／schema・migration・RBAC・package・lock 変更なし**。コード挙動不変・本番確認不要（docs-only）。
+- **詳細は `docs/audit/22_docs_role_definition.md`**。次は Phase 1-48（Phase 1 最終セキュリティ・権限・非課金監査）・別承認。

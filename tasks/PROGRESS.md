@@ -42,6 +42,21 @@
 
 - Phase 1-46「UsageEvent emit matrix の作成（docs-only）」: `docs/audit/usage_event_emit_matrix.md` 新規＋doc15 §34＋`tasks/CURRENT_STATE.md` 次タスク更新＋本ファイル。**実コード監査に基づき UsageEvent emit 8種類を1表（対象/eventType/category/sourceType/発火場所/idempotencyKey方式/metadata固定キー/発火条件/billing=usage_only/本番GO）に固定**。実装なし／emit 追加なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし。詳細 `docs/audit/usage_event_emit_matrix.md`。役割固定は Phase 1-47・別承認。反映状態は git refs を正とする。
 
+- Phase 1-47「状態管理ドキュメントの役割固定（docs-only）」: `docs/audit/22_docs_role_definition.md` 新規＋doc15 §35＋`tasks/CURRENT_STATE.md` 次タスク更新＋`369-vault/知識/状態管理とドキュメント役割.md`（index からリンク）＋本ファイル。**PROGRESS=履歴／CURRENT_STATE=現在地／emit matrix=一覧の正本／doc14=本番確認／doc15=詳細設計史／369-vault=思想・プロンプト・知識、の役割と更新タイミング・禁止表現（一時状態の永続化禁止・現在HEAD固定値禁止・未確認GO禁止・secret/PII/課金額禁止）を固定**。実装なし／emit 追加なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし。詳細 `docs/audit/22_docs_role_definition.md`。次は Phase 1-48・別承認。反映状態は git refs を正とする。
+
+## Phase 1-47 — 状態管理ドキュメントの役割固定（docs-only）
+
+状態: **docs-only 役割固定完了／本番確認不要（コード挙動不変）** — 詳細 `docs/audit/22_docs_role_definition.md` / doc15 §35。反映状態は git refs を正とする。
+
+- 🎯 目的: Phase 1 終盤で状態管理が崩れないよう、各ドキュメントの役割・更新タイミング・禁止表現を1回だけ決めて固定する（過去の品質低下要因＝一時状態の永続化、の再発防止）。
+- 📄 `docs/audit/22_docs_role_definition.md` 新規（非エンジニア向け要約＋役割表＋更新タイミング＋禁止表現＋Source of Truth＋Phase 1 終盤運用＋GO判定）。
+- 📄 doc15 §35 追記／`tasks/CURRENT_STATE.md` 残タスク・次タスクを Phase 1-48 へ更新。
+- 📄 `369-vault/知識/状態管理とドキュメント役割.md` 新規（doc22 の短縮版）＋`369-vault/index.md` からリンク。
+- 役割分担: PROGRESS=履歴／CURRENT_STATE=現在地／`usage_event_emit_matrix.md`=emit一覧／doc14=本番確認（利用者実測のみ）／doc15=詳細設計史／369-vault=思想・プロンプト・知識。**現在の git 反映状態は git refs を正とする**。
+- 禁止運用: 一時状態（push未実施・人間承認待ち等）の永続化／現在HEAD固定値（固定可は実装commit・完了基準commitのみ）／未確認GO／secret・PII・raw metadata・課金額。
+- **docs-only／実装なし／emit 追加なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・RBAC・package・lock 変更なし**。
+- 次候補: Phase 1-48 = Phase 1 最終セキュリティ・権限・非課金監査（別承認）。
+
 ## Phase 1-43 — 非課金 UsageEvent 利用量サマリー read-only 最小実装
 
 状態: **本番確認完了（GO）** — `b08c939`（implementation commit `ce858c7`）の Phase 1-43 read-only 利用量監査画面を利用者が Vercel/CI/本番画面で確認。audit:read ガード・tenantId スコープ・raw metadata/sourceId/本文/金額/secret実値 非表示・非課金記録（usage_only）表示・emit対象8種類維持を確認済み。詳細 `docs/audit/14_release_stabilization.md` §37 / `docs/audit/15_monetization_usage_design.md` §33.1。反映状態は git refs を正とする。

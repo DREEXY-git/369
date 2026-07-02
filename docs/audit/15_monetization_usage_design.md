@@ -714,3 +714,14 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - あわせて PROGRESS の旧Phase一時状態遺物4箇所（Phase 1-20 バレット＋1-20/1-21B/1-26 状態行）を**push証拠（`de3d054` on origin/main・`85c79ab`・`057d314`）に基づき**最小整合。証拠不足の見送りなし。
 - **課金なし／決済なし／サブスクなし／schema・migration・RBAC・package・lock 変更なし**。本番確認不要（docs-only・コード挙動不変）。
 - **詳細は `docs/audit/23_phase1_final_security_audit.md`**。次は Phase 1-49（完了判定レポート）・別承認。
+
+---
+
+## 37. Phase 1-49 実装状況（Phase 1 完了判定レポート / docs-only）
+
+- **docs-only**。**実装なし／emit 追加なし／emit 対象は8種類のまま／課金なし／決済なし**。`docs/audit/24_phase1_completion_review.md` を新規作成。
+- 判定: **GO（Phase 1 は閉じられる状態）**。根拠＝本番確認GO 12件（doc14 §26〜§37）＋最終セキュリティ監査GO（doc23）＋完了判定を妨げる証拠不足なし。
+- 整理: 完了済み12項目（証拠付き）／未完了だが完了を妨げないもの（実課金・Stripe・cap・横断dashboard・raw viewer・EXPORT_JOB/JobRun HOLD 等）／**Phase 8 へ送るもの**（実課金・usage billing・credits・cap/alert・billable_candidate/never_billable の runtime 運用）／Phase 2/3/4/6/X/Y への送付先を明確化。
+- 継続安全条件（usage_only・runtime 非課金・非PII metadata・tenantId・audit:read・利用者実測のみ・git refs 正）を Phase 2 以降も不変と明記。
+- **Phase 1-50（完了記録・次Phase選定）は別承認**。実課金はさらに先（本書 §11 の安全条件＋人間承認が前提）。
+- **詳細は `docs/audit/24_phase1_completion_review.md`**。

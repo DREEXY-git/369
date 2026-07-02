@@ -11,7 +11,7 @@
 - Phase 1-17「請求発行 issueInvoiceAction の finance 権限境界統一」: `3ab1435` push 済み・Vercel 本番確認 GO（2026-06-28）。
 - Phase 1-18「請求一覧・作成・create を finance 境界に統一（案C）」: `5789516` push 済み・Vercel 本番確認 GO（2026-06-28）。
 - Phase 1-19「承認一覧・朝報の finance 閲覧露出を遮断」: `491509a` push 済み・Vercel 本番確認 GO（2026-06-28）。**finance 境界統一ライン（1-15〜1-19）クローズ**。
-- Phase 1-20「検証・本番確認フローの定型化」: ローカル整備・検証完了／push 未実施（人間承認待ち）。本番機能変更なし＝本番確認不要。
+- Phase 1-20「検証・本番確認フローの定型化」: `de3d054` push 済み（origin/main 上で確認）。本番機能変更なし＝本番確認不要。
 - Phase 1-21B「UsageEvent / Monetization 設計の docs-only 記録」: `docs/audit/15_monetization_usage_design.md` 作成（設計のみ・課金実行なし）。`85c79ab` push 済み（origin/main）。コード/schema/migration 変更なし＝本番確認不要。
 - Phase 1-22「UsageEvent モデル追加・migration」: `d14ce1d` push 済み・**Vercel 本番確認 GO（2026-06-28）**。schema に `UsageEvent` 追加＋migration `20260628183116_p1_22_usage_event`＋`p1_22_usage_event.itest.ts`。**DB model + test のみ／emit なし／課金なし／決済なし**。
 - Phase 1-23「非課金 UsageEvent emit 最小実装」: `399de6f` push 済み・**Vercel 本番確認 GO（2026-06-29）**。`recordUsageEvent` helper＋LeadMap CSV export で `export.generated`（billing=usage_only）を記録。**emit 対象は LeadMap export のみ／課金なし／決済なし／billable_candidate なし／金額なし**。
@@ -43,6 +43,20 @@
 - Phase 1-46「UsageEvent emit matrix の作成（docs-only）」: `docs/audit/usage_event_emit_matrix.md` 新規＋doc15 §34＋`tasks/CURRENT_STATE.md` 次タスク更新＋本ファイル。**実コード監査に基づき UsageEvent emit 8種類を1表（対象/eventType/category/sourceType/発火場所/idempotencyKey方式/metadata固定キー/発火条件/billing=usage_only/本番GO）に固定**。実装なし／emit 追加なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし。詳細 `docs/audit/usage_event_emit_matrix.md`。役割固定は Phase 1-47・別承認。反映状態は git refs を正とする。
 
 - Phase 1-47「状態管理ドキュメントの役割固定（docs-only）」: `docs/audit/22_docs_role_definition.md` 新規＋doc15 §35＋`tasks/CURRENT_STATE.md` 次タスク更新＋`369-vault/知識/状態管理とドキュメント役割.md`（index からリンク）＋本ファイル。**PROGRESS=履歴／CURRENT_STATE=現在地／emit matrix=一覧の正本／doc14=本番確認／doc15=詳細設計史／369-vault=思想・プロンプト・知識、の役割と更新タイミング・禁止表現（一時状態の永続化禁止・現在HEAD固定値禁止・未確認GO禁止・secret/PII/課金額禁止）を固定**。実装なし／emit 追加なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・package・lock 変更なし。詳細 `docs/audit/22_docs_role_definition.md`。次は Phase 1-48・別承認。反映状態は git refs を正とする。
+
+- Phase 1-48「Phase 1 最終セキュリティ・権限・非課金監査（read-only＋docs-only）」: `docs/audit/23_phase1_final_security_audit.md` 新規＋doc15 §36＋`tasks/CURRENT_STATE.md` 次タスク更新＋vault ノート＋本ファイル。**6領域を実コード監査し全 PASS／総合 GO**（UsageEvent 8箇所のみ・全件 usage_only リテラル・billable_candidate/never_billable runtime 使用ゼロ／admin/usage ガード・tenantId・最小select／RBAC=AIに外部送信・承認・削除なし／tenant横断・raw viewer なし／外部送信は logged/sent・delivered のみ記録＋EXTERNAL_SEND_ENABLED・承認ゲート／schema・migration は `d14ce1d`（Phase 1-22）以降不変）。旧Phase一時状態遺物4箇所（1-20 バレット＋1-20/1-21B/1-26 状態行）を push 証拠に基づき整合。**コード修正なし／emit 追加なし／課金なし／決済なし**。詳細 `docs/audit/23_phase1_final_security_audit.md`。次は Phase 1-49・別承認。反映状態は git refs を正とする。
+
+## Phase 1-48 — Phase 1 最終セキュリティ・権限・非課金監査（read-only＋docs-only）
+
+状態: **監査完了（GO）／本番確認不要（read-only＋docs-only・コード挙動不変）** — 詳細 `docs/audit/23_phase1_final_security_audit.md` / doc15 §36。反映状態は git refs を正とする。
+
+- 🎯 目的: Phase 1 を閉じる前に、tenant分離・RBAC・AI権限・UsageEvent非課金原則・metadata安全性・外部送信ゲート・schema不変を実コードで横断確認し、証拠付きで記録する。
+- 📄 `docs/audit/23_phase1_final_security_audit.md` 新規（監査方法＋6領域の PASS 証拠＋懸念＋GO判定＋Phase 1-49 送付条件）。
+- 📄 doc15 §36 追記／CURRENT_STATE 次タスクを Phase 1-49 へ／`369-vault/知識/Phase1最終セキュリティ監査.md` 新規＋index リンク。
+- 監査結果: **全6領域 PASS・総合 GO・重大懸念なし**（軽微2件は記録のみ: 「never_billable 相当」コメント用語の将来整理／doc22 ルールの運用継続）。
+- 遺物整合: PROGRESS 旧Phase 4箇所を push 証拠（`de3d054` on origin/main／`85c79ab`／`057d314`）に基づき「push 済み」表現へ最小修正。証拠不足の見送りなし。
+- **read-only＋docs-only／コード修正なし／emit 追加なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・RBAC・package・lock 変更なし**。
+- 次候補: Phase 1-49 = Phase 1 完了判定レポート（別承認）。
 
 ## Phase 1-47 — 状態管理ドキュメントの役割固定（docs-only）
 
@@ -280,7 +294,7 @@
 
 ## Phase 1-26 — UsageEvent emit 拡張方針の記録・監査（docs-only）
 
-状態: **ローカル監査・記録完了／push 未実施（人間承認待ち）**／本番確認不要（docs のみ・コード挙動不変）
+状態: **記録完了（`057d314` push 済み）**／本番確認不要（docs のみ・コード挙動不変）。反映状態は git refs を正とする。
 
 - 🔒 状態固定: Phase 1-25 は **`11c224d`（実装）＋`9944f0e`（本番確認記録）でクローズ済み**・本番 GO 済み。旧 `a9643a4` は**未push のまま揮発環境で失われた**もので**正式基準ではない**。**正式基準 origin/main=`9944f0e`**。今後 `a9643a4` を前提にしない。
 - 📄 `docs/audit/16_usage_event_emit_expansion_strategy.md`（新規）: 状態固定＋候補A〜G監査＋比較表＋分類（P0/P1/P2/NEVER_BILLABLE/DO_NOT_TOUCH_NOW）＋metadata/idempotency 方針＋Phase 1-27 プロンプト案。
@@ -346,7 +360,7 @@
 
 ## Phase 1-21B — UsageEvent / Monetization 設計の docs-only 記録
 
-状態: **ローカル記録完了／push 未実施（人間承認待ち）**／本番確認 不要（docs のみ・コード/schema/migration 不変）
+状態: **記録完了（`85c79ab` push 済み）**／本番確認 不要（docs のみ・コード/schema/migration 不変）。反映状態は git refs を正とする。
 
 - 📄 `docs/audit/15_monetization_usage_design.md`: Phase 1-21A（監査・設計のみ）の結論を記録。
   目的/現状棚卸し/既存モデル棚卸し表/UsageEvent と既存ログの違い/最小MVP疑似スキーマ（**schema 未追加**）/
@@ -359,7 +373,7 @@
 
 ## Phase 1-20 — 検証・本番確認フローの定型化
 
-状態: **ローカル整備・検証完了／push 未実施（人間承認待ち）**／本番確認 不要（docs/scripts のみ・コード挙動不変）
+状態: **整備完了（`de3d054` push 済み）**／本番確認 不要（docs/scripts のみ・コード挙動不変）。反映状態は git refs を正とする。
 
 - 🛠 `scripts/verify.sh`: ローカル検証ワンショット（db:generate→typecheck→lint→test→build・ステップ表示・`set -euo pipefail`・本番DB非接続・E2E既定オフ・BLOCKERS参照）。
 - 📋 `docs/release/RELEASE_CHECKLIST.md`: push前/push条件/push後/本番確認要否/GO・HOLD・NG/rollback/禁止事項/非エンジニア向けポイント/Phase 1-15〜1-19 の学び。

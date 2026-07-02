@@ -698,3 +698,19 @@ UsageEvent（特に `metadata`）に**入れてはいけない**もの:
 - 369-vault にも `知識/状態管理とドキュメント役割.md` として同期し、`369-vault/index.md` からリンク（迷子ノートなし）。
 - **課金なし／決済なし／サブスクなし／billable_candidate・never_billable runtime 使用なし／schema・migration・RBAC・package・lock 変更なし**。コード挙動不変・本番確認不要（docs-only）。
 - **詳細は `docs/audit/22_docs_role_definition.md`**。次は Phase 1-48（Phase 1 最終セキュリティ・権限・非課金監査）・別承認。
+
+---
+
+## 36. Phase 1-48 実装状況（Phase 1 最終セキュリティ・権限・非課金監査 / docs-only）
+
+- **read-only 監査＋docs-only 記録**。**コード修正なし／emit 追加なし／emit 対象は8種類のまま**。`docs/audit/23_phase1_final_security_audit.md` を新規作成。
+- 監査結果（すべてコマンド出力に基づく **PASS／総合 GO**）:
+  - UsageEvent: runtime emit は matrix と一致する**8箇所のみ**・全件 `billing: 'usage_only'` リテラル・**billable_candidate / never_billable の runtime 使用ゼロ**（コメントと型/許可リスト定義のみ）。
+  - `/admin/usage`: `audit:read` ガード・tenantId スコープ・groupBy/select 最小・write/emit/Server Action なし。
+  - RBAC: AI_AGENT / AI_ASSISTANT に**外部送信・承認・削除・export 権限なし**。危険操作は server-side `hasPermission` ガード。
+  - tenant 分離: 監査系ページ・8 emit すべて tenantId スコープ。横断 dashboard / raw viewer ルートなし。
+  - 外部送信: usage 記録は logged/sent（Webhook は delivered）のみ。実送信は `EXTERNAL_SEND_ENABLED` ＋承認ゲート。**監査中の実送信ゼロ**。
+  - schema/migration: origin/main 上の最終変更は **`d14ce1d`（Phase 1-22）のまま不変**を git で確認。
+- あわせて PROGRESS の旧Phase一時状態遺物4箇所（Phase 1-20 バレット＋1-20/1-21B/1-26 状態行）を**push証拠（`de3d054` on origin/main・`85c79ab`・`057d314`）に基づき**最小整合。証拠不足の見送りなし。
+- **課金なし／決済なし／サブスクなし／schema・migration・RBAC・package・lock 変更なし**。本番確認不要（docs-only・コード挙動不変）。
+- **詳細は `docs/audit/23_phase1_final_security_audit.md`**。次は Phase 1-49（完了判定レポート）・別承認。

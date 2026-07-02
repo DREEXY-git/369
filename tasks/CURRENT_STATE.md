@@ -71,13 +71,13 @@
 | Phase 1-45 | `tasks/CURRENT_STATE.md` 作成・非陳腐化（本ファイル） | 作成済み（反映状態は git refs を正とする） |
 | Phase 1-46 | `docs/audit/usage_event_emit_matrix.md` 作成（8 emit を1表に固定） | 作成済み（反映状態は git refs を正とする） |
 | Phase 1-47 | Phase 1 の役割・境界の固定（PROGRESS / CURRENT_STATE / emit matrix / vault の分担＝`docs/audit/22_docs_role_definition.md`） | 作成済み（反映状態は git refs を正とする） |
-| Phase 1-48 | Phase 1 最終セキュリティ・権限・非課金監査 | 次 |
-| Phase 1-49 | Phase 1 完了判定レポート | 予定 |
+| Phase 1-48 | Phase 1 最終セキュリティ・権限・非課金監査（`docs/audit/23_phase1_final_security_audit.md`・GO） | 監査完了（反映状態は git refs を正とする） |
+| Phase 1-49 | Phase 1 完了判定レポート | 次 |
 | Phase 1-50 | Phase 1 完了記録・次 Phase 選定 | 予定 |
 
 ## 次にやること（1つだけ）
 
-- **Phase 1-48: Phase 1 最終セキュリティ・権限・非課金監査**（tenant分離／RBAC／metadata非表示／金額なし／課金なし／schema不変 の横断確認）。別承認。
+- **Phase 1-49: Phase 1 完了判定レポート**（完了済み／未完了／証拠不足／Phase 2 以降へ送るものの整理）。別承認。
 
 ## 今は絶対にやらないこと
 

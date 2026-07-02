@@ -58,6 +58,19 @@
 
 - Phase X-RM-02「Roadmap Review / Gap Reconciliation（docs-only）」: `docs/audit/29_phase_x_rm_02_roadmap_review.md` 新規＋roadmap 最小補完＋CURRENT_STATE 更新＋`369-vault/知識/PhaseXRM02ロードマップレビュー.md`（index からリンク）＋本ファイル。**X-RM-01 の roadmap 一式をユーザー提示の追加構想リストと突合**——17領域・代表機能37個・境界9項目は全反映済みで、差分は Gateway 表記1件のみ。**正式表記を IKEZAKI MCP/API Gateway に統一**（旧表記「369 MCP/API Gateway」6箇所を修正・別名として保持）。doc02 §0.1 に**プロンプト必須分類23項目**、doc07 §1 に **Enshin OS 表記ルール**（大文字ENSHIN＋OS禁止・検査は case-sensitive）を明文化。**実装なし／DB・schema・migration なし／課金・決済・外部送信・MCP/API公開なし／既存プロンプト非破壊**。Enshin OS 個別機能は引き続き証拠不足（仕様提供待ち）。次は Phase X-03 または Phase X-RM-03・人間選択・別承認。詳細 `docs/audit/29_phase_x_rm_02_roadmap_review.md`。反映状態は git refs を正とする。
 
+- Phase X-03「E2E smoke green 化（X-03＋X-03b）」: `apps/web/app/login/page.tsx`（label関連付け・X-03）＋`apps/web/tests/e2e/smoke.spec.ts`（地図CRMセレクタ1行明確化・X-03b）＋`docs/audit/30_phase_x03_e2e_green.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/PhaseX03E2EGreen化.md`（index からリンク）＋本ファイル。**smoke 0/11 → 10/11 → 11/11 green（初の全green・9.1s）**。red の原因は2つ（アプリ側 label 関連付け欠如／テスト側セレクタ曖昧性）で、それぞれ正しい側を最小修正。test 211・typecheck・lint・build 全green。**schema・migration作成・認証・RBAC・課金・決済・外部送信・package/lock・playwright install: すべてなし／本番接触ゼロ**。E2E は Phase 2 出口条件（smoke green 維持）を支える回帰ゲートとして稼働開始。次は Phase X-04 または Phase X-RM-03・別承認。詳細 `docs/audit/30_phase_x03_e2e_green.md`。反映状態は git refs を正とする。
+
+## Phase X-03 — E2E smoke green 化（X-03＋X-03b）
+
+状態: **green 化完了（GO）／smoke 11/11 passed（初の全green）** — 詳細 `docs/audit/30_phase_x03_e2e_green.md`。反映状態は git refs を正とする。
+
+- 🎯 目的: X-02 で特定した smoke red の根本原因を最小修正し、E2E を「動く回帰ゲート」にする。
+- 🔧 X-03（第1段）: `/login` の label に `htmlFor`＋input に `id` を付与（2組・+6/-2行・挙動不変・アクセシビリティ改善込み）→ smoke **0/11 → 10/11**。`getByLabel` 問題は完全解消。残る1本は別原因（テストセレクタ曖昧性）のため成功扱いせず停止し人間承認へ（差分は WIP コミットで保全）。
+- 🔧 X-03b（第2段）: `smoke.spec.ts` 42行目の1箇所のみ `getByText('地図CRM')` → `getByRole('heading', { name: '地図CRM' })`（ナビリンクと見出しの2要素一致＝strict mode violation の明確化）→ smoke **11/11 green（9.1s）**。
+- ✅ 検証: `pnpm test`（211）／typecheck／lint／build 全green＋DOM実測（for/id 関連付け成立）＋ローカルE2E（ローカルPostgres・migrate deploy pending 0・seed・本番ビルド・プリインストールChromium シム・install なし）。
+- 🔒 遵守: playwright.config・vitest.config・他テスト行・他画面・UI文言・DB schema・migration作成・認証・RBAC・課金・外部送信・package/lock: **無変更**。本番接触ゼロ・テスト後にサーバ/Postgres停止済み。
+- 次候補: **Phase X-04（本番スモーク定型化・残りE2E段階実行）または Phase X-RM-03（Phase 2 入口条件の最終確定）**・別承認。
+
 ## Phase X-RM-02 — Roadmap Review / Gap Reconciliation（docs-only）
 
 状態: **レビュー完了（GO）／差分は Gateway 表記1件のみ・補完済み** — 詳細 `docs/audit/29_phase_x_rm_02_roadmap_review.md`。反映状態は git refs を正とする。

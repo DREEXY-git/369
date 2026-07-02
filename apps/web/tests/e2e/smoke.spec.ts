@@ -39,7 +39,7 @@ test('LeadMap リード一覧と地図が表示される', async ({ page }) => {
   await page.goto('/leadmap/leads');
   await expect(page.getByRole('heading', { name: 'リード一覧' })).toBeVisible();
   await page.goto('/leadmap/map');
-  await expect(page.getByText('地図CRM')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '地図CRM' })).toBeVisible();
 });
 
 test('LeadMap キャンペーン作成フロー', async ({ page }) => {

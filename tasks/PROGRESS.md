@@ -72,9 +72,21 @@
 
 - Phase 2-A-3a-PROD「Company Brain read-only 可視化の本番確認記録（docs-only）」: `docs/audit/37_phase2a3a_production_confirmation.md` 新規＋doc14 §39 追記＋CURRENT_STATE 更新＋`369-vault/知識/Phase2A3a本番確認.md`（index からリンク）＋本ファイル。**commit `9533488` の本番確認は利用者実測で HOLD（2026-07-03）**: Vercel Ready・latest commit 9533488・ログイン／ダッシュボード／既存主要画面すべて正常＝無回帰確認、ただし**ナビ「会社の頭脳」と /brain/policies・/brain/catalog が本番未確認/NG のため GO にしない**。repo側 read-only 実測でコード欠落説・flag/ナビ権限フィルタ説は否定済み（残候補: 本番エイリアス/キャッシュ/確認手順/症状未特定）。**AI が本番接続確認したものではない**。本番確認GO済み基準は Phase 2-A-2/`ca18450` のまま。コード変更なし・DB操作なし・schema/migration 変更なし・課金・決済・外部送信なし。次は read-only 原因調査（別ミッション）・**Phase 2-A-3b は HOLD 解消まで進まない**。詳細 `docs/audit/37_phase2a3a_production_confirmation.md`。反映状態は git refs を正とする。
 
+- Phase 2-A-3b-1「CompanyPolicy 書き込み最小実装（作成・編集・アーカイブ）」: `apps/web/app/(app)/brain/policies/actions.ts` 新規（create/update/archive の3 Server Action・requireUser→hasPermission（knowledge:create/update）→入力検証→tenantIdスコープ→prisma→writeAudit→revalidatePath）＋`new/page.tsx`・`[id]/edit/page.tsx` 新規＋一覧に権限別ボタン追加＋smoke 末尾1本追加（作成→一覧反映）＋`docs/audit/39_phase2a3b1_company_policy_write.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/Phase2A3b1CompanyPolicy書き込み.md`（index からリンク）＋本ファイル。**検証全green（test 211・typecheck・lint・build・migrate deploy pendingなし・seed policies:5/catalogItems:8・smoke 13/13 green・既存12本回帰なし・修正ループ0回）**。**物理削除なし（delete/deleteMany 不使用）／externalAiAllowed は UI で true にできない（create は false 固定・update は不変更）／rbac.ts・labels.ts・schema・migration・seed.ts・package/lock 無変更＝AI は knowledge:update を持たず編集・アーカイブ不可のまま／writeDataAccess は次段送り／ProductCatalogItem 書き込みは 2-A-3b-2（別承認）／課金・決済・外部送信・本番接触なし**。詳細 `docs/audit/39_phase2a3b1_company_policy_write.md`。反映状態は git refs を正とする。
+
 - Phase 2-A-3a-PROD-2「Company Brain 本番確認の HOLD解消・再実測GO記録（docs-only）」: `docs/audit/38_phase2a3a_hold_resolution_go.md` 新規＋doc14 §40 追記＋CURRENT_STATE 更新（GO済み基準を Phase 2-A-3a/`9533488` に更新・前基準 2-A-2/`ca18450` は保持）＋`369-vault/知識/Phase2A3a本番確認.md` 末尾追記＋index 1行更新＋本ファイル。**HOLD（doc37＋doc14 §39・記録として保持）後の利用者再実測で全項目 GO（2026-07-03）**: Vercel Ready・latest commit 9533488・ナビ「会社の頭脳」表示・`/brain/policies`・`/brain/catalog` が開く・作成/編集/削除ボタン無し（read-only で正常）・既存画面すべて正常。seed は本番で自動実行されないため一覧が空でも正常。前回NGの原因はキャッシュ/反映タイミングの可能性が高いが断定しない。**AI が本番接続確認したものではない**。コード変更なし・DB操作なし・schema/migration 変更なし・課金・決済・外部送信なし。**Phase 2-A-3a は本番確認まで完全クローズ**。次は main push（別承認）→ Phase 2-A-3b 承認判断。詳細 `docs/audit/38_phase2a3a_hold_resolution_go.md`。反映状態は git refs を正とする。
 
 - Phase 2-A-3a「Company Brain 最小可視化（seed＋read-only 一覧）」: `packages/db/prisma/seed.ts`（CompanyPolicy 5件＋ProductCatalogItem 8件・全件 externalAiAllowed=false・label は NORMAL/INTERNAL のみ・PII/secret/実価格なし）＋read-only 2画面新規（`/brain/policies`・`/brain/catalog`。requireUser＋knowledge:read＋tenantId スコープ・作成/編集/削除/Server Action なし）＋ナビ1行（`components/shell/nav.ts` に「会社の頭脳」）＋smoke 末尾1本追加＋`docs/audit/36_phase2a3a_company_brain_readonly.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/Phase2A3aCompanyBrain可視化.md`（index からリンク）＋本ファイル。**検証全green（test 211・typecheck・lint・build・seed policies:5/catalogItems:8・smoke 12/12 green・既存11本回帰なし）**。**schema・migration・RBAC・labels・package/lock 無変更／作成・編集・writeAudit/writeDataAccess 本実装は 2-A-3b へ送り（別承認）／課金・決済・外部送信・本番接触なし**。詳細 `docs/audit/36_phase2a3a_company_brain_readonly.md`。反映状態は git refs を正とする。
+
+## Phase 2-A-3b-1 — CompanyPolicy 書き込み最小実装（作成・編集・アーカイブ）
+
+状態: **実装完了（GO・smoke 13/13 green）／ProductCatalogItem 書き込みと writeDataAccess は次段（2-A-3b-2 以降）の個別承認まで未実装** — 詳細 `docs/audit/39_phase2a3b1_company_policy_write.md`。反映状態は git refs を正とする。
+
+- 🎯 目的: Company Brain の書き込み第一段として、CompanyPolicy（会社方針）のみに作成・編集・アーカイブを追加する。
+- 🔧 変更: Server Action 3本（create=knowledge:create／update・archive=knowledge:update。物理削除なし・archivedAt ソフトアーカイブのみ・externalAiAllowed は create false 固定/update 不変更）＋new/edit 画面（label htmlFor/id 対応・PII/secret 禁止の注意書き）＋一覧に権限別ボタン（read-only ユーザーは従来どおり閲覧のみ）＋writeAudit 全操作記録＋smoke 13本目（作成→一覧反映・既存12本無変更）。
+- ✅ 検証: test 211・typecheck・lint・build 全green → PG起動 → migrate deploy（pendingなし・新migrationなし）→ seed → /login 200 → **smoke 13/13 green（10.7s・既存12本回帰なし）** → 後片付け済み。修正ループ0回。
+- 🔒 遵守: **schema・migration・seed.ts・rbac.ts・labels.ts・nav.ts・brain/catalog・package/lock 無変更／AI は knowledge:update を持たず編集・アーカイブ不可のまま（権限拡大ゼロ）／delete・deleteMany 不使用／外部送信・課金・決済・本番接触なし**。
+- 次: main push（別承認）→ 本番確認 → **Phase 2-A-3b-2（ProductCatalogItem 書き込み）** の承認判断。writeDataAccess は AI 参照経路実装と同時（次段送り）。
 
 ## Phase 2-A-3a-PROD-2 — Company Brain 本番確認の HOLD解消・再実測GO（docs-only）
 

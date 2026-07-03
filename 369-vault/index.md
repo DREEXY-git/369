@@ -46,6 +46,7 @@
 - [[Phase2A2本番確認]] — Company Brain の器が本番に入った：利用者実測 GO・画面なしが正常（Phase 2-A-2-PROD）。
 - [[Phase2A3aCompanyBrain可視化]] — Company Brain が初めて見えた：架空デモデータ＋read-only 2画面＋smoke 12/12（Phase 2-A-3a）。
 - [[Phase2A3a本番確認]] — 本番確認は一度 HOLD → 再実測で GO 解消：HOLD を消さず追記で閉じた記録（Phase 2-A-3a-PROD / PROD-2）。
+- [[Phase2A3b1CompanyPolicy書き込み]] — 初の書き込み機能：会社方針だけ・3操作だけ・消せない・AIは書き換えられない（Phase 2-A-3b-1）。
 
 ## 🔗 コード側の正（source of truth）
 

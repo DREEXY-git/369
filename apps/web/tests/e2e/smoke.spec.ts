@@ -90,3 +90,17 @@ test('Company Brain の会社方針一覧が表示される', async ({ page }) =
   await expect(page.getByRole('heading', { name: '会社の頭脳（会社方針）' })).toBeVisible();
   await expect(page.getByText('AIと人間の役割分担ポリシー')).toBeVisible();
 });
+
+test('Company Brain の会社方針を作成すると一覧に表示される', async ({ page }) => {
+  await login(page);
+  await page.goto('/brain/policies/new');
+  const uniqueTitle = `E2E会社方針-${Date.now()}`;
+  await page.getByLabel('タイトル（必須・120文字まで）').fill(uniqueTitle);
+  await page.getByLabel('本文（必須・5000文字まで）').fill('E2E テスト用の会社方針本文です。架空の内容で、PII や secret を含みません。');
+  await page.getByLabel('分類（必須・80文字まで）').fill('品質方針');
+  await page.getByLabel('状態').selectOption('active');
+  await page.getByLabel('機密ラベル').selectOption('INTERNAL');
+  await page.getByRole('button', { name: '作成する' }).click();
+  await page.waitForURL('**/brain/policies');
+  await expect(page.getByText(uniqueTitle)).toBeVisible();
+});

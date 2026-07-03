@@ -27,6 +27,7 @@
 - **Phase X: 完了済み（Phase X-CLOSE-01・判定 GO）。完了基準 commit: `70d4d06`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/32_phase_x_completion_record.md`）。恒久資産=E2E smoke green 回帰ゲート（11/11）＋roadmap 9本＋Feature Registry＋各種 Matrix＋Phase 2 entry review。
 - **現在地: Phase 2-A 進行中 — 2-A-3a（Company Brain read-only 可視化）まで完了**。seed に架空デモデータ（CompanyPolicy 5件＋ProductCatalogItem 8件・全件 externalAiAllowed=false・PII/secret/実価格なし）が入り、read-only 一覧2画面（`/brain/policies`・`/brain/catalog`・knowledge:read＋tenantId スコープ）とナビ1行（会社の頭脳）が実装済み（記録: doc36）。**smoke は12本体制で 12/12 green（既存11本回帰なし）**。schema・migration・RBAC・labels は 2-A-2 から無変更。**作成・編集・Server Action・writeAudit/writeDataAccess の本実装は 2-A-3b の個別人間承認まで行わない**（read-only 可視化完了、作成/編集は 2-A-3b 承認待ち）。前段: 2-A-2 schema 変更＋本番確認 GO（doc34・doc35・doc14 §38）。
 - **2-A-3a の本番確認は 一度 HOLD → 再実測 GO で解消済み（利用者実測・2026-07-03・記録: doc38＋doc14 §40）**: 初回実測ではナビ「会社の頭脳」と `/brain/*` 2画面が本番未確認/NG で HOLD（doc37＋doc14 §39・記録として保持）。ハードリロード/開き直し後の再実測で、ナビ・2画面・作成/編集/削除ボタン無し・既存画面すべて GO を確認し解消。前回NGの原因はキャッシュ/反映タイミングの可能性が高いが断定しない。**Phase 2-A-3a は本番確認まで完全クローズ**。
+- **2-A-3b-1（CompanyPolicy 書き込み最小実装）完了（記録: doc39）**: 会社方針のみに作成・編集・アーカイブの3操作を実装（Server Action＋入力検証＋writeAudit・物理削除なし・externalAiAllowed は UI で変更不可・rbac 無変更で AI は編集/アーカイブ不可のまま）。**smoke は13本体制で 13/13 green（既存12本回帰なし）**。**ProductCatalogItem の書き込みと writeDataAccess は 2-A-3b-2 以降の個別人間承認まで行わない**。
 - **Phase 8（実課金・Stripe・usage billing・credits・cap/alert）には進まない**（別設計・別承認が前提）。
 
 ## 最新の本番確認GO済みプロダクト基準
@@ -98,10 +99,10 @@
 
 ## 次にやること（人間が選択）
 
-1. **Phase 2-A-3a-PROD-2 の main 反映（push-only・別承認）**（HOLD解消・GO記録 doc38＋doc14 §40 の反映）。
-2. **Phase 2-A-3b: 作成・編集・アーカイブ（Server Action＋入力検証＋writeAudit）＋機密参照ログ（writeDataAccess）の実装承認判断**（三段承認の第三段の後半。2-A-3a は本番確認まで完全クローズ済み）。別承認。
+1. **Phase 2-A-3b-1 の main 反映（push-only・別承認）**と本番確認（doc40 候補）。
+2. **Phase 2-A-3b-2: ProductCatalogItem の作成・編集・アーカイブの実装承認判断**（2-A-3b-1 と同じ型の水平展開）。別承認。
 3. **Phase X-04: 本番スモーク定型化・残り E2E 段階実行 または Enshin OS 資料の提供**（任意の品質追加候補・2-A と並行可／Phase 2-F の入力。Enshin は証拠不足のため棚卸し未開始）。別承認。
-- いずれの場合も **2-A-3b 承認前の書き込み系実装・Phase 8 実課金には進まない**。
+- いずれの場合も **2-A-3b-2 承認前の追加書き込み実装・writeDataAccess 本実装・Phase 8 実課金には進まない**。
 
 ## 今は絶対にやらないこと
 

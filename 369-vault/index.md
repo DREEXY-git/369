@@ -48,6 +48,7 @@
 - [[Phase2A3a本番確認]] — 本番確認は一度 HOLD → 再実測で GO 解消：HOLD を消さず追記で閉じた記録（Phase 2-A-3a-PROD / PROD-2）。
 - [[Phase2A3b1CompanyPolicy書き込み]] — 初の書き込み機能：会社方針だけ・3操作だけ・消せない・AIは書き換えられない（Phase 2-A-3b-1）。
 - [[Phase2A3b1安全補正]] — push前に境界を締め直す：AI mutation全面禁止・高機密ラベルは参照ログ実装まで保留（Phase 2-A-3b-1-SAFE）。
+- [[Phase2A3b1本番確認]] — 会社方針の作成・編集・アーカイブが本番で GO：書き込み第一段の完全クローズ（Phase 2-A-3b-1-PROD）。
 
 ## 🔗 コード側の正（source of truth）
 

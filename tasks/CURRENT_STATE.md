@@ -32,6 +32,7 @@
 - **2-A-3b-2（ProductCatalogItem 書き込み最小実装）＋本番確認GO 完了（記録: doc42＋doc43＋doc14 §42）**: 商品カタログに同じ型で3操作を実装。**安全境界（AI mutation禁止・label 2択・externalAiAllowed 封印・ソフトアーカイブ）を最初から組み込み、修正ループ0回で完走**。**priceNote は説明テキストのみで請求・課金・見積・会計に接続しない**。**smoke は14本体制で 14/14 green（既存13本回帰なし）**。**本番確認も利用者実測で GO（2026-07-04）＝Company Brain の2テーブルの人間書き込みは本番確認まで完了**。
 - **2-A-3c-1（AI参照経路＋writeDataAccess 設計・docs-only）完了（記録: doc44）**: AI が Company Brain を読む段の設計を固定。参照範囲=tenantId・archivedAt:null・NORMAL/INTERNAL のみ／外部LLM送信は externalAiAllowed=true＋maskText 済みのみ（true UI 無し＝構造的にゼロ）／記録は ai_reference をレコードごと1件／第一接続タスクはナレッジ検索。
 - **2-A-3c-2（Company Brain AI参照の最小実装）完了 — 一度 HOLD → 再実測 GO で解消済み（実装: doc45／HOLD: doc46＋doc14 §43／解消GO: doc47＋doc14 §44）**: ナレッジ検索のみに Company Brain 参照を注入（read-only・NORMAL/INTERNAL・canAccessLabel・外部LLM時は externalAiAllowed ゲートで注入ゼロの安全側デフォルト）。初回本番確認（2026-07-04）は「値引き承認ルール」の AI回答・参照セクション未確認で HOLD。read-only 原因調査と利用者再実測（2026-07-04）により、**原因は本番データ前提差（対象 CompanyPolicy が本番に不在）でありコードのバグではない**と確定。本番UIで会社方針を作成後、AI回答・「参照した会社の頭脳」・参照元タイトル・CompanyPolicy の ai_reference ログすべて GO。**Phase 2-A-3c-2 は本番確認まで完全クローズ**。高機密ラベル・externalAiAllowed true UI・外部LLM送信の解禁は 3c-5 の個別人間承認まで行わない。ENSHiN OS の外部発信・口コミ・SNS・顧客の声公開・許諾管理実装は未着手。
+- **Phase X-04（本番スモーク定型化）: docs-only 完了（判定 GO・2026-07-04・記録: doc49）**。Phase 2-A の HOLD 2件の教訓を「本番確認プレイブック」として固定（利用者実測のみ・§0 テンプレート・GO/HOLD/STOP 判定・**本番に実在するデータで確認**・ENSHiN OS 追加停止条件・標準プロンプト骨子）。以後の本番確認は doc49 の型に従う。**script化・E2E拡張・本番自動監視は未実装・後続別承認**。
 - **Phase 8（実課金・Stripe・usage billing・credits・cap/alert）には進まない**（別設計・別承認が前提）。
 
 ## 最新の本番確認GO済みプロダクト基準
@@ -108,12 +109,12 @@
 | Phase X-RM-03 | Phase 2 入口条件の最終確定（`docs/audit/31_phase_x_rm_03_phase2_entry_review.md`・**入口レビュー READY/GO・Phase 2-A 実装は人間承認待ち HOLD**） | 判定完了（反映状態は git refs を正とする） |
 | Phase X-CLOSE | Phase X 完了記録（`docs/audit/32_phase_x_completion_record.md`・**Phase X 完了 GO**） | 記録完了（反映状態は git refs を正とする） |
 | Phase 2-A | Company Brain foundation の設計準備（doc31 §5 準備メモあり。三段承認: 設計docs→schema→実装） | 候補（**人間の個別承認待ち**） |
-| Phase X-04 | 本番スモーク定型化／検証準備 script 化／残り E2E 11スペックの段階実行 | 任意候補・品質追加候補（別承認） |
+| Phase X-04 | 本番スモーク定型化／検証準備 script 化／残り E2E 11スペックの段階実行 | プレイブック docs-only 完了（doc49・判定 GO）。script化・E2E拡張は別承認の残候補 |
 
 ## 次にやること（人間が選択）
 
-1. **Phase 2-A 完了記録（doc48＋doc14 §45）の main 反映（push-only・別承認）**。
-2. **次フェーズの選択**（いずれも個別人間承認。AIは勝手に進まない）: Phase 2-B（Company Brain 後続3テーブル等・要スコープ設計）／Phase X-04（本番スモーク定型化・「本番に実在するデータで確認する」教訓の反映先候補）／3c-5（外部LLM送信解禁・高機密対応の重い承認）／ENSHiN OS 資料提供・設計統合（外部発信はしない）。
+1. **Phase X-04 プレイブック記録（doc49）の main 反映（push-only・別承認）**。
+2. **次フェーズの選択**（いずれも個別人間承認。AIは勝手に進まない）: Phase 2-B（Company Brain 後続3テーブル等・要スコープ設計）／Phase X-04 script化（doc49 の型の自動化・別承認）／3c-5（外部LLM送信解禁・高機密対応の重い承認）／ENSHiN OS 資料提供・設計統合（外部発信はしない）。
 - いずれの場合も **3c-5 の解禁・外部LLM送信・高機密ラベル解禁・Phase 8 実課金・ENSHiN OS 外部発信には、個別人間承認なしに進まない**。
 
 ## 今は絶対にやらないこと

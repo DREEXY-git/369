@@ -45,6 +45,7 @@
 - [[Phase2A2Schema変更]] — 初の schema 変更を破壊ゼロ・全検証 green で実施：migrate コマンドの罠2つ（Phase 2-A-2）。
 - [[Phase2A2本番確認]] — Company Brain の器が本番に入った：利用者実測 GO・画面なしが正常（Phase 2-A-2-PROD）。
 - [[Phase2A3aCompanyBrain可視化]] — Company Brain が初めて見えた：架空デモデータ＋read-only 2画面＋smoke 12/12（Phase 2-A-3a）。
+- [[Phase2A3a本番確認]] — 本番確認は HOLD：既存画面は正常・新導線が本番未到達。原因調査へ（Phase 2-A-3a-PROD）。
 
 ## 🔗 コード側の正（source of truth）
 

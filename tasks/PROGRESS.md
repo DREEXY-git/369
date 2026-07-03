@@ -70,7 +70,19 @@
 
 - Phase 2-A-2-PROD「Company Brain schema 変更の本番確認記録（docs-only）」: `docs/audit/35_phase2a2_production_confirmation.md` 新規＋doc14 §38 追記＋CURRENT_STATE 更新＋`369-vault/知識/Phase2A2本番確認.md`（index からリンク）＋本ファイル。**commit `ca18450` の本番反映を利用者実測で確認し GO を記録（2026-07-02）**: Vercel Ready / build green・latest commit ca18450・既存画面すべて OK・Company Brain UI 未実装は正常。**AI が本番接続確認したものではない**。コード変更なし・DB操作なし・schema/migration 変更なし・課金・決済・外部送信なし。次は Phase 2-A-3 または Phase X-04・別承認。詳細 `docs/audit/35_phase2a2_production_confirmation.md`。反映状態は git refs を正とする。
 
+- Phase 2-A-3a-PROD「Company Brain read-only 可視化の本番確認記録（docs-only）」: `docs/audit/37_phase2a3a_production_confirmation.md` 新規＋doc14 §39 追記＋CURRENT_STATE 更新＋`369-vault/知識/Phase2A3a本番確認.md`（index からリンク）＋本ファイル。**commit `9533488` の本番確認は利用者実測で HOLD（2026-07-03）**: Vercel Ready・latest commit 9533488・ログイン／ダッシュボード／既存主要画面すべて正常＝無回帰確認、ただし**ナビ「会社の頭脳」と /brain/policies・/brain/catalog が本番未確認/NG のため GO にしない**。repo側 read-only 実測でコード欠落説・flag/ナビ権限フィルタ説は否定済み（残候補: 本番エイリアス/キャッシュ/確認手順/症状未特定）。**AI が本番接続確認したものではない**。本番確認GO済み基準は Phase 2-A-2/`ca18450` のまま。コード変更なし・DB操作なし・schema/migration 変更なし・課金・決済・外部送信なし。次は read-only 原因調査（別ミッション）・**Phase 2-A-3b は HOLD 解消まで進まない**。詳細 `docs/audit/37_phase2a3a_production_confirmation.md`。反映状態は git refs を正とする。
+
 - Phase 2-A-3a「Company Brain 最小可視化（seed＋read-only 一覧）」: `packages/db/prisma/seed.ts`（CompanyPolicy 5件＋ProductCatalogItem 8件・全件 externalAiAllowed=false・label は NORMAL/INTERNAL のみ・PII/secret/実価格なし）＋read-only 2画面新規（`/brain/policies`・`/brain/catalog`。requireUser＋knowledge:read＋tenantId スコープ・作成/編集/削除/Server Action なし）＋ナビ1行（`components/shell/nav.ts` に「会社の頭脳」）＋smoke 末尾1本追加＋`docs/audit/36_phase2a3a_company_brain_readonly.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/Phase2A3aCompanyBrain可視化.md`（index からリンク）＋本ファイル。**検証全green（test 211・typecheck・lint・build・seed policies:5/catalogItems:8・smoke 12/12 green・既存11本回帰なし）**。**schema・migration・RBAC・labels・package/lock 無変更／作成・編集・writeAudit/writeDataAccess 本実装は 2-A-3b へ送り（別承認）／課金・決済・外部送信・本番接触なし**。詳細 `docs/audit/36_phase2a3a_company_brain_readonly.md`。反映状態は git refs を正とする。
+
+## Phase 2-A-3a-PROD — Company Brain read-only 可視化の本番確認（docs-only）
+
+状態: **本番確認 HOLD（利用者実測・2026-07-03）／read-only 原因調査へ** — 詳細 `docs/audit/37_phase2a3a_production_confirmation.md`・doc14 §39。反映状態は git refs を正とする。
+
+- ✅ 利用者実測（無回帰確認）: Vercel Ready・latest commit `9533488`・ログイン／ダッシュボード／顧客・LeadMap 等の既存主要画面すべて正常。
+- ❌ NG: ナビ「会社の頭脳」・`/brain/policies`・`/brain/catalog` が本番で未確認/NG（ボタン無し確認は到達不可）。**総合判定 HOLD・GO にしない**。
+- 🔎 repo側 read-only 実測: commit `9533488`＝origin/main にナビ1行＋2画面が含まれ、sidebar/mobile-nav に権限フィルタ・feature flag なし → **コード欠落説・flag説は否定**。残候補=本番エイリアス/キャッシュ/確認手順/直アクセス症状の未特定。
+- 📌 注記: **AI が本番接続確認したものではない**。本番確認GO済み基準は **Phase 2-A-2 / `ca18450` のまま更新しない**。
+- 次: **read-only 原因調査（別ミッション。DB・認証・RBAC・本番環境・Vercel環境変数は変更しない）** → 再実測 → GO記録。**Phase 2-A-3b は HOLD 解消まで進まない**。
 
 ## Phase 2-A-3a — Company Brain 最小可視化（seed＋read-only 一覧）
 

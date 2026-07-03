@@ -26,17 +26,21 @@
 - **Phase 1: 正式完了（Phase 1-50・判定根拠は doc24 の GO）。完了基準 commit: `e95f887`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/25_phase1_completion_record.md`）。
 - **Phase X: 完了済み（Phase X-CLOSE-01・判定 GO）。完了基準 commit: `70d4d06`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/32_phase_x_completion_record.md`）。恒久資産=E2E smoke green 回帰ゲート（11/11）＋roadmap 9本＋Feature Registry＋各種 Matrix＋Phase 2 entry review。
 - **現在地: Phase 2-A 進行中 — 2-A-3a（Company Brain read-only 可視化）まで完了**。seed に架空デモデータ（CompanyPolicy 5件＋ProductCatalogItem 8件・全件 externalAiAllowed=false・PII/secret/実価格なし）が入り、read-only 一覧2画面（`/brain/policies`・`/brain/catalog`・knowledge:read＋tenantId スコープ）とナビ1行（会社の頭脳）が実装済み（記録: doc36）。**smoke は12本体制で 12/12 green（既存11本回帰なし）**。schema・migration・RBAC・labels は 2-A-2 から無変更。**作成・編集・Server Action・writeAudit/writeDataAccess の本実装は 2-A-3b の個別人間承認まで行わない**（read-only 可視化完了、作成/編集は 2-A-3b 承認待ち）。前段: 2-A-2 schema 変更＋本番確認 GO（doc34・doc35・doc14 §38）。
-- **2-A-3a の本番確認は HOLD（利用者実測・2026-07-03・doc37＋doc14 §39）**: 既存画面は全て正常（無回帰）だが、ナビ「会社の頭脳」と `/brain/*` 2画面が本番で未確認/NG。repo側実測でコード欠落・flag・ナビ権限フィルタ説は否定済み。**次は read-only 原因調査（DB・認証・RBAC・本番環境・Vercel環境変数は変更しない）**。HOLD 解消（GO記録）まで 2-A-3b に進まない。
+- **2-A-3a の本番確認は 一度 HOLD → 再実測 GO で解消済み（利用者実測・2026-07-03・記録: doc38＋doc14 §40）**: 初回実測ではナビ「会社の頭脳」と `/brain/*` 2画面が本番未確認/NG で HOLD（doc37＋doc14 §39・記録として保持）。ハードリロード/開き直し後の再実測で、ナビ・2画面・作成/編集/削除ボタン無し・既存画面すべて GO を確認し解消。前回NGの原因はキャッシュ/反映タイミングの可能性が高いが断定しない。**Phase 2-A-3a は本番確認まで完全クローズ**。
 - **Phase 8（実課金・Stripe・usage billing・credits・cap/alert）には進まない**（別設計・別承認が前提）。
 
 ## 最新の本番確認GO済みプロダクト基準
 
-- 最新の本番確認 GO 済みプロダクト基準: **Phase 2-A-2**
-- 内容: **Company Brain schema 変更（CompanyPolicy / ProductCatalogItem の2テーブル追加・破壊的操作ゼロ）の本番確認 GO 記録**
-- Phase 2-A-2 実装 commit（本番確認 GO 済み基準）: `ca18450`（※現在 HEAD ではなく基準 commit。現在位置は git を参照）
-- 本番確認: 利用者の Vercel Production / 本番画面実測による **GO（2026-07-02）**。AI が本番接続確認したものではない。Company Brain UI は未実装のため見えないのが正常。
+- 最新の本番確認 GO 済みプロダクト基準: **Phase 2-A-3a**
+- 内容: **Company Brain read-only 可視化（seed デモデータ＋read-only 一覧2画面＋ナビ＋smoke 12本体制）の本番確認 GO 記録（一度 HOLD → 再実測で解消）**
+- Phase 2-A-3a 実装 commit（本番確認 GO 済み基準）: `9533488`（※現在 HEAD ではなく基準 commit。現在位置は git を参照）
+- 本番確認: 利用者の Vercel Production / 本番画面実測による **GO（2026-07-03・HOLD解消の再実測）**。AI が本番接続確認したものではない。seed は本番で自動実行されないため一覧が空でも正常。作成・編集・削除ボタンは無いのが正常（read-only）。
+- 詳細: `docs/audit/38_phase2a3a_hold_resolution_go.md`・`docs/audit/14_release_stabilization.md` §40（HOLD の経緯は doc37・doc14 §39）
+- （前基準: Phase 2-A-2 = Company Brain schema 変更の本番確認 GO。以下は当時の記録として保持）
+- Phase 2-A-2 実装 commit: `ca18450`
+- 本番確認: 利用者の Vercel Production / 本番画面実測による **GO（2026-07-02）**。AI が本番接続確認したものではない。
 - 詳細: `docs/audit/35_phase2a2_production_confirmation.md`・`docs/audit/14_release_stabilization.md` §38
-- （前基準: Phase 1-44 = Phase 1-43 `/admin/usage` の本番確認 GO。以下は当時の記録として保持）
+- （前々基準: Phase 1-44 = Phase 1-43 `/admin/usage` の本番確認 GO。以下は当時の記録として保持）
 - Phase 1-43 実装 commit: `ce858c7`
 - Phase 1-44 完了基準 commit（本番確認 GO 記録）: `3e3409f`（※これは「現在 HEAD」ではなく Phase 1-44 の完了基準 commit。現在位置は git を参照）
 - 本番確認: 利用者の Vercel Production `main` / CI / 本番画面確認による **GO（2026-07-01）**。AI が本番接続確認したものではない。
@@ -94,10 +98,9 @@
 
 ## 次にやること（人間が選択）
 
-1. **Phase 2-A-3a HOLD の read-only 原因調査**（doc37 §3 の候補絞り込み済み。本番で `/brain/policies` 直アクセス時の症状特定・Vercel Production ドメインの指すデプロイ確認・ハードリロード再確認。**DB・認証・RBAC・本番環境・Vercel環境変数は変更しない**）→ 原因特定 → 再実測 → GO 記録（doc38 候補）。
-2. **Phase 2-A-3b: 作成・編集・アーカイブ（Server Action＋入力検証＋writeAudit）＋機密参照ログ（writeDataAccess）の実装承認**（三段承認の第三段の後半。**2-A-3a の本番確認 HOLD 解消後**）。別承認。
-3. **Phase X-04: 本番スモーク定型化・残り E2E 段階実行**（任意の品質追加候補・2-A と並行可）。別承認。
-4. **Enshin OS 資料の提供**（Phase 2-F の入力。現状は証拠不足のため棚卸しを開始できない）。
+1. **Phase 2-A-3a-PROD-2 の main 反映（push-only・別承認）**（HOLD解消・GO記録 doc38＋doc14 §40 の反映）。
+2. **Phase 2-A-3b: 作成・編集・アーカイブ（Server Action＋入力検証＋writeAudit）＋機密参照ログ（writeDataAccess）の実装承認判断**（三段承認の第三段の後半。2-A-3a は本番確認まで完全クローズ済み）。別承認。
+3. **Phase X-04: 本番スモーク定型化・残り E2E 段階実行 または Enshin OS 資料の提供**（任意の品質追加候補・2-A と並行可／Phase 2-F の入力。Enshin は証拠不足のため棚卸し未開始）。別承認。
 - いずれの場合も **2-A-3b 承認前の書き込み系実装・Phase 8 実課金には進まない**。
 
 ## 今は絶対にやらないこと

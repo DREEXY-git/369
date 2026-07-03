@@ -2340,6 +2340,41 @@ model ProductCatalogItem {
   @@index([tenantId, productAssetId])
 }
 
+// 営業プレイブック（売り方の型・Phase 2-B-2・doc51 設計準拠）。
+// - 顧客名・会社名・成果数値・口コミ・顧客の声は本文に入れない（入力ガイドで担保・事例は Case Study 領域へ）
+// - 関連参照は relation なしの ID 配列（productAssetId / chunkIds と同じ流儀・doc51 §4-2 案A）
+// - label は UI/action 側で NORMAL / INTERNAL の2択に制限（高機密は保留）
+// - externalAiAllowed は false 固定運用（true にする UI を作らない）
+model SalesPlaybookEntry {
+  id                           String   @id @default(cuid())
+  tenantId                     String
+  title                        String
+  body                         String
+  category                     String
+  playbookType                 String
+  targetIndustry               String?
+  targetSituation              String?
+  objection                    String?
+  recommendedTalkTrack         String?
+  doNotSay                     String?
+  relatedPolicyIds             String[]
+  relatedProductCatalogItemIds String[]
+  tags                         String[]
+  label                        ConfidentialityLabel @default(INTERNAL)
+  externalAiAllowed            Boolean  @default(false)
+  sourceType                   String?
+  sourceNote                   String?
+  createdById                  String?
+  updatedById                  String?
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+  archivedAt                   DateTime?
+
+  @@index([tenantId, category])
+  @@index([tenantId, label])
+  @@index([tenantId, playbookType])
+}
+
 // ============================ バックアップ ====================================
 
 model BackupJob {

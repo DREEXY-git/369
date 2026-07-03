@@ -59,6 +59,7 @@
 - [[PhaseX04本番スモーク定型化]] — 本番確認の型を固定：§0実測テンプレート・GO/HOLD/STOP・本番に実在するデータで確認・ENSHiN OS追加停止条件（Phase X-04）。
 - [[Phase2B入口レビュー]] — 会社の頭脳の次の中身は営業プレイブックから：事例・顧客課題は許諾と高機密の部品が揃ってから（Phase 2-B-ENTRY・READY / GO）。
 - [[Phase2B1SalesPlaybook設計]] — 営業プレイブックの設計図：顧客名・事例を最初から入れない「売り方の型」の棚・実装は次の承認から（Phase 2-B-1）。
+- [[Phase2B2SalesPlaybookSchema変更]] — 営業プレイブックの器が完成：追加のみ・既存無傷・検証全green・本番反映はこれから（Phase 2-B-2）。
 
 ## 🔗 コード側の正（source of truth）
 

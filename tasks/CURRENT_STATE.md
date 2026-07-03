@@ -32,7 +32,7 @@
 - **2-A-3b-2（ProductCatalogItem 書き込み最小実装）＋本番確認GO 完了（記録: doc42＋doc43＋doc14 §42）**: 商品カタログに同じ型で3操作を実装。**安全境界（AI mutation禁止・label 2択・externalAiAllowed 封印・ソフトアーカイブ）を最初から組み込み、修正ループ0回で完走**。**priceNote は説明テキストのみで請求・課金・見積・会計に接続しない**。**smoke は14本体制で 14/14 green（既存13本回帰なし）**。**本番確認も利用者実測で GO（2026-07-04）＝Company Brain の2テーブルの人間書き込みは本番確認まで完了**。
 - **2-A-3c-1（AI参照経路＋writeDataAccess 設計・docs-only）完了（記録: doc44）**: AI が Company Brain を読む段の設計を固定。参照範囲=tenantId・archivedAt:null・NORMAL/INTERNAL のみ／外部LLM送信は externalAiAllowed=true＋maskText 済みのみ（true UI 無し＝構造的にゼロ）／記録は ai_reference をレコードごと1件／第一接続タスクはナレッジ検索。
 - **2-A-3c-2（Company Brain AI参照の最小実装）完了 — 一度 HOLD → 再実測 GO で解消済み（実装: doc45／HOLD: doc46＋doc14 §43／解消GO: doc47＋doc14 §44）**: ナレッジ検索のみに Company Brain 参照を注入（read-only・NORMAL/INTERNAL・canAccessLabel・外部LLM時は externalAiAllowed ゲートで注入ゼロの安全側デフォルト）。初回本番確認（2026-07-04）は「値引き承認ルール」の AI回答・参照セクション未確認で HOLD。read-only 原因調査と利用者再実測（2026-07-04）により、**原因は本番データ前提差（対象 CompanyPolicy が本番に不在）でありコードのバグではない**と確定。本番UIで会社方針を作成後、AI回答・「参照した会社の頭脳」・参照元タイトル・CompanyPolicy の ai_reference ログすべて GO。**Phase 2-A-3c-2 は本番確認まで完全クローズ**。高機密ラベル・externalAiAllowed true UI・外部LLM送信の解禁は 3c-5 の個別人間承認まで行わない。ENSHiN OS の外部発信・口コミ・SNS・顧客の声公開・許諾管理実装は未着手。
-- **Phase 2-B-2: SalesPlaybookEntry schema変更完了（判定 GO・記録: doc52）／ローカル検証全green・main反映と本番確認は未実施・UI/seed/実装は未着手**。§0 人間承認（APPROVED・呼称=Phase 2-B のまま・参照構造=ID配列・playbookType=approach/objection/preparation/talk_track）に基づき、doc51 §4 どおり model 追加＋migration 1つ（CREATE TABLE＋INDEX 3本のみ・destructive 0・既存model無変更）。検証: validate/migrate dev(ローカル)/status/test 211/typecheck/lint/build 全green。次は push-only（別承認）→ 本番確認（doc49 の型・既存画面無回帰が主眼）→ Phase 2-B-3 承認判断。
+- **Phase 2-B-2: SalesPlaybookEntry schema変更 — main反映済み・本番確認GO（実装記録: doc52／本番確認: doc53＋doc14 §46・2026-07-05）。Phase 2-B-2 は完全クローズ。UI/seed/実装は未着手（2-B-3 以降・別承認）**。§0 人間承認（APPROVED・呼称=Phase 2-B のまま・参照構造=ID配列・playbookType=approach/objection/preparation/talk_track）に基づき、doc51 §4 どおり model 追加＋migration 1つ（CREATE TABLE＋INDEX 3本のみ・destructive 0・既存model無変更）。検証: validate/migrate dev(ローカル)/status/test 211/typecheck/lint/build 全green。次は push-only（別承認）→ 本番確認（doc49 の型・既存画面無回帰が主眼）→ Phase 2-B-3 承認判断。
 - **Phase 2-B-1: SalesPlaybookEntry 設計 docs-only 完了（判定 GO・記録: doc51）／schema変更は 2-B-2 で実施済み**。設計の柱: 顧客名・事例・顧客の声を最初から扱わない「売り方の型」専用・既存2モデルの流儀を踏襲（tenantId スカラ・label 2択・externalAiAllowed false 封印・ソフトアーカイブ・関連参照は ID 配列案を推奨）・AI mutation禁止を actions 層で最初から・AI参照追加は 2-B-5 の別承認・三段承認計画（2-B-2 schema → 2-B-3 read-only → 2-B-4 書き込み → 2-B-5 AI参照 → 各段 PROD は doc49 の型）。
 - **Phase 2-B: 入口レビュー完了（Phase 2-B-ENTRY・判定 READY / GO・記録: doc50）／実装・schema変更・migration は未着手・次は人間判断**。doc33 の後続3領域を再評価し、**推奨 = Phase 2-B-1: SalesPlaybookEntry の設計 docs-only**（PII最遠・2-Aの安全境界を流用可）。Case Study は許諾管理・公開前承認・広告表現チェックの設計とセットで後続、Customer Pain は高機密ラベル対応（別の重い承認）の後で最後。呼称注意: roadmap 01 の「2-B」は CRM/Sales AI を指す（呼び分けは人間判断）。ENSHiN OS 詳細仕様は未提供のまま（証拠不足・doc07 方針維持）。
 - **Phase X-04（本番スモーク定型化）: docs-only 完了（判定 GO・2026-07-04・記録: doc49）**。Phase 2-A の HOLD 2件の教訓を「本番確認プレイブック」として固定（利用者実測のみ・§0 テンプレート・GO/HOLD/STOP 判定・**本番に実在するデータで確認**・ENSHiN OS 追加停止条件・標準プロンプト骨子）。以後の本番確認は doc49 の型に従う。**script化・E2E拡張・本番自動監視は未実装・後続別承認**。
@@ -40,12 +40,15 @@
 
 ## 最新の本番確認GO済みプロダクト基準
 
-- 最新の本番確認 GO 済みプロダクト基準: **Phase 2-A-3c-2**
-- 内容: **Company Brain AI参照（ナレッジ検索への参照注入＋レコードごとの ai_reference ログ）の本番確認 GO 記録（一度 HOLD → 再実測で解消）**
-- Phase 2-A-3c-2 基準 commit（本番確認 GO 済み基準）: `85f1bf3`（※現在 HEAD ではなく基準 commit。`700f79e` は HOLD記録の docs commit。現在位置は git を参照）
-- 本番確認: 利用者の Vercel Production / 本番画面実測による **GO（2026-07-04・HOLD解消の再実測）**。AI が本番接続確認したものではない。前回HOLDの原因は本番データ前提差（対象 CompanyPolicy 不在）で、本番UIで会社方針作成後に AI回答・参照セクション・参照元タイトル・ai_reference ログすべて GO。
-- 詳細: `docs/audit/47_phase2a3c2_hold_resolution_go.md`・`docs/audit/14_release_stabilization.md` §44（HOLD の経緯は doc46・§43）
-- （前基準: Phase 2-A-3b-2 = ProductCatalogItem 書き込みの本番確認 GO。以下は当時の記録として保持）
+- 最新の本番確認 GO 済みプロダクト基準: **Phase 2-B-2**
+- 内容: **SalesPlaybookEntry schema変更・migration作成（営業プレイブックの器）の本番確認 GO 記録**
+- Phase 2-B-2 基準 commit（本番確認 GO 済み基準）: `811b8c6`（※現在 HEAD ではなく基準 commit。現在位置は git を参照）
+- 本番確認: 利用者の Vercel Production / 本番画面実測による **GO（2026-07-05）**。AI が本番接続確認したものではない。Vercel Ready/green・**build成功（=CREATE TABLE+INDEX のみの migration が正常完了）**・commit 811b8c6・ログインOK・既存画面無回帰・**Sales Playbook 画面なしが正常（schema-only）**・エラーなし・外部送信なし。
+- 詳細: `docs/audit/53_phase2b2_production_confirmation.md`・`docs/audit/14_release_stabilization.md` §46
+- （前基準: Phase 2-A-3c-2 = Company Brain AI参照の本番確認 GO（一度 HOLD → 再実測で解消）。以下は当時の記録として保持）
+- Phase 2-A-3c-2 基準 commit: `85f1bf3`（`700f79e` は HOLD記録の docs commit）
+- 本番確認: 利用者実測による **GO（2026-07-04・HOLD解消の再実測）**。詳細: `docs/audit/47_phase2a3c2_hold_resolution_go.md`・doc14 §44（HOLD の経緯は doc46・§43）
+- （前々基準: Phase 2-A-3b-2 = ProductCatalogItem 書き込みの本番確認 GO。以下は当時の記録として保持）
 - Phase 2-A-3b-2 基準 commit: `aa40f2f`
 - 本番確認: 利用者実測による **GO（2026-07-04）**。詳細: `docs/audit/43_phase2a3b2_production_confirmation.md`・doc14 §42
 - （前々基準: Phase 2-A-3b-1 = CompanyPolicy 書き込み＋安全補正の本番確認 GO。以下は当時の記録として保持）
@@ -116,9 +119,8 @@
 
 ## 次にやること（人間が選択）
 
-1. **Phase 2-B-2 schema変更 commit の main 反映（push-only・別承認）**。反映後、Vercel prebuild の migrate deploy で本番DBに SalesPlaybookEntry テーブルが作られる。
-2. **本番確認（doc49 の型・利用者実測）**: schema-only のため主眼は既存画面の無回帰（新画面なしが正常＝2-A-2-PROD の前例）→ GO/HOLD 記録。
-3. **Phase 2-B-3（read-only 一覧＋seedデモデータ＋smoke＋本番確認）の承認判断**。
+1. **Phase 2-B-2 本番確認GO記録（doc53＋doc14 §46）の main 反映（push-only・別承認）**。
+2. **Phase 2-B-3（read-only 一覧＋seedデモデータ＋smoke＋本番確認）の承認判断**。seed / UI / AI参照には別承認なしに進まない。
 - いずれの場合も **3c-5 の解禁・外部LLM送信・高機密ラベル解禁・Phase 8 実課金・ENSHiN OS 外部発信には、個別人間承認なしに進まない**。
 
 ## 今は絶対にやらないこと

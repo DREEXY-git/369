@@ -55,6 +55,7 @@
 - [[Phase2A3c2CompanyBrainAI参照]] — AIが初めて会社の頭脳を読んだ：ナレッジ検索のみ・記録はレコードごと・外部送信ゼロ（Phase 2-A-3c-2）。
 - [[Phase2A3c2本番確認]] — AI参照の本番確認は HOLD：AI回答と参照セクションが本番で未表示・GO済み基準は動かさず read-only 原因調査へ（Phase 2-A-3c-2-PROD）。
 - [[Phase2A3c2HOLD解消]] — HOLD解消・再実測GO：原因はバグではなく本番データ前提差。会社方針を本番で作成したら AI参照が全表示（Phase 2-A-3c-2-PROD-2）。
+- [[Phase2A完了]] — Phase 2-A 正式完了：会社の頭脳を人間が育て・AIが安全に読み・記録が残る基盤が本番GOまで完成（Phase 2-A-CLOSE・判定 GO）。
 
 ## 🔗 コード側の正（source of truth）
 

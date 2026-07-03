@@ -25,7 +25,8 @@
 
 - **Phase 1: 正式完了（Phase 1-50・判定根拠は doc24 の GO）。完了基準 commit: `e95f887`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/25_phase1_completion_record.md`）。
 - **Phase X: 完了済み（Phase X-CLOSE-01・判定 GO）。完了基準 commit: `70d4d06`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/32_phase_x_completion_record.md`）。恒久資産=E2E smoke green 回帰ゲート（11/11）＋roadmap 9本＋Feature Registry＋各種 Matrix＋Phase 2 entry review。
-- **現在地: Phase 2-A 進行中 — 2-A-3a（Company Brain read-only 可視化）まで完了**。seed に架空デモデータ（CompanyPolicy 5件＋ProductCatalogItem 8件・全件 externalAiAllowed=false・PII/secret/実価格なし）が入り、read-only 一覧2画面（`/brain/policies`・`/brain/catalog`・knowledge:read＋tenantId スコープ）とナビ1行（会社の頭脳）が実装済み（記録: doc36）。**smoke は12本体制で 12/12 green（既存11本回帰なし）**。schema・migration・RBAC・labels は 2-A-2 から無変更。**作成・編集・Server Action・writeAudit/writeDataAccess の本実装は 2-A-3b の個別人間承認まで行わない**（read-only 可視化完了、作成/編集は 2-A-3b 承認待ち）。前段: 2-A-2 schema 変更＋本番確認 GO（doc34・doc35・doc14 §38）。
+- **Phase 2-A: 正式完了（Phase 2-A-CLOSE・判定 GO・2026-07-04）。完了対象の最新本番確認GO済みプロダクト基準: Phase 2-A-3c-2 / `85f1bf3`**（詳細 `docs/audit/48_phase2a_completion_record.md`・doc14 §45）。Company Brain foundation＝「器（schema）→ read-only 可視化 → 人間書き込み2テーブル → AI参照＋ai_reference ログ」がすべて本番確認GOまで完了。HOLD 2件は追記主義で解消済み。高機密・外部LLM解禁・3c-5・後続3テーブル・Phase 8・ENSHiN OS外部発信は後続別承認。以下は Phase 2-A 各段の当時記録。
+- 2-A-3a（Company Brain read-only 可視化）: seed に架空デモデータ（CompanyPolicy 5件＋ProductCatalogItem 8件・全件 externalAiAllowed=false・PII/secret/実価格なし）が入り、read-only 一覧2画面（`/brain/policies`・`/brain/catalog`・knowledge:read＋tenantId スコープ）とナビ1行（会社の頭脳）が実装済み（記録: doc36）。**smoke は12本体制で 12/12 green（既存11本回帰なし）**。schema・migration・RBAC・labels は 2-A-2 から無変更。**作成・編集・Server Action・writeAudit/writeDataAccess の本実装は 2-A-3b の個別人間承認まで行わない**（read-only 可視化完了、作成/編集は 2-A-3b 承認待ち）。前段: 2-A-2 schema 変更＋本番確認 GO（doc34・doc35・doc14 §38）。
 - **2-A-3a の本番確認は 一度 HOLD → 再実測 GO で解消済み（利用者実測・2026-07-03・記録: doc38＋doc14 §40）**: 初回実測ではナビ「会社の頭脳」と `/brain/*` 2画面が本番未確認/NG で HOLD（doc37＋doc14 §39・記録として保持）。ハードリロード/開き直し後の再実測で、ナビ・2画面・作成/編集/削除ボタン無し・既存画面すべて GO を確認し解消。前回NGの原因はキャッシュ/反映タイミングの可能性が高いが断定しない。**Phase 2-A-3a は本番確認まで完全クローズ**。
 - **2-A-3b-1（CompanyPolicy 書き込み最小実装）＋安全補正＋本番確認GO 完了（記録: doc39＋doc40＋doc41）**: 会社方針のみに作成・編集・アーカイブの3操作を実装（Server Action＋入力検証＋writeAudit・物理削除なし・externalAiAllowed は UI で変更不可）。安全補正で **AIロールは権限にかかわらず会社方針の mutation を一律拒否（rbac 無変更・actions 側で人間専用化）**・**扱える label は NORMAL / INTERNAL のみ（高機密ラベルは writeDataAccess 実装時まで保留）**。**本番確認も利用者実測で GO（2026-07-04・doc41＋doc14 §41）＝書き込み第一段は完全クローズ**。
 - **2-A-3b-2（ProductCatalogItem 書き込み最小実装）＋本番確認GO 完了（記録: doc42＋doc43＋doc14 §42）**: 商品カタログに同じ型で3操作を実装。**安全境界（AI mutation禁止・label 2択・externalAiAllowed 封印・ソフトアーカイブ）を最初から組み込み、修正ループ0回で完走**。**priceNote は説明テキストのみで請求・課金・見積・会計に接続しない**。**smoke は14本体制で 14/14 green（既存13本回帰なし）**。**本番確認も利用者実測で GO（2026-07-04）＝Company Brain の2テーブルの人間書き込みは本番確認まで完了**。
@@ -111,10 +112,9 @@
 
 ## 次にやること（人間が選択）
 
-1. **本GO記録（doc47＋doc14 §44）の main 反映（push-only・別承認）**。
-2. **Phase 2-A 全体クローズ判定 または 3c-5（外部LLM送信解禁等）の判断**（いずれも個別人間承認。AIは勝手に進まない）。
-3. **Phase X-04 または ENSHiN OS 資料の提供**（任意・並行可。ENSHiN OS の外部発信・口コミ・SNS・顧客の声公開には進まない）。別承認。
-- いずれの場合も **外部LLM送信の解禁・高機密ラベル解禁・Phase 8 実課金には、個別人間承認なしに進まない**。
+1. **Phase 2-A 完了記録（doc48＋doc14 §45）の main 反映（push-only・別承認）**。
+2. **次フェーズの選択**（いずれも個別人間承認。AIは勝手に進まない）: Phase 2-B（Company Brain 後続3テーブル等・要スコープ設計）／Phase X-04（本番スモーク定型化・「本番に実在するデータで確認する」教訓の反映先候補）／3c-5（外部LLM送信解禁・高機密対応の重い承認）／ENSHiN OS 資料提供・設計統合（外部発信はしない）。
+- いずれの場合も **3c-5 の解禁・外部LLM送信・高機密ラベル解禁・Phase 8 実課金・ENSHiN OS 外部発信には、個別人間承認なしに進まない**。
 
 ## 今は絶対にやらないこと
 

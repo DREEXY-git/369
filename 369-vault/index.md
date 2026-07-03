@@ -54,6 +54,7 @@
 - [[Phase2A3cAI参照設計]] — AIに読ませる前に「読んだ記録」と「外に出さない仕組み」を設計：実装は次の承認から（Phase 2-A-3c-1）。
 - [[Phase2A3c2CompanyBrainAI参照]] — AIが初めて会社の頭脳を読んだ：ナレッジ検索のみ・記録はレコードごと・外部送信ゼロ（Phase 2-A-3c-2）。
 - [[Phase2A3c2本番確認]] — AI参照の本番確認は HOLD：AI回答と参照セクションが本番で未表示・GO済み基準は動かさず read-only 原因調査へ（Phase 2-A-3c-2-PROD）。
+- [[Phase2A3c2HOLD解消]] — HOLD解消・再実測GO：原因はバグではなく本番データ前提差。会社方針を本番で作成したら AI参照が全表示（Phase 2-A-3c-2-PROD-2）。
 
 ## 🔗 コード側の正（source of truth）
 

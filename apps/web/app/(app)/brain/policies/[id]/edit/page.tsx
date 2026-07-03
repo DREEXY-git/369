@@ -42,6 +42,19 @@ export default async function EditCompanyPolicyPage({
     where: { id, tenantId: user.tenantId, archivedAt: null },
     select: { id: true, title: true, body: true, category: true, status: true, label: true, tags: true, externalAiAllowed: true },
   });
+  if (policy && policy.label !== 'NORMAL' && policy.label !== 'INTERNAL') {
+    return (
+      <div>
+        <PageHeader title="会社方針の編集" />
+        <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          高機密ラベルの方針はこの画面では編集できません（機密参照ログ対応後に扱えるようになります）。
+        </div>
+        <div className="mt-3">
+          <Link href="/brain/policies" className="text-sm text-muted-foreground underline">一覧へ戻る</Link>
+        </div>
+      </div>
+    );
+  }
   if (!policy) {
     return (
       <div>
@@ -98,10 +111,8 @@ export default async function EditCompanyPolicyPage({
                 <Select id="label" name="label" defaultValue={policy.label}>
                   <option value="NORMAL">通常</option>
                   <option value="INTERNAL">社内限</option>
-                  <option value="CONFIDENTIAL">機密</option>
-                  <option value="STRICT_SECRET">厳秘</option>
-                  <option value="EXECUTIVE_ONLY">役員限</option>
                 </Select>
+                <p className="text-xs text-muted-foreground">高機密ラベルは機密参照ログ対応後に扱えるようになります。</p>
               </div>
             </div>
             <div className="space-y-1.5">

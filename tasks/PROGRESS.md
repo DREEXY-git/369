@@ -74,9 +74,20 @@
 
 - Phase 2-A-3b-1「CompanyPolicy 書き込み最小実装（作成・編集・アーカイブ）」: `apps/web/app/(app)/brain/policies/actions.ts` 新規（create/update/archive の3 Server Action・requireUser→hasPermission（knowledge:create/update）→入力検証→tenantIdスコープ→prisma→writeAudit→revalidatePath）＋`new/page.tsx`・`[id]/edit/page.tsx` 新規＋一覧に権限別ボタン追加＋smoke 末尾1本追加（作成→一覧反映）＋`docs/audit/39_phase2a3b1_company_policy_write.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/Phase2A3b1CompanyPolicy書き込み.md`（index からリンク）＋本ファイル。**検証全green（test 211・typecheck・lint・build・migrate deploy pendingなし・seed policies:5/catalogItems:8・smoke 13/13 green・既存12本回帰なし・修正ループ0回）**。**物理削除なし（delete/deleteMany 不使用）／externalAiAllowed は UI で true にできない（create は false 固定・update は不変更）／rbac.ts・labels.ts・schema・migration・seed.ts・package/lock 無変更＝AI は knowledge:update を持たず編集・アーカイブ不可のまま／writeDataAccess は次段送り／ProductCatalogItem 書き込みは 2-A-3b-2（別承認）／課金・決済・外部送信・本番接触なし**。詳細 `docs/audit/39_phase2a3b1_company_policy_write.md`。反映状態は git refs を正とする。
 
+- Phase 2-A-3b-1-SAFE「CompanyPolicy 書き込み境界の安全補正」: `brain/policies/actions.ts`（`isHumanUser` 追加=AIロールは create/update/archive を権限判定前に一律拒否・`ALLOWED_LABELS` を NORMAL/INTERNAL のみに縮小）＋`new/page.tsx`・`[id]/edit/page.tsx`（label 選択肢を2択に・高機密ラベルの方針は編集フォーム自体を出さない）＋`docs/audit/40_phase2a3b1_company_policy_safety_patch.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/Phase2A3b1安全補正.md`（index からリンク）＋本ファイル。**監査で AI_AGENT の knowledge:create（下書き原則・他機能向け）経由の理論経路を特定し、rbac.ts 無変更のまま actions.ts 側で会社方針の mutation を人間専用化**。高機密ラベル（CONFIDENTIAL/STRICT_SECRET/EXECUTIVE_ONLY 等）は **writeDataAccess 実装時まで保留**。**検証全green・smoke 13/13 green 維持（既存12本回帰なし）・rbac/labels/schema/migration/seed/smoke/package 無変更・外部送信・課金・本番接触なし**。詳細 `docs/audit/40_phase2a3b1_company_policy_safety_patch.md`。反映状態は git refs を正とする。
+
 - Phase 2-A-3a-PROD-2「Company Brain 本番確認の HOLD解消・再実測GO記録（docs-only）」: `docs/audit/38_phase2a3a_hold_resolution_go.md` 新規＋doc14 §40 追記＋CURRENT_STATE 更新（GO済み基準を Phase 2-A-3a/`9533488` に更新・前基準 2-A-2/`ca18450` は保持）＋`369-vault/知識/Phase2A3a本番確認.md` 末尾追記＋index 1行更新＋本ファイル。**HOLD（doc37＋doc14 §39・記録として保持）後の利用者再実測で全項目 GO（2026-07-03）**: Vercel Ready・latest commit 9533488・ナビ「会社の頭脳」表示・`/brain/policies`・`/brain/catalog` が開く・作成/編集/削除ボタン無し（read-only で正常）・既存画面すべて正常。seed は本番で自動実行されないため一覧が空でも正常。前回NGの原因はキャッシュ/反映タイミングの可能性が高いが断定しない。**AI が本番接続確認したものではない**。コード変更なし・DB操作なし・schema/migration 変更なし・課金・決済・外部送信なし。**Phase 2-A-3a は本番確認まで完全クローズ**。次は main push（別承認）→ Phase 2-A-3b 承認判断。詳細 `docs/audit/38_phase2a3a_hold_resolution_go.md`。反映状態は git refs を正とする。
 
 - Phase 2-A-3a「Company Brain 最小可視化（seed＋read-only 一覧）」: `packages/db/prisma/seed.ts`（CompanyPolicy 5件＋ProductCatalogItem 8件・全件 externalAiAllowed=false・label は NORMAL/INTERNAL のみ・PII/secret/実価格なし）＋read-only 2画面新規（`/brain/policies`・`/brain/catalog`。requireUser＋knowledge:read＋tenantId スコープ・作成/編集/削除/Server Action なし）＋ナビ1行（`components/shell/nav.ts` に「会社の頭脳」）＋smoke 末尾1本追加＋`docs/audit/36_phase2a3a_company_brain_readonly.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/Phase2A3aCompanyBrain可視化.md`（index からリンク）＋本ファイル。**検証全green（test 211・typecheck・lint・build・seed policies:5/catalogItems:8・smoke 12/12 green・既存11本回帰なし）**。**schema・migration・RBAC・labels・package/lock 無変更／作成・編集・writeAudit/writeDataAccess 本実装は 2-A-3b へ送り（別承認）／課金・決済・外部送信・本番接触なし**。詳細 `docs/audit/36_phase2a3a_company_brain_readonly.md`。反映状態は git refs を正とする。
+
+## Phase 2-A-3b-1-SAFE — CompanyPolicy 書き込み境界の安全補正
+
+状態: **安全補正完了（GO・smoke 13/13 green 維持）** — 詳細 `docs/audit/40_phase2a3b1_company_policy_safety_patch.md`。反映状態は git refs を正とする。
+
+- 🔒 補正①: **AI mutation禁止** — `isHumanUser`（`isAiRole` を roles 全件に適用・roles 空も拒否）を create/update/archive の3 Action 先頭に追加。rbac.ts 無変更のまま、会社方針の変更を人間専用化。
+- 🔒 補正②: **label は NORMAL / INTERNAL のみ** — サーバ側 `ALLOWED_LABELS` 縮小＋フォーム2択化＋高機密ラベルの方針は編集フォーム非表示。**高機密ラベルは writeDataAccess 実装時まで保留**。
+- ✅ 維持確認: externalAiAllowed 封印（create false 固定/update 不変更/UI 不可）・物理削除なし・smoke 13/13 green（既存12本回帰なし）。
+- 次: main push（`9eea086`＋本補正の2コミット・別承認）→ 本番確認 → **Phase 2-A-3b-2（ProductCatalogItem）** の承認判断。
 
 ## Phase 2-A-3b-1 — CompanyPolicy 書き込み最小実装（作成・編集・アーカイブ）
 

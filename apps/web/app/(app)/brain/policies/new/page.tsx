@@ -75,10 +75,8 @@ export default async function NewCompanyPolicyPage({
                 <Select id="label" name="label" defaultValue="INTERNAL">
                   <option value="NORMAL">通常</option>
                   <option value="INTERNAL">社内限</option>
-                  <option value="CONFIDENTIAL">機密</option>
-                  <option value="STRICT_SECRET">厳秘</option>
-                  <option value="EXECUTIVE_ONLY">役員限</option>
                 </Select>
+                <p className="text-xs text-muted-foreground">高機密ラベルは機密参照ログ対応後に扱えるようになります。</p>
               </div>
             </div>
             <div className="space-y-1.5">

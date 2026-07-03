@@ -2,16 +2,23 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { requireUser, hasPermission } from '@/lib/auth/current-user';
+import { isAiRole } from '@hokko/shared';
+import { requireUser, hasPermission, type CurrentUser } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
 
-// Company Brain（会社方針）Phase 2-A-3b-1: create / update / archive の3操作のみ。
+// Company Brain（会社方針）Phase 2-A-3b-1（安全補正済み）: create / update / archive の3操作のみ。
 // 物理削除は実装しない（archivedAt によるソフトアーカイブのみ）。
 // externalAiAllowed はこの画面からは変更できない（create は false 固定・update では触らない）。
-// AI は knowledge:update を持たないため、編集・アーカイブは人間のみ（rbac.ts 無変更）。
+// 会社方針の変更（作成含む）は人間のみ: AIロール（AI_AGENT/AI_ASSISTANT）は権限にかかわらず
+// ここで一律拒否する（rbac.ts は無変更。AI_AGENT の knowledge:create 下書き権限は他機能向けに維持）。
+// label は NORMAL / INTERNAL のみ扱う。高機密ラベルは writeDataAccess（機密参照ログ）実装時まで保留。
 
 const ALLOWED_STATUSES = ['active', 'draft'] as const;
-const ALLOWED_LABELS = ['NORMAL', 'INTERNAL', 'CONFIDENTIAL', 'STRICT_SECRET', 'EXECUTIVE_ONLY'] as const;
+const ALLOWED_LABELS = ['NORMAL', 'INTERNAL'] as const;
+
+function isHumanUser(user: CurrentUser): boolean {
+  return user.roles.length > 0 && !user.roles.some((r) => isAiRole(r));
+}
 
 type PolicyInput = {
   title: string;
@@ -57,6 +64,7 @@ function parsePolicyForm(formData: FormData): { ok: true; value: PolicyInput } |
 
 export async function createCompanyPolicyAction(formData: FormData) {
   const user = await requireUser();
+  if (!isHumanUser(user)) redirect('/brain/policies?denied=1');
   if (!hasPermission(user, 'knowledge', 'create')) redirect('/brain/policies?denied=1');
 
   const parsed = parsePolicyForm(formData);
@@ -92,6 +100,7 @@ export async function createCompanyPolicyAction(formData: FormData) {
 export async function updateCompanyPolicyAction(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get('id') ?? '');
+  if (!isHumanUser(user)) redirect('/brain/policies?denied=1');
   if (!hasPermission(user, 'knowledge', 'update')) redirect('/brain/policies?denied=1');
 
   const existing = await prisma.companyPolicy.findFirst({
@@ -129,6 +138,7 @@ export async function updateCompanyPolicyAction(formData: FormData) {
 export async function archiveCompanyPolicyAction(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get('id') ?? '');
+  if (!isHumanUser(user)) redirect('/brain/policies?denied=1');
   if (!hasPermission(user, 'knowledge', 'update')) redirect('/brain/policies?denied=1');
 
   const existing = await prisma.companyPolicy.findFirst({

@@ -57,6 +57,7 @@
 - [[Phase2A3c2HOLD解消]] — HOLD解消・再実測GO：原因はバグではなく本番データ前提差。会社方針を本番で作成したら AI参照が全表示（Phase 2-A-3c-2-PROD-2）。
 - [[Phase2A完了]] — Phase 2-A 正式完了：会社の頭脳を人間が育て・AIが安全に読み・記録が残る基盤が本番GOまで完成（Phase 2-A-CLOSE・判定 GO）。
 - [[PhaseX04本番スモーク定型化]] — 本番確認の型を固定：§0実測テンプレート・GO/HOLD/STOP・本番に実在するデータで確認・ENSHiN OS追加停止条件（Phase X-04）。
+- [[Phase2B入口レビュー]] — 会社の頭脳の次の中身は営業プレイブックから：事例・顧客課題は許諾と高機密の部品が揃ってから（Phase 2-B-ENTRY・READY / GO）。
 
 ## 🔗 コード側の正（source of truth）
 

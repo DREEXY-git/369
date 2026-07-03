@@ -30,7 +30,7 @@
 - **2-A-3b-1（CompanyPolicy 書き込み最小実装）＋安全補正＋本番確認GO 完了（記録: doc39＋doc40＋doc41）**: 会社方針のみに作成・編集・アーカイブの3操作を実装（Server Action＋入力検証＋writeAudit・物理削除なし・externalAiAllowed は UI で変更不可）。安全補正で **AIロールは権限にかかわらず会社方針の mutation を一律拒否（rbac 無変更・actions 側で人間専用化）**・**扱える label は NORMAL / INTERNAL のみ（高機密ラベルは writeDataAccess 実装時まで保留）**。**本番確認も利用者実測で GO（2026-07-04・doc41＋doc14 §41）＝書き込み第一段は完全クローズ**。
 - **2-A-3b-2（ProductCatalogItem 書き込み最小実装）＋本番確認GO 完了（記録: doc42＋doc43＋doc14 §42）**: 商品カタログに同じ型で3操作を実装。**安全境界（AI mutation禁止・label 2択・externalAiAllowed 封印・ソフトアーカイブ）を最初から組み込み、修正ループ0回で完走**。**priceNote は説明テキストのみで請求・課金・見積・会計に接続しない**。**smoke は14本体制で 14/14 green（既存13本回帰なし）**。**本番確認も利用者実測で GO（2026-07-04）＝Company Brain の2テーブルの人間書き込みは本番確認まで完了**。
 - **2-A-3c-1（AI参照経路＋writeDataAccess 設計・docs-only）完了（記録: doc44）**: AI が Company Brain を読む段の設計を固定。参照範囲=tenantId・archivedAt:null・NORMAL/INTERNAL のみ／外部LLM送信は externalAiAllowed=true＋maskText 済みのみ（true UI 無し＝構造的にゼロ）／記録は ai_reference をレコードごと1件／第一接続タスクはナレッジ検索。
-- **2-A-3c-2（Company Brain AI参照の最小実装）実装完了（記録: doc45）**: ナレッジ検索のみに Company Brain 参照を注入（read-only・NORMAL/INTERNAL・canAccessLabel・外部LLM時は externalAiAllowed ゲートで注入ゼロの安全側デフォルト）。**AI が読んだレコードごとに機密参照ログ（ai_reference）を記録**し、画面に「参照した会社の頭脳」を表示。**smoke は15本体制で 15/15 green（既存14本回帰なし）**。**本番確認は未実施（push も別承認で未実施）**。高機密ラベル・externalAiAllowed true UI・外部LLM送信の解禁は 3c-5 の個別人間承認まで行わない。ENSHiN OS の外部発信・口コミ・SNS・顧客の声公開・許諾管理実装は未着手。
+- **2-A-3c-2（Company Brain AI参照の最小実装）は main反映済み・本番確認 HOLD（記録: doc45＋doc46＋doc14 §43）**: ナレッジ検索のみに Company Brain 参照を注入（read-only・NORMAL/INTERNAL・canAccessLabel・外部LLM時は externalAiAllowed ゲートで注入ゼロの安全側デフォルト）。ローカルは smoke 15/15 green だったが、**本番実測（2026-07-04）で「値引き承認ルール」の AI回答が表示されず「参照した会社の頭脳」セクションも未表示のため HOLD**（既存ナレッジ検索・既存画面は正常＝無回帰）。**原因は未特定・次は read-only 原因調査**（コード修正はしない）。高機密ラベル・externalAiAllowed true UI・外部LLM送信の解禁は 3c-5 の個別人間承認まで行わない。ENSHiN OS の外部発信・口コミ・SNS・顧客の声公開・許諾管理実装は未着手。
 - **Phase 8（実課金・Stripe・usage billing・credits・cap/alert）には進まない**（別設計・別承認が前提）。
 
 ## 最新の本番確認GO済みプロダクト基準
@@ -108,10 +108,10 @@
 
 ## 次にやること（人間が選択）
 
-1. **Phase 2-A-3c-2 の push（feature＋main・いずれも別承認）**と本番確認（利用者実測・doc46 候補。ナレッジ検索「値引き承認ルール」→ 参照元表示＋機密参照ログ確認）。
-2. **Phase 2-A-3c-5 の判断（時期未定・重い承認）**: 高機密ラベル解禁・externalAiAllowed true UI・外部LLM送信の解禁。それまで外部LLMへの Company Brain 送信はゼロ維持。
-3. **Phase X-04: 本番スモーク定型化・残り E2E 段階実行 または ENSHiN OS 資料の提供**（任意の品質追加候補・2-A と並行可／Phase 2-F の入力。ENSHiN OS は証拠不足のため棚卸し未開始。外部発信・口コミ・SNS・顧客の声公開には進まない）。別承認。
-- いずれの場合も **外部LLM送信の解禁・高機密ラベル解禁・Phase 8 実課金には進まない**。
+1. **本HOLD記録（doc46＋doc14 §43）の main 反映（push-only・別承認）**。
+2. **Phase 2-A-3c-2 の read-only 原因調査**（別ミッション。本番再実測＋repo側確認。doc46 §3 の観点=本番に「値引き承認ルール」データが無い前提差の可能性／AI回答未表示は別要因の可能性。**コード修正・DB・認証・RBAC・本番環境・Vercel環境変数の変更はしない**）→ 原因特定 → 再実測 → GO記録（doc47 候補）。
+3. **Phase X-04 または ENSHiN OS 資料の提供**（任意・並行可。ENSHiN OS の外部発信・口コミ・SNS・顧客の声公開には進まない）。別承認。
+- いずれの場合も **HOLD解消前の 3c-5 判断・外部LLM送信の解禁・高機密ラベル解禁・Phase 8 実課金には進まない**。
 
 ## 今は絶対にやらないこと
 

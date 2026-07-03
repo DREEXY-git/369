@@ -144,6 +144,7 @@ export const NAV: NavGroup[] = [
       { label: 'タスク', href: '/tasks', icon: ListTodo },
       { label: 'ナレッジ検索', href: '/knowledge/search', icon: Search },
       { label: '会社の頭脳', href: '/brain/policies', icon: Brain },
+      { label: '営業プレイブック', href: '/brain/playbooks', icon: BookText },
     ],
   },
   {

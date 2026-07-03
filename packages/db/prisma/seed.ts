@@ -698,6 +698,18 @@ async function main() {
       { tenantId, name: '看板・サインデザイン', description: '店舗看板・催事サインのデザインと製作手配。設置工事の調整まで対応する。', category: 'イベント', targetPain: '店の場所が分かりにくく初来店につながらない', strengths: 'イベント装飾と合わせた一体デザイン', priceNote: 'サイズ・素材により個別見積り。', tags: ['デザイン'], label: 'NORMAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
     ],
   });
+  // Sales Playbook（営業プレイブック・Phase 2-B-3）: 架空の「売り方の型」のみ。
+  // 顧客名・会社名・成果数値・口コミ・顧客の声・実価格は入れない（doc51 入力ガイド）。
+  await prisma.salesPlaybookEntry.createMany({
+    data: [
+      { tenantId, title: '美容室向け・予約導線の切り口', body: '口コミ評価が高い美容室には、電話予約の取りこぼしを入口に、LINE予約とスマホ最適化の改善から提案する。最初の30秒は相手の強み（口コミ・技術）を認める言葉から入る。', category: '切り口', playbookType: 'approach', targetIndustry: '美容室', targetSituation: '初回訪問・初回架電', recommendedTalkTrack: '「口コミ拝見しました。予約が電話中心だと、営業中に取りこぼしが出ていませんか？」', doNotSay: 'No.1表記を使わない。効果保証（必ず売上が上がる等）をしない。', tags: ['予約', '導線'], label: 'NORMAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, title: 'イベント会社向け・一括手配の切り口', body: '複数業者への発注に疲れている主催者には、機材＋設営＋運営の一括対応を「調整コストの削減」として提案する。安全計画書の実績を添える。', category: '切り口', playbookType: 'approach', targetIndustry: 'イベント主催', targetSituation: '展示会・催事の企画段階', recommendedTalkTrack: '「手配先が分かれていると当日の連絡が大変ではないですか？窓口を1つにできます」', doNotSay: '他社の悪口を言わない。誇大広告表現を避ける。', tags: ['イベント', '一括'], label: 'NORMAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, title: '「高い」と言われたときの返し方', body: '価格への反論には値引きで応えず、まず「何と比べて高いと感じたか」を確認する。分解して価値を説明し、必要なら範囲の調整を提案する。値引きは会社方針（値引き承認ルール）に従い上限20%・承認必須。', category: '反論対応', playbookType: 'objection', objection: '料金が高い。予算に合わない。', recommendedTalkTrack: '「どの部分が予算と合わない感じでしょうか？内訳を分けてご説明させてください」', doNotSay: '即値引きしない。競合をけなさない。効果保証をしない。', tags: ['価格', '反論'], label: 'INTERNAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, title: '「今は忙しい」と言われたときの返し方', body: '繁忙を理由に断られたら、繁忙期こそ効く省力化（予約・SNSの自動化）を一言だけ添えて、閑散期の再訪問の約束を取る。深追いしない。', category: '反論対応', playbookType: 'objection', objection: '今は忙しくてそれどころではない。', recommendedTalkTrack: '「お忙しい時期にすみません。落ち着く時期に5分だけお時間いただけませんか」', doNotSay: 'しつこく食い下がらない。相手の業務を軽く見る発言をしない。', tags: ['再訪問'], label: 'INTERNAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, title: '提案前チェックリスト（共通）', body: '訪問前に確認する: ①相手の業種と繁忙期 ②既存のWeb/予約/SNSの状態 ③会社方針の値引き承認ルール ④提案する商品の対象課題と強み ⑤持参資料。顧客固有の機密情報はこのプレイブックに書かず、商談メモ側に記録する。', category: '提案準備', playbookType: 'preparation', targetSituation: '訪問・商談の前日まで', doNotSay: '確認していないことを「できます」と言わない。', tags: ['準備', 'チェックリスト'], label: 'NORMAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, title: '初回ヒアリングの基本トーク', body: '初回は売り込まず、現状の困りごとを3つ聞くことに集中する。聞く順番: ①集客の入口 ②予約・問い合わせの受け方 ③一番時間を取られている作業。最後に「次回、合いそうな案を1枚だけ持ってきます」で締める。', category: 'トーク', playbookType: 'talk_track', targetSituation: '初回面談（15分想定）', recommendedTalkTrack: '「今日は売り込みではなく、現状の困りごとを教えてください。合わなければ提案しません」', doNotSay: '初回でクロージングを急がない。効果保証をしない。', tags: ['ヒアリング'], label: 'NORMAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+    ],
+  });
 
   // ---- Seed audit logs ----
   await prisma.auditLog.createMany({
@@ -718,6 +730,7 @@ async function main() {
     meetings: await prisma.meeting.count(),
     policies: await prisma.companyPolicy.count(),
     catalogItems: await prisma.productCatalogItem.count(),
+    playbooks: await prisma.salesPlaybookEntry.count(),
   };
   console.log('✅ seed done', counts, firstDraftId ? `firstDraft=${firstDraftId}` : '');
 }

@@ -61,6 +61,7 @@
 - [[Phase2B1SalesPlaybook設計]] — 営業プレイブックの設計図：顧客名・事例を最初から入れない「売り方の型」の棚・実装は次の承認から（Phase 2-B-1）。
 - [[Phase2B2SalesPlaybookSchema変更]] — 営業プレイブックの器が完成：追加のみ・既存無傷・検証全green・本番反映はこれから（Phase 2-B-2）。
 - [[Phase2B2本番確認]] — 営業プレイブックの器が本番で GO：build成功＝migration成功・既存画面無回帰・画面なしが正常（Phase 2-B-2-PROD）。
+- [[Phase2B3SalesPlaybook可視化]] — 営業プレイブックが初めて見えた：架空の型6件＋閲覧専用一覧＋smoke 16/16・本番確認はこれから（Phase 2-B-3）。
 
 ## 🔗 コード側の正（source of truth）
 

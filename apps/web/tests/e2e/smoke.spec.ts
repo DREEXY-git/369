@@ -126,3 +126,13 @@ test('ナレッジ検索で会社の頭脳の参照元が表示される', async
   await expect(page.getByText('参照した会社の頭脳', { exact: false })).toBeVisible();
   await expect(page.getByText('値引き承認ルール').first()).toBeVisible();
 });
+
+test('営業プレイブックの read-only 一覧が表示される', async ({ page }) => {
+  await login(page);
+  await page.goto('/brain/playbooks');
+  await expect(page.getByRole('heading', { name: '会社の頭脳（営業プレイブック）' })).toBeVisible();
+  await expect(page.getByText('美容室向け・予約導線の切り口')).toBeVisible();
+  await expect(page.getByText('この画面は閲覧のみです。')).toBeVisible();
+  await expect(page.getByRole('link', { name: '新規作成' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'アーカイブ' })).toHaveCount(0);
+});

@@ -104,3 +104,17 @@ test('Company Brain の会社方針を作成すると一覧に表示される', 
   await page.waitForURL('**/brain/policies');
   await expect(page.getByText(uniqueTitle)).toBeVisible();
 });
+
+test('Company Brain の商品カタログを作成すると一覧に表示される', async ({ page }) => {
+  await login(page);
+  await page.goto('/brain/catalog/new');
+  const uniqueName = `E2E商品-${Date.now()}`;
+  await page.getByLabel('商品・サービス名（必須・120文字まで）').fill(uniqueName);
+  await page.getByLabel('説明（必須・5000文字まで）').fill('E2E テスト用の商品説明です。架空の内容で、PII や secret や実価格を含みません。');
+  await page.getByLabel('分類（必須・80文字まで）').fill('Web支援');
+  await page.getByLabel('状態').selectOption('active');
+  await page.getByLabel('機密ラベル').selectOption('INTERNAL');
+  await page.getByRole('button', { name: '作成する' }).click();
+  await page.waitForURL('**/brain/catalog');
+  await expect(page.getByText(uniqueName)).toBeVisible();
+});

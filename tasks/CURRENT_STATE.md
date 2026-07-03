@@ -28,17 +28,20 @@
 - **現在地: Phase 2-A 進行中 — 2-A-3a（Company Brain read-only 可視化）まで完了**。seed に架空デモデータ（CompanyPolicy 5件＋ProductCatalogItem 8件・全件 externalAiAllowed=false・PII/secret/実価格なし）が入り、read-only 一覧2画面（`/brain/policies`・`/brain/catalog`・knowledge:read＋tenantId スコープ）とナビ1行（会社の頭脳）が実装済み（記録: doc36）。**smoke は12本体制で 12/12 green（既存11本回帰なし）**。schema・migration・RBAC・labels は 2-A-2 から無変更。**作成・編集・Server Action・writeAudit/writeDataAccess の本実装は 2-A-3b の個別人間承認まで行わない**（read-only 可視化完了、作成/編集は 2-A-3b 承認待ち）。前段: 2-A-2 schema 変更＋本番確認 GO（doc34・doc35・doc14 §38）。
 - **2-A-3a の本番確認は 一度 HOLD → 再実測 GO で解消済み（利用者実測・2026-07-03・記録: doc38＋doc14 §40）**: 初回実測ではナビ「会社の頭脳」と `/brain/*` 2画面が本番未確認/NG で HOLD（doc37＋doc14 §39・記録として保持）。ハードリロード/開き直し後の再実測で、ナビ・2画面・作成/編集/削除ボタン無し・既存画面すべて GO を確認し解消。前回NGの原因はキャッシュ/反映タイミングの可能性が高いが断定しない。**Phase 2-A-3a は本番確認まで完全クローズ**。
 - **2-A-3b-1（CompanyPolicy 書き込み最小実装）＋安全補正＋本番確認GO 完了（記録: doc39＋doc40＋doc41）**: 会社方針のみに作成・編集・アーカイブの3操作を実装（Server Action＋入力検証＋writeAudit・物理削除なし・externalAiAllowed は UI で変更不可）。安全補正で **AIロールは権限にかかわらず会社方針の mutation を一律拒否（rbac 無変更・actions 側で人間専用化）**・**扱える label は NORMAL / INTERNAL のみ（高機密ラベルは writeDataAccess 実装時まで保留）**。**本番確認も利用者実測で GO（2026-07-04・doc41＋doc14 §41）＝書き込み第一段は完全クローズ**。
-- **2-A-3b-2（ProductCatalogItem 書き込み最小実装）実装完了（記録: doc42）**: 商品カタログに同じ型で3操作を実装。**安全境界（AI mutation禁止・label 2択・externalAiAllowed 封印・ソフトアーカイブ）を最初から組み込み、修正ループ0回で完走**。**priceNote は説明テキストのみで請求・課金・見積・会計に接続しない**。productAssetId は UI で扱わない。**smoke は14本体制で 14/14 green（既存13本回帰なし）**。**本番確認は未実施（main 反映後の利用者実測が次）**。**writeDataAccess と AI参照経路は次段の個別人間承認まで行わない**。ENSHiN OS の外部発信・口コミ・SNS・顧客の声公開・許諾管理実装は未着手。
+- **2-A-3b-2（ProductCatalogItem 書き込み最小実装）＋本番確認GO 完了（記録: doc42＋doc43＋doc14 §42）**: 商品カタログに同じ型で3操作を実装。**安全境界（AI mutation禁止・label 2択・externalAiAllowed 封印・ソフトアーカイブ）を最初から組み込み、修正ループ0回で完走**。**priceNote は説明テキストのみで請求・課金・見積・会計に接続しない**。**smoke は14本体制で 14/14 green（既存13本回帰なし）**。**本番確認も利用者実測で GO（2026-07-04）＝Company Brain の2テーブルの人間書き込みは本番確認まで完了**。**writeDataAccess と AI参照経路は次段の個別人間承認まで行わない**。ENSHiN OS の外部発信・口コミ・SNS・顧客の声公開・許諾管理実装は未着手。
 - **Phase 8（実課金・Stripe・usage billing・credits・cap/alert）には進まない**（別設計・別承認が前提）。
 
 ## 最新の本番確認GO済みプロダクト基準
 
-- 最新の本番確認 GO 済みプロダクト基準: **Phase 2-A-3b-1**
-- 内容: **CompanyPolicy（会社方針）の作成・編集・アーカイブ（書き込み最小実装＋安全補正）の本番確認 GO 記録**
-- Phase 2-A-3b-1 基準 commit（本番確認 GO 済み基準）: `706358e`（実装 `9eea086`＋安全補正 `706358e`。※現在 HEAD ではなく基準 commit。現在位置は git を参照）
-- 本番確認: 利用者の Vercel Production / 本番画面実測による **GO（2026-07-04）**。AI が本番接続確認したものではない。作成・編集・アーカイブ・機密ラベル2択（通常/社内限のみ）・監査ログ・既存画面すべて GO。
-- 詳細: `docs/audit/41_phase2a3b1_production_confirmation.md`・`docs/audit/14_release_stabilization.md` §41
-- （前基準: Phase 2-A-3a = Company Brain read-only 可視化の本番確認 GO（一度 HOLD → 再実測で解消）。以下は当時の記録として保持）
+- 最新の本番確認 GO 済みプロダクト基準: **Phase 2-A-3b-2**
+- 内容: **ProductCatalogItem（商品カタログ）の作成・編集・アーカイブ（書き込み最小実装・安全境界組み込み済み）の本番確認 GO 記録**
+- Phase 2-A-3b-2 基準 commit（本番確認 GO 済み基準）: `aa40f2f`（※現在 HEAD ではなく基準 commit。現在位置は git を参照）
+- 本番確認: 利用者の Vercel Production / 本番画面実測による **GO（2026-07-04）**。AI が本番接続確認したものではない。作成・編集・アーカイブ・機密ラベル2択（通常/社内限のみ）・価格メモ注意書き・監査ログ・既存画面すべて GO。
+- 詳細: `docs/audit/43_phase2a3b2_production_confirmation.md`・`docs/audit/14_release_stabilization.md` §42
+- （前基準: Phase 2-A-3b-1 = CompanyPolicy 書き込み＋安全補正の本番確認 GO。以下は当時の記録として保持）
+- Phase 2-A-3b-1 基準 commit: `706358e`（実装 `9eea086`＋安全補正）
+- 本番確認: 利用者実測による **GO（2026-07-04）**。詳細: `docs/audit/41_phase2a3b1_production_confirmation.md`・doc14 §41
+- （前々基準: Phase 2-A-3a = Company Brain read-only 可視化の本番確認 GO（一度 HOLD → 再実測で解消）。以下は当時の記録として保持）
 - Phase 2-A-3a 実装 commit: `9533488`
 - 本番確認: 利用者実測による **GO（2026-07-03・HOLD解消の再実測）**。詳細: `docs/audit/38_phase2a3a_hold_resolution_go.md`・doc14 §40（HOLD の経緯は doc37・§39）
 - （前々基準: Phase 2-A-2 = Company Brain schema 変更の本番確認 GO。以下は当時の記録として保持）
@@ -103,9 +106,9 @@
 
 ## 次にやること（人間が選択）
 
-1. **Phase 2-A-3b-2 の main 反映（push-only・別承認）**と本番確認（利用者実測・doc43 候補。商品カタログの作成→編集→アーカイブの1周＋ラベル2択＋監査ログ）。
-2. **writeDataAccess＋AI参照経路の実装承認判断**（Company Brain を AI が実際に「読む」段。機密参照ログとセットで設計・別承認）。
-3. **Phase X-04: 本番スモーク定型化・残り E2E 段階実行 または Enshin OS 資料の提供**（任意の品質追加候補・2-A と並行可／Phase 2-F の入力。Enshin は証拠不足のため棚卸し未開始）。別承認。
+1. **Phase 2-A-3b-2-PROD の main 反映（push-only・別承認）**（本番確認GO記録 doc43＋doc14 §42 の反映）。
+2. **writeDataAccess＋AI参照経路の設計/実装承認判断**（Company Brain を AI が実際に「読む」段。機密参照ログとセットで設計・別承認）。
+3. **Phase X-04: 本番スモーク定型化・残り E2E 段階実行 または ENSHiN OS 資料の提供**（任意の品質追加候補・2-A と並行可／Phase 2-F の入力。ENSHiN OS は証拠不足のため棚卸し未開始。外部発信・口コミ・SNS・顧客の声公開には進まない）。別承認。
 - いずれの場合も **writeDataAccess・AI参照経路の承認前実装・Phase 8 実課金には進まない**。
 
 ## 今は絶対にやらないこと

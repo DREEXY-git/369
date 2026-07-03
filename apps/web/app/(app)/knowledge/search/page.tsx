@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, Badge, Input, Button, EmptySt
 import { LabelBadge } from '@/components/badges';
 import { getEmbeddingProvider, answerKnowledgeQuestion } from '@hokko/ai';
 import { rankByEmbedding, canAccessLabel, type ConfidentialityLabel } from '@hokko/shared';
+import { getCompanyBrainReferences, type CompanyBrainReference } from '@/lib/company-brain-reference';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,7 @@ export default async function KnowledgeSearchPage({ searchParams }: { searchPara
 
   let answer: Awaited<ReturnType<typeof answerKnowledgeQuestion>> | null = null;
   let hits: { documentId: string; title: string; text: string; label: ConfidentialityLabel; score: number }[] = [];
+  let brainRefs: CompanyBrainReference[] = [];
   let blocked = false;
 
   if (q) {
@@ -65,9 +67,14 @@ export default async function KnowledgeSearchPage({ searchParams }: { searchPara
         score: Math.round(r.score * 100) / 100,
       }));
 
+    // Company Brain（会社方針・商品カタログ）の参照候補を取得（Phase 2-A-3c-2）。
+    // read-only・NORMAL/INTERNALのみ・外部LLM時は externalAiAllowed ゲート＋maskText（helper 内で適用）。
+    const brain = await getCompanyBrainReferences({ tenantId: user.tenantId, roles: user.roles, question: q });
+    brainRefs = brain.references;
+
     answer = await answerKnowledgeQuestion({
       question: q,
-      contexts: hits.map((h) => ({ title: h.title, text: h.text })),
+      contexts: [...hits.map((h) => ({ title: h.title, text: h.text })), ...brain.contexts],
     });
 
     // AI によるナレッジ参照を機密参照ログに記録（RBAC/機密ラベルでのフィルタは上で適用済み）。
@@ -79,6 +86,20 @@ export default async function KnowledgeSearchPage({ searchParams }: { searchPara
       label: hits[0]?.label ?? 'INTERNAL',
       purpose: `ナレッジ検索: ${q.slice(0, 80)}`,
     });
+
+    // AI が参照した Company Brain レコードごとに機密参照ログ（ai_reference）を記録（doc44 §6）。
+    // purpose には質問の先頭のみを入れ、本文・価格メモ・PII は入れない。
+    for (const ref of brainRefs) {
+      await writeAIDataAccess({
+        tenantId: user.tenantId,
+        actorId: user.userId,
+        actorType: 'user',
+        entityType: ref.entityType,
+        entityId: ref.entityId,
+        label: ref.label,
+        purpose: `ナレッジ検索: ${q.slice(0, 80)}`,
+      });
+    }
 
     // RetrievalLog / AnswerCitation を保存
     const log = await prisma.retrievalLog.create({
@@ -130,6 +151,25 @@ export default async function KnowledgeSearchPage({ searchParams }: { searchPara
             <CardHeader><CardTitle>🤖 AIの回答（信頼度 {Math.round(answer.confidence * 100)}%）</CardTitle></CardHeader>
             <CardContent><pre className="whitespace-pre-wrap font-sans text-sm">{answer.answer}</pre></CardContent>
           </Card>
+
+          {brainRefs.length > 0 ? (
+            <div>
+              <h2 className="mb-2 text-sm font-semibold">参照した会社の頭脳（{brainRefs.length}件）</h2>
+              <div className="space-y-2">
+                {brainRefs.map((r) => (
+                  <Card key={r.entityId}>
+                    <CardContent className="pt-3">
+                      <div className="flex items-center gap-2">
+                        <Badge tone="slate">{r.entityType === 'CompanyPolicy' ? '会社方針' : '商品カタログ'}</Badge>
+                        <span className="font-medium">{r.title}</span>
+                        <LabelBadge label={r.label} />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div>
             <h2 className="mb-2 text-sm font-semibold">引用元（{hits.length}件）</h2>

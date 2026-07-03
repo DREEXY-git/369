@@ -52,6 +52,7 @@
 - [[Phase2A3b2ProductCatalog書き込み]] — 商品カタログにも書き込み：安全境界を最初から組み込み修正ループ0回・価格メモと課金の分離（Phase 2-A-3b-2）。
 - [[Phase2A3b2本番確認]] — 商品カタログの書き込みが本番で GO：Company Brain 2テーブルの人間書き込みが完全クローズ（Phase 2-A-3b-2-PROD）。
 - [[Phase2A3cAI参照設計]] — AIに読ませる前に「読んだ記録」と「外に出さない仕組み」を設計：実装は次の承認から（Phase 2-A-3c-1）。
+- [[Phase2A3c2CompanyBrainAI参照]] — AIが初めて会社の頭脳を読んだ：ナレッジ検索のみ・記録はレコードごと・外部送信ゼロ（Phase 2-A-3c-2）。
 
 ## 🔗 コード側の正（source of truth）
 

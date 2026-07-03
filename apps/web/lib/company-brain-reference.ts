@@ -1,0 +1,149 @@
+import { isExternalLlmEnabled } from '@hokko/ai';
+import { canAccessLabel, maskText, type ConfidentialityLabel, type RoleKey } from '@hokko/shared';
+import { prisma } from '@/lib/db';
+
+// Company Brain（会社方針・商品カタログ）の AI 参照候補取得（Phase 2-A-3c-2・doc44 設計準拠）。
+// - read-only（create/update/delete は一切呼ばない）
+// - tenantId スコープ・archivedAt:null・label は NORMAL/INTERNAL のみ・canAccessLabel を通す
+// - 外部LLM（FakeLLM 以外）の場合は externalAiAllowed=true のレコードのみ注入し、maskText を通す
+//   （現状 true にする UI は無いため、外部LLM時の注入はゼロになるのが安全側デフォルト）
+// - FakeLLM はローカル実行のため外部送信に該当しない（doc44 §5 の整理）
+// - priceNote は説明テキストとして文脈化するのみで、価格計算・請求・課金には使わない
+
+export type CompanyBrainReference = {
+  entityType: 'CompanyPolicy' | 'ProductCatalogItem';
+  entityId: string;
+  title: string;
+  label: ConfidentialityLabel;
+};
+
+export type CompanyBrainContext = { title: string; text: string };
+
+export type CompanyBrainResult = {
+  contexts: CompanyBrainContext[];
+  references: CompanyBrainReference[];
+};
+
+const AI_READABLE_LABELS: ConfidentialityLabel[] = ['NORMAL', 'INTERNAL'];
+const MAX_PER_TABLE = 3;
+const MAX_TOTAL = 5;
+const MIN_SCORE = 3;
+const CONTEXT_TEXT_LIMIT = 800;
+
+function uniqueBigrams(text: string): string[] {
+  const grams = new Set<string>();
+  const t = text.replace(/\s+/g, '');
+  for (let i = 0; i + 2 <= t.length; i++) grams.add(t.slice(i, i + 2));
+  return [...grams];
+}
+
+/** 質問文と候補フィールドの簡易一致スコア（決定的・LLM不使用）。 */
+function matchScore(question: string, title: string, haystack: string): number {
+  let score = 0;
+  if (title.length >= 2 && (question.includes(title) || title.includes(question))) score += 10;
+  for (const g of uniqueBigrams(question)) {
+    if (haystack.includes(g)) score += 1;
+  }
+  return score;
+}
+
+export async function getCompanyBrainReferences(input: {
+  tenantId: string;
+  roles: RoleKey[];
+  question: string;
+}): Promise<CompanyBrainResult> {
+  const { tenantId, roles, question } = input;
+  const q = question.trim();
+  if (!q) return { contexts: [], references: [] };
+
+  const [policies, items] = await Promise.all([
+    prisma.companyPolicy.findMany({
+      where: { tenantId, archivedAt: null, label: { in: AI_READABLE_LABELS } },
+      select: { id: true, title: true, body: true, category: true, tags: true, label: true, externalAiAllowed: true },
+    }),
+    prisma.productCatalogItem.findMany({
+      where: { tenantId, archivedAt: null, label: { in: AI_READABLE_LABELS } },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        category: true,
+        targetPain: true,
+        strengths: true,
+        priceNote: true,
+        tags: true,
+        label: true,
+        externalAiAllowed: true,
+      },
+    }),
+  ]);
+
+  type Candidate = {
+    entityType: CompanyBrainReference['entityType'];
+    entityId: string;
+    title: string;
+    label: ConfidentialityLabel;
+    externalAiAllowed: boolean;
+    text: string;
+    score: number;
+  };
+
+  const policyCandidates: Candidate[] = policies
+    .filter((p) => canAccessLabel(roles, p.label))
+    .map((p) => ({
+      entityType: 'CompanyPolicy' as const,
+      entityId: p.id,
+      title: p.title,
+      label: p.label,
+      externalAiAllowed: p.externalAiAllowed,
+      text: `【会社方針/${p.category}】${p.body}`.slice(0, CONTEXT_TEXT_LIMIT),
+      score: matchScore(q, p.title, [p.title, p.category, p.tags.join(','), p.body].join('\n')),
+    }))
+    .filter((c) => c.score >= MIN_SCORE)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_PER_TABLE);
+
+  const itemCandidates: Candidate[] = items
+    .filter((it) => canAccessLabel(roles, it.label))
+    .map((it) => {
+      const parts = [`【商品カタログ/${it.category}】${it.description}`];
+      if (it.targetPain) parts.push(`解決する課題: ${it.targetPain}`);
+      if (it.strengths) parts.push(`強み: ${it.strengths}`);
+      if (it.priceNote) parts.push(`価格メモ（説明のみ・請求や課金には使わない）: ${it.priceNote}`);
+      return {
+        entityType: 'ProductCatalogItem' as const,
+        entityId: it.id,
+        title: it.name,
+        label: it.label,
+        externalAiAllowed: it.externalAiAllowed,
+        text: parts.join('／').slice(0, CONTEXT_TEXT_LIMIT),
+        score: matchScore(
+          q,
+          it.name,
+          [it.name, it.category, it.tags.join(','), it.description, it.targetPain ?? '', it.strengths ?? ''].join('\n'),
+        ),
+      };
+    })
+    .filter((c) => c.score >= MIN_SCORE)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_PER_TABLE);
+
+  let selected = [...policyCandidates, ...itemCandidates].sort((a, b) => b.score - a.score).slice(0, MAX_TOTAL);
+
+  // 外部LLM（FakeLLM以外）の場合: externalAiAllowed=true のみ注入し、テキストは maskText を通す。
+  // 現状 true にする UI が無いため、外部LLM時は selected が空になる（安全側デフォルト）。
+  const external = isExternalLlmEnabled();
+  if (external) {
+    selected = selected.filter((c) => c.externalAiAllowed).map((c) => ({ ...c, text: maskText(c.text) }));
+  }
+
+  return {
+    contexts: selected.map((c) => ({ title: c.title, text: c.text })),
+    references: selected.map((c) => ({
+      entityType: c.entityType,
+      entityId: c.entityId,
+      title: c.title,
+      label: c.label,
+    })),
+  };
+}

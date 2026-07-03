@@ -118,3 +118,11 @@ test('Company Brain の商品カタログを作成すると一覧に表示され
   await page.waitForURL('**/brain/catalog');
   await expect(page.getByText(uniqueName)).toBeVisible();
 });
+
+test('ナレッジ検索で会社の頭脳の参照元が表示される', async ({ page }) => {
+  await login(page);
+  await page.goto('/knowledge/search?q=' + encodeURIComponent('値引き承認ルール'));
+  await expect(page.getByText('AIの回答', { exact: false })).toBeVisible();
+  await expect(page.getByText('参照した会社の頭脳', { exact: false })).toBeVisible();
+  await expect(page.getByText('値引き承認ルール').first()).toBeVisible();
+});

@@ -32,6 +32,7 @@
 - **2-A-3b-2（ProductCatalogItem 書き込み最小実装）＋本番確認GO 完了（記録: doc42＋doc43＋doc14 §42）**: 商品カタログに同じ型で3操作を実装。**安全境界（AI mutation禁止・label 2択・externalAiAllowed 封印・ソフトアーカイブ）を最初から組み込み、修正ループ0回で完走**。**priceNote は説明テキストのみで請求・課金・見積・会計に接続しない**。**smoke は14本体制で 14/14 green（既存13本回帰なし）**。**本番確認も利用者実測で GO（2026-07-04）＝Company Brain の2テーブルの人間書き込みは本番確認まで完了**。
 - **2-A-3c-1（AI参照経路＋writeDataAccess 設計・docs-only）完了（記録: doc44）**: AI が Company Brain を読む段の設計を固定。参照範囲=tenantId・archivedAt:null・NORMAL/INTERNAL のみ／外部LLM送信は externalAiAllowed=true＋maskText 済みのみ（true UI 無し＝構造的にゼロ）／記録は ai_reference をレコードごと1件／第一接続タスクはナレッジ検索。
 - **2-A-3c-2（Company Brain AI参照の最小実装）完了 — 一度 HOLD → 再実測 GO で解消済み（実装: doc45／HOLD: doc46＋doc14 §43／解消GO: doc47＋doc14 §44）**: ナレッジ検索のみに Company Brain 参照を注入（read-only・NORMAL/INTERNAL・canAccessLabel・外部LLM時は externalAiAllowed ゲートで注入ゼロの安全側デフォルト）。初回本番確認（2026-07-04）は「値引き承認ルール」の AI回答・参照セクション未確認で HOLD。read-only 原因調査と利用者再実測（2026-07-04）により、**原因は本番データ前提差（対象 CompanyPolicy が本番に不在）でありコードのバグではない**と確定。本番UIで会社方針を作成後、AI回答・「参照した会社の頭脳」・参照元タイトル・CompanyPolicy の ai_reference ログすべて GO。**Phase 2-A-3c-2 は本番確認まで完全クローズ**。高機密ラベル・externalAiAllowed true UI・外部LLM送信の解禁は 3c-5 の個別人間承認まで行わない。ENSHiN OS の外部発信・口コミ・SNS・顧客の声公開・許諾管理実装は未着手。
+- **Phase 2-C-ENTRY: 次領域入口レビュー — 完了（判定 READY / GO・記録: doc70）／実装は未着手・別承認待ち**。Phase 2-B 正式完了＋Phase X-05 第一波完了後の8候補（Case Study / Customer Pain / Stage 2 / Stage 3 / ★2 / UX改善 / GitHub・Obsidian整備 / Candidate整理）を比較。**推奨1位 = Phase 2-C-1: Case Study / Customer Pain の絞り込み詳細設計 docs-only**（品質基盤の主要な穴が塞がったため事業価値側へ戻る。ただし顧客名・成果数値・顧客の声・許諾・公開リスクがあるため**まだ実装しない**・非公開/架空/許諾前提の設計から）。推奨2位=Stage 2・3位=★2。**Phase 2-C実装・Case Study実装・Customer Pain実装・Stage 2・Stage 3・★2 はいずれも別承認**。
 - **Phase X-05-3: Company Brain 静的安全ゲート第一弾 — 完了。CI実走確認 GO（実装: doc68／実走確認: doc69・確認日 2026-07-04 申告）。X-05-3 は完全クローズ**。利用者実測で、CI 最新 run（commit `58be7c7`）が **green・失敗なし・step 一覧に「Company Brain safety checks」があり緑で成功**を確認（AI が直接確認したものではない）。**静的安全ゲートが本稼働**＝push のたびに「安全境界の存在検査→test 216→typecheck→lint」が自動実行される。doc63 §5 の ★1/★3/★4/★5 が CI実走まで完了。残: ★2・Stage 2/3 は別承認。以下は実装時の記録。`scripts/check-company-brain-safety.mjs`（Node標準のみ・package/lock無変更）で ★3 label 2択・★4 externalAiAllowed 封印（UI 147ファイル走査）・★5 物理削除禁止・isHumanUser 共通化維持を機械検査し、**CI Stage 1 に step 追加（db:generate → 安全ゲート → test → typecheck → lint）**。検証全green（script exit 0・test 216・typecheck・lint・build。smoke は app 挙動不変のため未実施＝成功扱いしない）。doc63 §5 の ★1/★3/★4/★5 が自動検証化済み。残: ★2 権限拒否 E2E・Stage 2/3 は別承認。
 - **Phase X-05-2: 否定系テスト第一弾（AIロール拒否）— 完了。CI実走確認 GO（実装: doc66／実走確認: doc67・確認日 2026-07-04 申告）。X-05-2 は完全クローズ**。利用者実測で、push 後の GitHub Actions CI 最新 run（commit `b27a979`）が **green・失敗なし**を確認（AI が直接確認したものではない）。**test 216（否定系5本含む）が CI で自動実行される品質ゲートとして本稼働**＝「AIは会社の頭脳を書き換えられない」が push のたびに自動検証され続ける。残: ★2〜★5・Stage 2 は別承認。以下は実装時の記録。A案採用: brain 3actions に3重複していた isHumanUser を packages/shared の純粋関数へ抽出し、**否定系テスト5本を追加（test 211→216）**。「rbac 上 AI_AGENT は knowledge:create を持つが actions 層で書き込み拒否」という前提自体もテストで恒久固定。**挙動不変（smoke 18/18 green で実証）・RBAC変更なし・schema/seed/package/lock/workflow 無変更**。doc63 の最大の穴（AI書き込み禁止層のテストゼロ）が解消。残: ★2〜★5（権限拒否・label制限・封印・物理削除の各テスト）と Stage 2 は別承認。
 - **Phase X-05-1: CI Stage 1 — 完了。実走確認 GO（実装: doc64／実走確認: doc65・確認日 2026-07-04 申告）。Phase X-05-1 は完全クローズ**。`.github/workflows/ci.yml`（push/PR 時に install→db:generate→test→typecheck→lint を自動実行・secrets不使用・DB不要）が main 反映済みで、**利用者実測により GitHub Actions の最新 run（commit `116efd6`）が green・失敗なしを確認**。AI が実走を直接確認したものではない。**品質ゲートが自動で常時稼働する状態になった**。Stage 2 build・Stage 3 smoke・否定系テスト（X-05-2）は別承認。
@@ -138,9 +139,9 @@
 
 ## 次にやること（人間が選択）
 
-1. **X-05-3-VERIFY 記録（doc69）の push（push-only・別承認。feature＋main）**。
-2. **Stage 2（build の CI 追加）/ Stage 3（smoke on CI）/ ★2 権限拒否テストの承認判断（いずれも別承認）**。
-3. または **次領域の入口レビューの選択（別承認・docs-only の ENTRY から）**: Case Study / Customer Pain / roadmap 上の別領域。UX改善（タブ導線・視認性）・実LLMキー設定（外部送信解禁とセット）も別承認候補。
+1. **Phase 2-C-ENTRY 記録（doc70）の push（push-only・別承認。feature＋main）**。
+2. **Phase 2-C-1（Case Study / Customer Pain の絞り込み詳細設計 docs-only・doc71 候補）の承認判断**。
+3. または **Stage 2（build の CI 追加）/ Stage 3（smoke on CI）/ ★2 権限拒否テスト / UX改善 の人間選択（いずれも別承認・2-C-1 と並行可）**。
 - いずれの場合も **3c-5 の解禁・外部LLM送信・高機密ラベル解禁・Phase 8 実課金・ENSHiN OS 外部発信には、個別人間承認なしに進まない**。
 
 ## 今は絶対にやらないこと

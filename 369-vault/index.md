@@ -74,6 +74,7 @@
 - [[PhaseX05CIStage1実装]] — GitHubに上げるたびに自動チェック：テスト211本・型・lintが自動で走る設定1ファイルを追加・実走確認はpush後（Phase X-05-1）。
 - [[PhaseX05CI実走確認]] — 自動チェックがGitHub上で本当に動いた：CI最新runがgreen・品質ゲートが自動で常時稼働する状態に（Phase X-05-1-VERIFY）。
 - [[PhaseX05否定系テスト第一弾]] — 「AIが書き換えられないこと」を自動テストで守り始めた：判定を共通化＋否定系テスト5本・テスト216本・挙動不変をE2E 18本で実証（Phase X-05-2）。
+- [[PhaseX05否定系テストCI実走確認]] — そのテストがGitHub上で本当に動いた：CI最新runがgreen・「AIが書き換えられない」約束が自動検証で常時稼働（Phase X-05-2-VERIFY）。
 
 ## 🔗 コード側の正（source of truth）
 

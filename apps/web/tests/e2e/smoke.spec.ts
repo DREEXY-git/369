@@ -127,12 +127,29 @@ test('ナレッジ検索で会社の頭脳の参照元が表示される', async
   await expect(page.getByText('値引き承認ルール').first()).toBeVisible();
 });
 
-test('営業プレイブックの read-only 一覧が表示される', async ({ page }) => {
+test('営業プレイブックの一覧がナビ経由で表示される', async ({ page }) => {
+  // Phase 2-B-4 で read-only 段階の期待値（作成リンク0件）を仕様変更に合わせて更新（doc57）。
+  // ナビHOLD（doc55→doc56）の教訓として、URL直打ちではなくナビリンク経由で確認する。
   await login(page);
-  await page.goto('/brain/playbooks');
+  await page.getByRole('link', { name: '営業プレイブック' }).click();
+  await page.waitForURL('**/brain/playbooks');
   await expect(page.getByRole('heading', { name: '会社の頭脳（営業プレイブック）' })).toBeVisible();
   await expect(page.getByText('美容室向け・予約導線の切り口')).toBeVisible();
-  await expect(page.getByText('この画面は閲覧のみです。')).toBeVisible();
-  await expect(page.getByRole('link', { name: '新規作成' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'アーカイブ' })).toHaveCount(0);
+  await expect(page.getByText('AIは書き換えできません。', { exact: false })).toBeVisible();
+});
+
+test('営業プレイブックを作成すると一覧に表示される', async ({ page }) => {
+  await login(page);
+  await page.goto('/brain/playbooks');
+  await page.getByRole('link', { name: '新規作成' }).click();
+  await page.waitForURL('**/brain/playbooks/new');
+  const uniqueTitle = `E2Eプレイブック-${Date.now()}`;
+  await page.getByLabel('タイトル（必須・120文字まで）').fill(uniqueTitle);
+  await page.getByLabel('本文（必須・5000文字まで）').fill('E2E テスト用の売り方の型です。架空の内容で、顧客名・会社名・成果数値・口コミ・顧客の声・実価格・PII・secret を含みません。');
+  await page.getByLabel('分類（必須・80文字まで）').fill('切り口');
+  await page.getByLabel('型の種類').selectOption('approach');
+  await page.getByLabel('機密ラベル').selectOption('INTERNAL');
+  await page.getByRole('button', { name: '作成する' }).click();
+  await page.waitForURL('**/brain/playbooks');
+  await expect(page.getByText(uniqueTitle)).toBeVisible();
 });

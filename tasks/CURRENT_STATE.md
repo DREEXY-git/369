@@ -32,6 +32,7 @@
 - **2-A-3b-2（ProductCatalogItem 書き込み最小実装）＋本番確認GO 完了（記録: doc42＋doc43＋doc14 §42）**: 商品カタログに同じ型で3操作を実装。**安全境界（AI mutation禁止・label 2択・externalAiAllowed 封印・ソフトアーカイブ）を最初から組み込み、修正ループ0回で完走**。**priceNote は説明テキストのみで請求・課金・見積・会計に接続しない**。**smoke は14本体制で 14/14 green（既存13本回帰なし）**。**本番確認も利用者実測で GO（2026-07-04）＝Company Brain の2テーブルの人間書き込みは本番確認まで完了**。
 - **2-A-3c-1（AI参照経路＋writeDataAccess 設計・docs-only）完了（記録: doc44）**: AI が Company Brain を読む段の設計を固定。参照範囲=tenantId・archivedAt:null・NORMAL/INTERNAL のみ／外部LLM送信は externalAiAllowed=true＋maskText 済みのみ（true UI 無し＝構造的にゼロ）／記録は ai_reference をレコードごと1件／第一接続タスクはナレッジ検索。
 - **2-A-3c-2（Company Brain AI参照の最小実装）完了 — 一度 HOLD → 再実測 GO で解消済み（実装: doc45／HOLD: doc46＋doc14 §43／解消GO: doc47＋doc14 §44）**: ナレッジ検索のみに Company Brain 参照を注入（read-only・NORMAL/INTERNAL・canAccessLabel・外部LLM時は externalAiAllowed ゲートで注入ゼロの安全側デフォルト）。初回本番確認（2026-07-04）は「値引き承認ルール」の AI回答・参照セクション未確認で HOLD。read-only 原因調査と利用者再実測（2026-07-04）により、**原因は本番データ前提差（対象 CompanyPolicy が本番に不在）でありコードのバグではない**と確定。本番UIで会社方針を作成後、AI回答・「参照した会社の頭脳」・参照元タイトル・CompanyPolicy の ai_reference ログすべて GO。**Phase 2-A-3c-2 は本番確認まで完全クローズ**。高機密ラベル・externalAiAllowed true UI・外部LLM送信の解禁は 3c-5 の個別人間承認まで行わない。ENSHiN OS の外部発信・口コミ・SNS・顧客の声公開・許諾管理実装は未着手。
+- **Phase 2-B-4: SalesPlaybookEntry 人間書き込み（作成・編集・アーカイブ）— 実装完了（判定 GO・記録: doc57）／push・本番確認は未実施（commit-only）**。2-A-3b-1/3b-2 の型を流用: Server Action 3操作（create/update/archive）＋**AI mutation禁止（actions 層で AIロール一律拒否・rbac.ts 無変更）**＋writeAudit 3操作＋物理削除なし（archivedAt のソフトアーカイブのみ）＋**label 2択（NORMAL/INTERNAL）**＋**externalAiAllowed 封印（create=false 固定・update 不変更・true UI なし）**＋**入力ガイド画面明記（顧客名・会社名・成果数値・口コミ・顧客の声・実価格を書かない）**。smoke は17本体制で **17/17 green**（16本目はナビ経由確認へ意図的に期待値更新=doc57 §5・17本目=作成フロー追加・既存15本回帰なし）。schema・migration・seed・rbac・labels・package/lock 無変更。AI参照（writeDataAccess/ai_reference）は未実装=2-B-5 の別承認。**GO済み基準は Phase 2-B-3 / `a2bb2b6` のまま**（本番確認前のため昇格しない）。次: push-only（別承認）→ 本番確認（doc49 の型・doc58 候補）→ 2-B-5 承認判断。
 - **Phase 2-B-3: SalesPlaybookEntry read-only 可視化 — 完了。一度 HOLD → 再実測 GO で解消済み（実装: doc54／HOLD経緯: doc55＋doc14 §47／解消GO: doc56＋doc14 §48・2026-07-06）。Phase 2-B-3 は本番確認まで完全クローズ**。HOLD の唯一のNG（ナビ表示）はハードリロードで解消＝ブラウザキャッシュ起因の可能性が高く、read-only 調査どおり repo 側は潔白・**コード修正は不要だった**。教訓: NG時の一次対処はハードリロード／smoke のナビ表示検証追加は改善候補（別承認）。書き込み（2-B-4）・AI参照（2-B-5）は別承認。seed デモデータ6件（playbookType 4種網羅・PII/実価格/口コミ/顧客の声ゼロ・全件 externalAiAllowed=false・NORMAL/INTERNAL のみ）＋read-only 一覧 `/brain/playbooks`（knowledge:read＋tenantId・作成/編集/削除/Server Action なし）＋ナビ1行＋**smoke 16/16 green（既存15本回帰なし）**。書き込み（2-B-4）・AI参照（2-B-5）は別承認。本番は seed 未実行のため一覧が空で正常（doc49 原則で本番確認条件を事前定義済み）。
 - **Phase 2-B-2: SalesPlaybookEntry schema変更 — main反映済み・本番確認GO（実装記録: doc52／本番確認: doc53＋doc14 §46・2026-07-05）。Phase 2-B-2 は完全クローズ**。§0 人間承認（APPROVED・呼称=Phase 2-B のまま・参照構造=ID配列・playbookType=approach/objection/preparation/talk_track）に基づき、doc51 §4 どおり model 追加＋migration 1つ（CREATE TABLE＋INDEX 3本のみ・destructive 0・既存model無変更）。検証: validate/migrate dev(ローカル)/status/test 211/typecheck/lint/build 全green。次は push-only（別承認）→ 本番確認（doc49 の型・既存画面無回帰が主眼）→ Phase 2-B-3 承認判断。
 - **Phase 2-B-1: SalesPlaybookEntry 設計 docs-only 完了（判定 GO・記録: doc51）／schema変更は 2-B-2 で実施済み**。設計の柱: 顧客名・事例・顧客の声を最初から扱わない「売り方の型」専用・既存2モデルの流儀を踏襲（tenantId スカラ・label 2択・externalAiAllowed false 封印・ソフトアーカイブ・関連参照は ID 配列案を推奨）・AI mutation禁止を actions 層で最初から・AI参照追加は 2-B-5 の別承認・三段承認計画（2-B-2 schema → 2-B-3 read-only → 2-B-4 書き込み → 2-B-5 AI参照 → 各段 PROD は doc49 の型）。
@@ -123,8 +124,9 @@
 
 ## 次にやること（人間が選択）
 
-1. **Phase 2-B-3 HOLD解消GO記録（doc56＋doc14 §48）の push（push-only・別承認。feature＋main）**。
-2. **Phase 2-B-4（人間書き込み: 作成・編集・アーカイブ＋writeAudit＋AI mutation禁止・label 2択・入力ガイド画面明記）の承認判断**。2-A-3b-1/3b-2 の型を流用。あわせて smoke へのナビ表示検証追加も検討候補（別承認）。
+1. **Phase 2-B-4 実装 commit の push（push-only・別承認。feature＋main）**。
+2. **Phase 2-B-4 の本番確認（doc49 の型・利用者実測・doc58 候補）**: 作成→編集→アーカイブの1周・ラベル2択・監査ログ・既存画面無回帰（doc41 と同じ形）。
+3. **Phase 2-B-5（AI参照追加: ナレッジ検索への注入＋ai_reference ログ）の承認判断**。
 - いずれの場合も **3c-5 の解禁・外部LLM送信・高機密ラベル解禁・Phase 8 実課金・ENSHiN OS 外部発信には、個別人間承認なしに進まない**。
 
 ## 今は絶対にやらないこと

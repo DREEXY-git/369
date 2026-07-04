@@ -2375,6 +2375,43 @@ model SalesPlaybookEntry {
   @@index([tenantId, playbookType])
 }
 
+// 顧客事例（Case Study・Phase 2-C-2・doc71 設計準拠）。
+// - 顧客名・取引先名・成果数値・顧客の声は許諾なしに扱わない（初期スコープは非公開・架空データ・anonymized default true）
+// - publishStatus は 'private' 固定運用から開始（公開機能・PR配信・SEO公開・SNS投稿は Phase 2-C の範囲外）
+// - externalAiAllowed は false 固定運用（true にする UI を作らない）
+// - label は UI/action 側で NORMAL / INTERNAL の2択に制限（高機密は保留。Customer Pain は高機密ラベル対応後の後続）
+// - customerId / consentRecordId は relation なしの ID 参照（匿名時は null。許諾は consentStatus: none|requested|granted|revoked で管理）
+// - AI参照は 2-C-5 の別承認まで接続しない（company-brain-reference には追加していない）
+model CaseStudy {
+  id                String   @id @default(cuid())
+  tenantId          String
+  title             String
+  body              String
+  industry          String?
+  challenge         String?
+  solution          String?
+  outcome           String?
+  anonymized        Boolean  @default(true)
+  consentStatus     String   @default("none")
+  consentRecordId   String?
+  customerId        String?
+  publishStatus     String   @default("private")
+  tags              String[]
+  label             ConfidentialityLabel @default(INTERNAL)
+  externalAiAllowed Boolean  @default(false)
+  sourceType        String?
+  sourceNote        String?
+  createdById       String?
+  updatedById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  archivedAt        DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, label])
+  @@index([tenantId, publishStatus])
+}
+
 // ============================ バックアップ ====================================
 
 model BackupJob {

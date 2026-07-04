@@ -2,16 +2,18 @@ import Link from 'next/link';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
-import { Card, Table, Th, Td, Badge, EmptyState } from '@/components/ui';
+import { Card, Table, Th, Td, Badge, Button, EmptyState } from '@/components/ui';
 import { LABEL_BADGE } from '@hokko/shared';
+import { archiveCaseStudyAction } from './actions';
 
 export const dynamic = 'force-dynamic';
 
-// Company Brain（会社の頭脳）Phase 2-C-3: 顧客事例（Case Study）の閲覧専用一覧。
-// この画面は read-only。作成・編集・アーカイブ・削除・Server Action は存在しない（書き込みは 2-C-4 の別承認）。
-// AI参照も未接続（2-C-5 の別承認）。externalAiAllowed を true にする UI は作らない。
+// Company Brain（会社の頭脳）Phase 2-C-4: 顧客事例の一覧＋作成・編集・アーカイブ導線。
+// 変更系は knowledge:create / knowledge:update を持つ人間のみ（AIロールは actions 側で一律拒否）。
+// 物理削除なし（アーカイブ=archivedAt のソフト処理のみ）。tenantId スコープ必須。
+// AI参照は未接続（2-C-5 の別承認）。externalAiAllowed を true にする UI は作らない。
 // 顧客名・取引先名・成果数値・顧客の声は許諾なしに扱わない（doc71 §6-1）。表示対象は非公開（publishStatus='private'）
-// かつ NORMAL / INTERNAL のみ。tenantId スコープ必須・archivedAt: null。
+// かつ NORMAL / INTERNAL のみ。匿名化を外せるのは許諾あり（granted）のときだけ（actions 側で機械拒否）。
 
 const CONSENT_STATUS_LABEL: Record<string, string> = {
   none: '許諾なし（匿名のみ）',
@@ -20,8 +22,13 @@ const CONSENT_STATUS_LABEL: Record<string, string> = {
   revoked: '許諾取下げ',
 };
 
-export default async function BrainCaseStudiesPage() {
+export default async function BrainCaseStudiesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ denied?: string }>;
+}) {
   const user = await requireUser();
+  const sp = await searchParams;
   if (!hasPermission(user, 'knowledge', 'read')) {
     return (
       <div>
@@ -30,6 +37,9 @@ export default async function BrainCaseStudiesPage() {
       </div>
     );
   }
+
+  const canCreate = hasPermission(user, 'knowledge', 'create');
+  const canUpdate = hasPermission(user, 'knowledge', 'update');
 
   const caseStudies = await prisma.caseStudy.findMany({
     where: {
@@ -60,15 +70,17 @@ export default async function BrainCaseStudiesPage() {
       <PageHeader title="会社の頭脳（顧客事例）" />
       <div className="mb-3 space-y-1 text-xs text-muted-foreground">
         <p>
-          顧客事例（Case Study）の一覧です。<span className="font-medium">この画面は社内参照専用の閲覧のみ（read-only）です。</span>
-          現在表示されているのはすべて<span className="font-medium">架空デモデータ</span>です。
+          顧客事例（Case Study）の一覧です。<span className="font-medium">この画面は社内参照専用です。権限がある人間ユーザーのみ作成・編集・アーカイブできます。AIは書き換えできません。</span>
         </p>
         <p>
-          <span className="font-medium">外部に公開しない・外部AI送信禁止</span>。
-          顧客名・取引先名・成果数値・顧客の声は<span className="font-medium">許諾なしに扱わない</span>運用です（許諾が記録されるまで匿名・架空のみ）。
-          作成・編集・アーカイブ機能はまだありません（次の段の個別承認から）。
+          <span className="font-medium">外部に公開しない・外部AI送信禁止・非公開（private）のみ</span>。
+          顧客名・取引先名・成果数値・顧客の声は<span className="font-medium">許諾なしに扱わない</span>運用です
+          （匿名化を外せるのは許諾状態が「許諾あり」のときだけ・保存時に自動チェック）。
         </p>
       </div>
+      {sp.denied ? (
+        <div className="mb-3 rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">この操作を行う権限がありません。</div>
+      ) : null}
       <div className="mb-4 flex items-center gap-2 text-sm">
         <Link href="/brain/policies" className="rounded-md px-2.5 py-1 text-muted-foreground hover:bg-accent/60">
           ← 会社方針
@@ -80,10 +92,20 @@ export default async function BrainCaseStudiesPage() {
           営業プレイブック
         </Link>
         <span className="rounded-md bg-accent px-2.5 py-1 font-medium">顧客事例</span>
+        {canCreate ? (
+          <div className="ml-auto">
+            <Link
+              href="/brain/case-studies/new"
+              className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
+            >
+              新規作成
+            </Link>
+          </div>
+        ) : null}
       </div>
 
       {caseStudies.length === 0 ? (
-        <EmptyState title="顧客事例がまだ登録されていません" hint="デモデータ投入後に表示されます（この段階では閲覧のみ）。" />
+        <EmptyState title="顧客事例がまだ登録されていません" hint="デモデータ投入後、または新規作成すると表示されます（匿名・架空の内容のみ）。" />
       ) : (
         <Card>
           <Table>
@@ -94,6 +116,7 @@ export default async function BrainCaseStudiesPage() {
                 <Th>提供内容 / 結果（定性的）</Th>
                 <Th>匿名化・許諾・公開状態</Th>
                 <Th>機密ラベル</Th>
+                {canUpdate ? <Th>操作</Th> : null}
               </tr>
             </thead>
             <tbody>
@@ -120,7 +143,7 @@ export default async function BrainCaseStudiesPage() {
                   </Td>
                   <Td>
                     <div className="flex flex-col gap-1 text-xs">
-                      <Badge tone={c.anonymized ? 'slate' : 'amber'}>{c.anonymized ? '匿名化済み' : '要確認'}</Badge>
+                      <Badge tone={c.anonymized ? 'slate' : 'amber'}>{c.anonymized ? '匿名化済み' : '実名寄り（許諾あり）'}</Badge>
                       <Badge tone="slate">{CONSENT_STATUS_LABEL[c.consentStatus] ?? c.consentStatus}</Badge>
                       <Badge tone="slate">{c.publishStatus === 'private' ? '非公開' : c.publishStatus}</Badge>
                     </div>
@@ -128,6 +151,24 @@ export default async function BrainCaseStudiesPage() {
                   <Td>
                     <Badge tone={LABEL_BADGE[c.label]?.tone ?? 'slate'}>{LABEL_BADGE[c.label]?.text ?? c.label}</Badge>
                   </Td>
+                  {canUpdate ? (
+                    <Td>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/brain/case-studies/${c.id}/edit`}
+                          className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/60"
+                        >
+                          編集
+                        </Link>
+                        <form action={archiveCaseStudyAction}>
+                          <input type="hidden" name="id" value={c.id} />
+                          <Button type="submit" variant="ghost" size="sm" className="text-muted-foreground">
+                            アーカイブ
+                          </Button>
+                        </form>
+                      </div>
+                    </Td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

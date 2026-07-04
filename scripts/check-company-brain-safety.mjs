@@ -17,6 +17,7 @@ const BRAIN_ACTIONS = [
   'apps/web/app/(app)/brain/policies/actions.ts',
   'apps/web/app/(app)/brain/catalog/actions.ts',
   'apps/web/app/(app)/brain/playbooks/actions.ts',
+  'apps/web/app/(app)/brain/case-studies/actions.ts',
 ];
 
 const errors = [];
@@ -76,6 +77,23 @@ for (const p of uiFiles) {
   }
 }
 
+// ── CaseStudy 固有: 許諾なしに匿名化を外せない判定が actions に存在すること（Phase 2-C-4） ──
+{
+  const rel = 'apps/web/app/(app)/brain/case-studies/actions.ts';
+  let src = '';
+  try {
+    src = read(rel);
+  } catch {
+    // ファイル欠落は上の BRAIN_ACTIONS ループで検出済み
+  }
+  if (src && !src.includes('validateCaseStudyConsent')) {
+    errors.push(`【許諾・匿名化制御が破れています】 ${rel} が validateCaseStudyConsent（許諾なしに匿名化を外せない判定・@hokko/shared）を使っていません。`);
+  }
+  if (src && !src.includes("publishStatus: 'private'")) {
+    errors.push(`【非公開固定が破れています】 ${rel} の create が publishStatus: 'private' 固定ではありません（公開機能の追加は個別人間承認が必要です）。`);
+  }
+}
+
 // ── shared 側: 共通判定と否定系テストが存在し続けること ──────────
 const rbac = read('packages/shared/src/rbac.ts');
 if ((rbac.split('export function isHumanUser').length - 1) !== 1) {
@@ -84,6 +102,14 @@ if ((rbac.split('export function isHumanUser').length - 1) !== 1) {
 const rbacTest = read('packages/shared/src/__tests__/rbac.test.ts');
 if (!rbacTest.includes('isHumanUser')) {
   errors.push('【否定系テストが消えています】 packages/shared/src/__tests__/rbac.test.ts に isHumanUser のテストが必要です（AIロール拒否の自動検証）。');
+}
+try {
+  const caseStudyTest = read('packages/shared/src/__tests__/case-study.test.ts');
+  if (!caseStudyTest.includes('validateCaseStudyConsent')) {
+    errors.push('【否定系テストが消えています】 packages/shared/src/__tests__/case-study.test.ts に validateCaseStudyConsent のテストが必要です（許諾なしに匿名化を外せない自動検証）。');
+  }
+} catch {
+  errors.push('【否定系テストが見つかりません】 packages/shared/src/__tests__/case-study.test.ts が必要です（Phase 2-C-4 の許諾・匿名化制御の自動検証）。');
 }
 
 // ── 結果 ─────────────────────────────────────────────

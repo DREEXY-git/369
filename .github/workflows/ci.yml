@@ -37,6 +37,9 @@ jobs:
       - name: Generate Prisma client
         run: pnpm db:generate
 
+      - name: Company Brain safety checks
+        run: node scripts/check-company-brain-safety.mjs
+
       - name: Unit tests
         run: pnpm test
 

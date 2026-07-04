@@ -711,6 +711,18 @@ async function main() {
     ],
   });
 
+  // Case Study（顧客事例・Phase 2-C-3）: 架空・匿名の事例のみ。
+  // 実在企業名・実在顧客名・実成果数値・実際の顧客の声は入れない（doc71 §6-1・許諾なしに扱わない）。
+  // 全件 anonymized=true / publishStatus='private' / consentStatus='none' / externalAiAllowed=false（非公開・社内参照専用）。
+  await prisma.caseStudy.createMany({
+    data: [
+      { tenantId, title: '（架空）美容室の予約導線改善', body: 'この事例は架空のデモデータです。電話予約中心だった美容室（匿名）で、LINE予約とスマホ最適化を導入した想定の事例。', industry: '美容室', challenge: '営業中に電話予約を取りこぼしていた（架空の設定）', solution: 'LINE予約導入とスマホ表示の改善、スタッフ向けの運用ルール整備（架空の設定）', outcome: '予約の取りこぼしが減ったという定性的な想定。数値は許諾のある実事例ができるまで記載しない。', anonymized: true, consentStatus: 'none', publishStatus: 'private', tags: ['予約', '導線'], label: 'NORMAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, title: '（架空）イベント主催の一括手配切り替え', body: 'この事例は架空のデモデータです。複数業者への個別発注に疲れていた主催者（匿名）が、機材＋設営＋運営の一括手配へ切り替えた想定の事例。', industry: 'イベント主催', challenge: '手配先が分かれ、当日の連絡と調整に追われていた（架空の設定）', solution: '窓口を一本化し、安全計画書と当日運営体制をセットで提供（架空の設定）', outcome: '調整の手間が減り当日運営が安定したという定性的な想定。数値は記載しない。', anonymized: true, consentStatus: 'none', publishStatus: 'private', tags: ['イベント', '一括手配'], label: 'NORMAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, title: '（架空）小売店のSNS運用定着', body: 'この事例は架空のデモデータです。SNSを始めたものの続かなかった小売店（匿名）で、投稿テンプレートと月次ふりかえりの伴走を行った想定の事例。', industry: '小売', challenge: '投稿が続かず、効果も分からないまま止まっていた（架空の設定）', solution: '業種別テンプレートで投稿を型化し、店舗承認後に公開する運用を定着（架空の設定）', outcome: '投稿が習慣化し来店のきっかけが増えたという定性的な想定。数値は記載しない。', anonymized: true, consentStatus: 'none', publishStatus: 'private', tags: ['sns', '定着'], label: 'INTERNAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+      { tenantId, title: '（架空）飲食店の看板リニューアル', body: 'この事例は架空のデモデータです。店の場所が分かりにくかった飲食店（匿名）で、看板とサインを一体でデザインし直した想定の事例。', industry: '飲食', challenge: '初来店の人が店を見つけられず入店につながらなかった（架空の設定）', solution: '通り側の視認性を優先した看板デザインと設置調整（架空の設定）', outcome: '初来店の迷いが減ったという定性的な想定。数値は記載しない。', anonymized: true, consentStatus: 'none', publishStatus: 'private', tags: ['看板', 'デザイン'], label: 'INTERNAL', externalAiAllowed: false, sourceType: 'manual', createdById: ceo.id },
+    ],
+  });
+
   // ---- Seed audit logs ----
   await prisma.auditLog.createMany({
     data: [
@@ -731,6 +743,7 @@ async function main() {
     policies: await prisma.companyPolicy.count(),
     catalogItems: await prisma.productCatalogItem.count(),
     playbooks: await prisma.salesPlaybookEntry.count(),
+    caseStudies: await prisma.caseStudy.count(),
   };
   console.log('✅ seed done', counts, firstDraftId ? `firstDraft=${firstDraftId}` : '');
 }

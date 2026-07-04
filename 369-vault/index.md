@@ -81,6 +81,7 @@
 - [[Phase2C1顧客事例課題詳細設計]] — 顧客事例を先に・顧客課題は後に：許諾なしに扱わない/公開機能を作らない設計を固定・実装は各段別承認（Phase 2-C-1・READY / GO）。
 - [[Phase2C2CaseStudySchema設計]] — 顧客事例の器ができた：匿名化・非公開・外部AI禁止が既定値の器だけ追加・画面と書き込みはまだ（Phase 2-C-2・GO）。
 - [[Phase2C2CaseStudySchema本番確認]] — 顧客事例の器が本番に入った：build green＝migration成功・既存画面無回帰・画面なしが正常・基準を b012bd0 へ昇格（Phase 2-C-2-PROD・GO）。
+- [[Phase2C3CaseStudyReadOnly]] — 顧客事例が初めて見えた：架空4件＋閲覧専用一覧＋smoke 19/19・書き込みとAI参照はまだ（Phase 2-C-3・GO）。
 
 ## 🔗 コード側の正（source of truth）
 

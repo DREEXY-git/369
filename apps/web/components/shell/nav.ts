@@ -49,6 +49,7 @@ import {
   ArrowLeftRight,
   BookText,
   Brain,
+  BookMarked,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -145,6 +146,7 @@ export const NAV: NavGroup[] = [
       { label: 'ナレッジ検索', href: '/knowledge/search', icon: Search },
       { label: '会社の頭脳', href: '/brain/policies', icon: Brain },
       { label: '営業プレイブック', href: '/brain/playbooks', icon: BookText },
+      { label: '顧客事例', href: '/brain/case-studies', icon: BookMarked },
     ],
   },
   {

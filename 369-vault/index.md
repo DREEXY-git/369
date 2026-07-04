@@ -72,6 +72,7 @@
 - [[Phase2B完了]] — Phase 2-B 正式完了：営業プレイブック全5段が本番GO・会社の頭脳3テーブル体制が完成・HOLD 2件はコード修正ゼロで解消（Phase 2-B-CLOSE）。
 - [[PhaseX05CI否定系テスト設計]] — 品質を「規律」から「仕組み」へ：CI 3段階＋否定系テスト8対象の設計・最大の穴は AI書き込み禁止層のテストゼロ・実装は次の承認から（Phase X-05-ENTRY）。
 - [[PhaseX05CIStage1実装]] — GitHubに上げるたびに自動チェック：テスト211本・型・lintが自動で走る設定1ファイルを追加・実走確認はpush後（Phase X-05-1）。
+- [[PhaseX05CI実走確認]] — 自動チェックがGitHub上で本当に動いた：CI最新runがgreen・品質ゲートが自動で常時稼働する状態に（Phase X-05-1-VERIFY）。
 
 ## 🔗 コード側の正（source of truth）
 

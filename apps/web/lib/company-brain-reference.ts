@@ -2,16 +2,19 @@ import { isExternalLlmEnabled } from '@hokko/ai';
 import { canAccessLabel, maskText, type ConfidentialityLabel, type RoleKey } from '@hokko/shared';
 import { prisma } from '@/lib/db';
 
-// Company Brain（会社方針・商品カタログ）の AI 参照候補取得（Phase 2-A-3c-2・doc44 設計準拠）。
+// Company Brain（会社方針・商品カタログ・営業プレイブック）の AI 参照候補取得
+// （Phase 2-A-3c-2・doc44 設計準拠。Phase 2-B-5 で SalesPlaybookEntry を追加・doc59 準拠）。
 // - read-only（create/update/delete は一切呼ばない）
 // - tenantId スコープ・archivedAt:null・label は NORMAL/INTERNAL のみ・canAccessLabel を通す
 // - 外部LLM（FakeLLM 以外）の場合は externalAiAllowed=true のレコードのみ注入し、maskText を通す
 //   （現状 true にする UI は無いため、外部LLM時の注入はゼロになるのが安全側デフォルト）
 // - FakeLLM はローカル実行のため外部送信に該当しない（doc44 §5 の整理）
 // - priceNote は説明テキストとして文脈化するのみで、価格計算・請求・課金には使わない
+// - 営業プレイブックの doNotSay は AI が肯定文として引用しないよう「言わない:」を必ず前置する
+// - relatedPolicyIds / relatedProductCatalogItemIds は展開しない（doc59 §4・将来拡張）
 
 export type CompanyBrainReference = {
-  entityType: 'CompanyPolicy' | 'ProductCatalogItem';
+  entityType: 'CompanyPolicy' | 'ProductCatalogItem' | 'SalesPlaybookEntry';
   entityId: string;
   title: string;
   label: ConfidentialityLabel;
@@ -56,7 +59,7 @@ export async function getCompanyBrainReferences(input: {
   const q = question.trim();
   if (!q) return { contexts: [], references: [] };
 
-  const [policies, items] = await Promise.all([
+  const [policies, items, playbooks] = await Promise.all([
     prisma.companyPolicy.findMany({
       where: { tenantId, archivedAt: null, label: { in: AI_READABLE_LABELS } },
       select: { id: true, title: true, body: true, category: true, tags: true, label: true, externalAiAllowed: true },
@@ -71,6 +74,24 @@ export async function getCompanyBrainReferences(input: {
         targetPain: true,
         strengths: true,
         priceNote: true,
+        tags: true,
+        label: true,
+        externalAiAllowed: true,
+      },
+    }),
+    prisma.salesPlaybookEntry.findMany({
+      where: { tenantId, archivedAt: null, label: { in: AI_READABLE_LABELS } },
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        category: true,
+        playbookType: true,
+        targetIndustry: true,
+        targetSituation: true,
+        objection: true,
+        recommendedTalkTrack: true,
+        doNotSay: true,
         tags: true,
         label: true,
         externalAiAllowed: true,
@@ -128,7 +149,55 @@ export async function getCompanyBrainReferences(input: {
     .sort((a, b) => b.score - a.score)
     .slice(0, MAX_PER_TABLE);
 
-  let selected = [...policyCandidates, ...itemCandidates].sort((a, b) => b.score - a.score).slice(0, MAX_TOTAL);
+  // 営業プレイブック（売り方の型・Phase 2-B-5）。playbookType を文脈上明示し、
+  // objection/recommendedTalkTrack/doNotSay はそれぞれ「想定反論:」「推奨トーク:」「言わない:」を前置する。
+  const PLAYBOOK_TYPE_LABEL: Record<string, string> = {
+    approach: '切り口',
+    objection: '反論対応',
+    preparation: '提案準備',
+    talk_track: 'トーク',
+  };
+  const playbookCandidates: Candidate[] = playbooks
+    .filter((pb) => canAccessLabel(roles, pb.label))
+    .map((pb) => {
+      const typeLabel = PLAYBOOK_TYPE_LABEL[pb.playbookType] ?? pb.playbookType;
+      const parts = [`【営業プレイブック/${typeLabel}】${pb.body}`];
+      if (pb.targetIndustry) parts.push(`対象業種: ${pb.targetIndustry}`);
+      if (pb.targetSituation) parts.push(`使う場面: ${pb.targetSituation}`);
+      if (pb.objection) parts.push(`想定反論: ${pb.objection}`);
+      if (pb.recommendedTalkTrack) parts.push(`推奨トーク: ${pb.recommendedTalkTrack}`);
+      if (pb.doNotSay) parts.push(`言わない: ${pb.doNotSay}`);
+      return {
+        entityType: 'SalesPlaybookEntry' as const,
+        entityId: pb.id,
+        title: pb.title,
+        label: pb.label,
+        externalAiAllowed: pb.externalAiAllowed,
+        text: parts.join('／').slice(0, CONTEXT_TEXT_LIMIT),
+        score: matchScore(
+          q,
+          pb.title,
+          [
+            pb.title,
+            pb.category,
+            pb.playbookType,
+            pb.targetIndustry ?? '',
+            pb.targetSituation ?? '',
+            pb.objection ?? '',
+            pb.recommendedTalkTrack ?? '',
+            pb.tags.join(','),
+            pb.body,
+          ].join('\n'),
+        ),
+      };
+    })
+    .filter((c) => c.score >= MIN_SCORE)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_PER_TABLE);
+
+  let selected = [...policyCandidates, ...itemCandidates, ...playbookCandidates]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_TOTAL);
 
   // 外部LLM（FakeLLM以外）の場合: externalAiAllowed=true のみ注入し、テキストは maskText を通す。
   // 現状 true にする UI が無いため、外部LLM時は selected が空になる（安全側デフォルト）。

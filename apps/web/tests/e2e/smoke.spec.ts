@@ -153,3 +153,12 @@ test('営業プレイブックを作成すると一覧に表示される', async
   await page.waitForURL('**/brain/playbooks');
   await expect(page.getByText(uniqueTitle)).toBeVisible();
 });
+
+test('ナレッジ検索で営業プレイブックの参照元が表示される', async ({ page }) => {
+  // Phase 2-B-5: AI が営業プレイブック（売り方の型）を read-only 参照し、参照元として表示されることを確認。
+  await login(page);
+  await page.goto('/knowledge/search?q=' + encodeURIComponent('美容室 予約 導線 切り口'));
+  await expect(page.getByText('AIの回答', { exact: false })).toBeVisible();
+  await expect(page.getByText('参照した会社の頭脳', { exact: false })).toBeVisible();
+  await expect(page.getByText('美容室向け・予約導線の切り口').first()).toBeVisible();
+});

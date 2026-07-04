@@ -86,6 +86,7 @@
 - [[Phase2C4CaseStudyWrite]] — 顧客事例を人間が育てられるようになった：許諾なしに匿名化を外せない門番つき・AIは書き換え不可・smoke 20/20（Phase 2-C-4・GO）。
 - [[Phase2C4CaseStudyWrite本番確認]] — 顧客事例の書き込みが本番で GO：作成→編集→アーカイブ1周＋許諾の門番も本番で実証・頭脳4テーブル体制が完成・基準を 11e8f51 へ昇格（Phase 2-C-4-PROD・GO）。
 - [[Phase2C5CaseStudyAIReference設計]] — AIが顧客事例を読む前に「匿名化済みだけ」と決めた：外部AIは構造的ゼロ・読んだら記録・実装は次の承認から（Phase 2-C-5-ENTRY・READY / GO）。
+- [[Phase2C5CaseStudyAIReference実装]] — AIが顧客事例を読めるようになった：匿名化済みだけ・頭脳AI参照4テーブル体制・条件は自動見張り入り・smoke 21/21（Phase 2-C-5・GO）。
 
 ## 🔗 コード側の正（source of truth）
 

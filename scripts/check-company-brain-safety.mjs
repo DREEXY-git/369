@@ -94,6 +94,31 @@ for (const p of uiFiles) {
   }
 }
 
+// ── CaseStudy AI参照: 匿名化済み・非公開のみを読む条件が存在すること（Phase 2-C-5・doc78） ──
+{
+  const rel = 'apps/web/lib/company-brain-reference.ts';
+  let src = '';
+  try {
+    src = read(rel);
+  } catch {
+    errors.push(`【ファイル欠落】 ${rel} が見つかりません。Company Brain の AI 参照層が移動/削除されていないか確認してください。`);
+  }
+  if (src) {
+    if (!src.includes('prisma.caseStudy.findMany')) {
+      errors.push(`【CaseStudy AI参照が見つかりません】 ${rel} に prisma.caseStudy.findMany がありません（Phase 2-C-5 の4テーブル目）。`);
+    }
+    if (!src.includes('anonymized: true')) {
+      errors.push(`【匿名化条件が破れています】 ${rel} の CaseStudy 参照クエリに anonymized: true がありません。AI が読めるのは匿名化済みの事例だけです（doc78 §3）。`);
+    }
+    if (!src.includes("publishStatus: 'private'")) {
+      errors.push(`【非公開条件が破れています】 ${rel} の CaseStudy 参照クエリに publishStatus: 'private' がありません（doc78 §3）。`);
+    }
+    if (!src.includes("'CaseStudy'")) {
+      errors.push(`【entityType が不足しています】 ${rel} の entityType に CaseStudy がありません（ai_reference 記録の対象になりません）。`);
+    }
+  }
+}
+
 // ── shared 側: 共通判定と否定系テストが存在し続けること ──────────
 const rbac = read('packages/shared/src/rbac.ts');
 if ((rbac.split('export function isHumanUser').length - 1) !== 1) {

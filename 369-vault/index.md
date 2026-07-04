@@ -88,6 +88,7 @@
 - [[Phase2C5CaseStudyAIReference設計]] — AIが顧客事例を読む前に「匿名化済みだけ」と決めた：外部AIは構造的ゼロ・読んだら記録・実装は次の承認から（Phase 2-C-5-ENTRY・READY / GO）。
 - [[Phase2C5CaseStudyAIReference実装]] — AIが顧客事例を読めるようになった：匿名化済みだけ・頭脳AI参照4テーブル体制・条件は自動見張り入り・smoke 21/21（Phase 2-C-5・GO）。
 - [[Phase2C5CaseStudyAIReference本番確認]] — AIが本番で顧客事例を参照できた：作成→検索→参照表示→記録→片付けの1周を実測・基準を 6d656a3 へ昇格・次は Phase 2-C 完了判定（Phase 2-C-5-PROD・GO）。
+- [[Phase2C完了判定]] — 顧客事例の5段階がすべて本番GOになり Phase 2-C を正式クローズ：人間が書き・AIは匿名化済みだけ読み・読んだら記録・外部AIには出ない。ConsentRecord / Customer Pain / 公開活用は後続別承認（Phase 2-C-CLOSE・GO）。
 
 ## 🔗 コード側の正（source of truth）
 

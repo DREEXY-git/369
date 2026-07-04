@@ -69,6 +69,7 @@
 - [[Phase2B5SalesPlaybookAI参照設計]] — AIが営業プレイブックを読む前の安全設計：実証済みの仕組みに3テーブル目を足すだけ・外部送信は構造的にゼロ・実装は次の承認から（Phase 2-B-5-ENTRY）。
 - [[Phase2B5SalesPlaybookAI参照実装]] — AIが営業プレイブックを読めるようになった：読むだけ・読んだら記録・外部AIには出ない・smoke 18/18・本番確認はこれから（Phase 2-B-5）。
 - [[Phase2B5本番確認]] — AIが営業プレイブックを読むのが本番で GO：参照表示＋AI参照ログを実測確認・「見当たらない」の実体は見る場所の違い・68点はFakeLLM仕様（Phase 2-B-5-PROD）。
+- [[Phase2B完了]] — Phase 2-B 正式完了：営業プレイブック全5段が本番GO・会社の頭脳3テーブル体制が完成・HOLD 2件はコード修正ゼロで解消（Phase 2-B-CLOSE）。
 
 ## 🔗 コード側の正（source of truth）
 

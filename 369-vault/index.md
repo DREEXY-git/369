@@ -80,6 +80,7 @@
 - [[Phase2C入口レビュー]] — 品質基盤が固まったので次は事業価値側へ：顧客事例か顧客課題かを絞る設計から・許諾なしに顧客情報を扱わない条件を先に固定（Phase 2-C-ENTRY・READY / GO）。
 - [[Phase2C1顧客事例課題詳細設計]] — 顧客事例を先に・顧客課題は後に：許諾なしに扱わない/公開機能を作らない設計を固定・実装は各段別承認（Phase 2-C-1・READY / GO）。
 - [[Phase2C2CaseStudySchema設計]] — 顧客事例の器ができた：匿名化・非公開・外部AI禁止が既定値の器だけ追加・画面と書き込みはまだ（Phase 2-C-2・GO）。
+- [[Phase2C2CaseStudySchema本番確認]] — 顧客事例の器が本番に入った：build green＝migration成功・既存画面無回帰・画面なしが正常・基準を b012bd0 へ昇格（Phase 2-C-2-PROD・GO）。
 
 ## 🔗 コード側の正（source of truth）
 

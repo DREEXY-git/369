@@ -85,6 +85,7 @@
 - [[Phase2C3CaseStudyReadOnly本番確認]] — 顧客事例が本番で確認された：ナビ表示・空表示が正常・書けないことも実測・基準を 408857d へ昇格（Phase 2-C-3-PROD・GO）。
 - [[Phase2C4CaseStudyWrite]] — 顧客事例を人間が育てられるようになった：許諾なしに匿名化を外せない門番つき・AIは書き換え不可・smoke 20/20（Phase 2-C-4・GO）。
 - [[Phase2C4CaseStudyWrite本番確認]] — 顧客事例の書き込みが本番で GO：作成→編集→アーカイブ1周＋許諾の門番も本番で実証・頭脳4テーブル体制が完成・基準を 11e8f51 へ昇格（Phase 2-C-4-PROD・GO）。
+- [[Phase2C5CaseStudyAIReference設計]] — AIが顧客事例を読む前に「匿名化済みだけ」と決めた：外部AIは構造的ゼロ・読んだら記録・実装は次の承認から（Phase 2-C-5-ENTRY・READY / GO）。
 
 ## 🔗 コード側の正（source of truth）
 

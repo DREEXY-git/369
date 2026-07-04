@@ -32,6 +32,7 @@
 - **2-A-3b-2（ProductCatalogItem 書き込み最小実装）＋本番確認GO 完了（記録: doc42＋doc43＋doc14 §42）**: 商品カタログに同じ型で3操作を実装。**安全境界（AI mutation禁止・label 2択・externalAiAllowed 封印・ソフトアーカイブ）を最初から組み込み、修正ループ0回で完走**。**priceNote は説明テキストのみで請求・課金・見積・会計に接続しない**。**smoke は14本体制で 14/14 green（既存13本回帰なし）**。**本番確認も利用者実測で GO（2026-07-04）＝Company Brain の2テーブルの人間書き込みは本番確認まで完了**。
 - **2-A-3c-1（AI参照経路＋writeDataAccess 設計・docs-only）完了（記録: doc44）**: AI が Company Brain を読む段の設計を固定。参照範囲=tenantId・archivedAt:null・NORMAL/INTERNAL のみ／外部LLM送信は externalAiAllowed=true＋maskText 済みのみ（true UI 無し＝構造的にゼロ）／記録は ai_reference をレコードごと1件／第一接続タスクはナレッジ検索。
 - **2-A-3c-2（Company Brain AI参照の最小実装）完了 — 一度 HOLD → 再実測 GO で解消済み（実装: doc45／HOLD: doc46＋doc14 §43／解消GO: doc47＋doc14 §44）**: ナレッジ検索のみに Company Brain 参照を注入（read-only・NORMAL/INTERNAL・canAccessLabel・外部LLM時は externalAiAllowed ゲートで注入ゼロの安全側デフォルト）。初回本番確認（2026-07-04）は「値引き承認ルール」の AI回答・参照セクション未確認で HOLD。read-only 原因調査と利用者再実測（2026-07-04）により、**原因は本番データ前提差（対象 CompanyPolicy が本番に不在）でありコードのバグではない**と確定。本番UIで会社方針を作成後、AI回答・「参照した会社の頭脳」・参照元タイトル・CompanyPolicy の ai_reference ログすべて GO。**Phase 2-A-3c-2 は本番確認まで完全クローズ**。高機密ラベル・externalAiAllowed true UI・外部LLM送信の解禁は 3c-5 の個別人間承認まで行わない。ENSHiN OS の外部発信・口コミ・SNS・顧客の声公開・許諾管理実装は未着手。
+- **Phase X-05-2: 否定系テスト第一弾（AIロール拒否）— 実装完了（判定 GO・記録: doc66）／push は未実施（commit-only）**。A案採用: brain 3actions に3重複していた isHumanUser を packages/shared の純粋関数へ抽出し、**否定系テスト5本を追加（test 211→216）**。「rbac 上 AI_AGENT は knowledge:create を持つが actions 層で書き込み拒否」という前提自体もテストで恒久固定。**挙動不変（smoke 18/18 green で実証）・RBAC変更なし・schema/seed/package/lock/workflow 無変更**。doc63 の最大の穴（AI書き込み禁止層のテストゼロ）が解消。残: ★2〜★5（権限拒否・label制限・封印・物理削除の各テスト）と Stage 2 は別承認。
 - **Phase X-05-1: CI Stage 1 — 完了。実走確認 GO（実装: doc64／実走確認: doc65・確認日 2026-07-04 申告）。Phase X-05-1 は完全クローズ**。`.github/workflows/ci.yml`（push/PR 時に install→db:generate→test→typecheck→lint を自動実行・secrets不使用・DB不要）が main 反映済みで、**利用者実測により GitHub Actions の最新 run（commit `116efd6`）が green・失敗なしを確認**。AI が実走を直接確認したものではない。**品質ゲートが自動で常時稼働する状態になった**。Stage 2 build・Stage 3 smoke・否定系テスト（X-05-2）は別承認。
 - **Phase X-05: CI・否定系テスト — 設計確認済み（Phase X-05-ENTRY・判定 READY / GO・記録: doc63）／実装は X-05-1 で CI Stage 1 のみ着手済み**。要点: CI は3段階導入（Stage 1=test/typecheck/lint・Stage 2=build・Stage 3=smoke on CI は後日判断）・否定系テストは8対象（最優先=**actions 層 isHumanUser の無テスト状態**: rbac 上 AI_AGENT は knowledge:create を持つため actions 層が唯一の砦なのにテストゼロ、と read-only 調査で特定）。実装方式 A（shared へ純粋関数抽出＋単体テスト・推奨）/ B（E2E＋静的チェックのみ）は実装ミッションで人間判断。**workflow作成・テスト実装・package/lock 変更は次ミッションの別承認**。**Phase 2-C実装・Case Study実装・Customer Pain実装にも個別人間承認なしに進まない**。
 - **Phase 2-B: 正式完了（Phase 2-B-CLOSE・判定 GO）。完了対象の最新本番確認GO済みプロダクト基準: Phase 2-B-5 / `83d35bc`**（詳細 `docs/audit/62_phase2b_completion_record.md`・doc14 §51）。営業プレイブック（SalesPlaybookEntry）＝「設計（doc51）→ schema（doc52/53）→ read-only（doc54〜56）→ 人間書き込み（doc57/58）→ AI参照（doc59〜61）」の全5段が本番確認GOまで完了。**会社の頭脳3テーブル（会社方針・商品カタログ・営業プレイブック）すべてが「人間が書き・AIが読み・読んだら記録・外部AIには出さない」体制で本番稼働**。HOLD 2件（2-B-3 ナビ／2-B-5 ai_reference 表示場所）は追記主義で解消済み・未解消HOLDなし。後続送り（別承認）: 頭脳2画面→プレイブックのタブ導線・アーカイブ文言/視認性・実LLMキー設定（外部送信解禁とセット）・CI導入・否定系テスト・doc49 script化・Case Study / Customer Pain・次領域入口レビュー。以下は Phase 2-B 各段の当時記録。
@@ -136,8 +137,8 @@
 
 ## 次にやること（人間が選択）
 
-1. **X-05-1-VERIFY 記録（doc65）の push（push-only・別承認。feature＋main）**。
-2. **X-05-2（否定系テスト第一弾・doc63 §5 ★1〜★5）/ Stage 2（build の CI 追加）の承認判断**。isHumanUser の A/B 方式も人間判断。
+1. **X-05-2 実装 commit（doc66＋shared/actions/テスト）の push（push-only・別承認。feature＋main）**。push により CI が新テスト込み（216本）で自動実行される。
+2. **追加否定系テスト（doc63 §5 ★2〜★5）/ Stage 2（build の CI 追加）の承認判断**。
 3. または **次領域の入口レビューの選択（別承認・docs-only の ENTRY から）**: Case Study / Customer Pain / roadmap 上の別領域。UX改善（タブ導線・視認性）・実LLMキー設定（外部送信解禁とセット）も別承認候補。
 - いずれの場合も **3c-5 の解禁・外部LLM送信・高機密ラベル解禁・Phase 8 実課金・ENSHiN OS 外部発信には、個別人間承認なしに進まない**。
 

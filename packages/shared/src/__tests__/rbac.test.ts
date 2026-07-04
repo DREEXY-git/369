@@ -5,6 +5,7 @@ import {
   permissionsForRoles,
   ROLE_PERMISSIONS,
   isAiRole,
+  isHumanUser,
 } from '../rbac';
 import { canAccessLabel } from '../labels';
 
@@ -74,5 +75,33 @@ describe('機密ラベルアクセス', () => {
   it('外部士業は法務・財務機密を参照できる', () => {
     expect(canAccessLabel(['EXTERNAL_EXPERT'], 'LEGAL_CONFIDENTIAL')).toBe(true);
     expect(canAccessLabel(['EXTERNAL_EXPERT'], 'EXECUTIVE_ONLY')).toBe(false);
+  });
+});
+
+describe('isHumanUser（AIロール拒否・Company Brain 書き込みの人間専用判定・Phase X-05-2）', () => {
+  it('AI_AGENT は人間ではない（rbac 上 knowledge:create を持っていても書き込み層で拒否される）', () => {
+    expect(isHumanUser({ roles: ['AI_AGENT'] })).toBe(false);
+    // 前提の固定: AI_AGENT は rbac 上 knowledge:create を持つ（他機能の下書き用）。
+    // だからこそ isHumanUser が actions 層の唯一の砦であることをテストで守る。
+    expect(canForRoles(['AI_AGENT'], 'knowledge', 'create')).toBe(true);
+  });
+
+  it('AI_ASSISTANT は人間ではない', () => {
+    expect(isHumanUser({ roles: ['AI_ASSISTANT'] })).toBe(false);
+  });
+
+  it('AIロールを含む混在 roles は安全側で人間扱いしない', () => {
+    expect(isHumanUser({ roles: ['STAFF', 'AI_AGENT'] })).toBe(false);
+    expect(isHumanUser({ roles: ['OWNER', 'AI_ASSISTANT'] })).toBe(false);
+  });
+
+  it('人間ロールのみなら人間扱いする', () => {
+    expect(isHumanUser({ roles: ['OWNER'] })).toBe(true);
+    expect(isHumanUser({ roles: ['STAFF'] })).toBe(true);
+    expect(isHumanUser({ roles: ['ADMIN', 'STAFF'] })).toBe(true);
+  });
+
+  it('roles が空なら安全側で人間扱いしない', () => {
+    expect(isHumanUser({ roles: [] })).toBe(false);
   });
 });

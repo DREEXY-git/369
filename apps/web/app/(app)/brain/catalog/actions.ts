@@ -2,8 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { isAiRole } from '@hokko/shared';
-import { requireUser, hasPermission, type CurrentUser } from '@/lib/auth/current-user';
+import { isHumanUser } from '@hokko/shared';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
 
 // Company Brain（商品カタログ）Phase 2-A-3b-2: create / update / archive の3操作のみ。
@@ -17,9 +17,7 @@ import { prisma, writeAudit } from '@/lib/db';
 const ALLOWED_STATUSES = ['active', 'draft'] as const;
 const ALLOWED_LABELS = ['NORMAL', 'INTERNAL'] as const;
 
-function isHumanUser(user: CurrentUser): boolean {
-  return user.roles.length > 0 && !user.roles.some((r) => isAiRole(r));
-}
+// isHumanUser は @hokko/shared の共通判定（Phase X-05-2 で共通化・単体テストあり・挙動不変）。
 
 type CatalogInput = {
   name: string;

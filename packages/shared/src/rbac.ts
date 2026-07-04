@@ -147,4 +147,14 @@ export function isAiRole(roleKey: RoleKey): boolean {
   return roleKey === 'AI_AGENT' || roleKey === 'AI_ASSISTANT';
 }
 
+/**
+ * Company Brain（会社方針・商品カタログ・営業プレイブック）等の「人間専用の書き込み」判定。
+ * AIロール（AI_AGENT / AI_ASSISTANT）を1つでも含む場合は安全側で false（混在も拒否）。
+ * roles が空の場合も false。rbac 上 AI_AGENT は knowledge:create を持つ（他機能の下書き用）ため、
+ * この関数が actions 層での AI mutation 禁止の砦になる（Phase 2-A-3b-1 の判定の共通化・Phase X-05-2）。
+ */
+export function isHumanUser(user: { roles: RoleKey[] }): boolean {
+  return user.roles.length > 0 && !user.roles.some((r) => isAiRole(r));
+}
+
 export const ALL_ACTIONS_LIST = ALL_ACTIONS;

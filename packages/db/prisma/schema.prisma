@@ -2412,6 +2412,37 @@ model CaseStudy {
   @@index([tenantId, publishStatus])
 }
 
+// 顧客事例の許諾専用台帳（Phase 2-C 後続・doc83 案B）。
+// - 既存 ConsentRecord はメール営業チャネル同意用（配信同意）であり、本 model とは用途が異なる。
+//   CaseStudyConsent は顧客事例の許諾専用台帳（誰が・何の用途で・いつまで・どんな証跡で）。
+// - relation は張らず ID 参照で運用（caseStudyId / customerId / grantedById。既存流儀）。
+// - Customer の氏名やメール等の PII は複製しない（customerId の ID 参照のみ）。
+// - evidence には証跡の所在説明だけを書く。evidence に原本本文や PII を貼らない（TEXT_POINTER_ONLY）。
+// - status は granted | revoked の2状態。expired は expiresAt から導出・suppressed は SuppressionList から導出。
+// - expiresAt は必須（NULL_NOT_ALLOWED・期限なし許諾は認めない・doc84 §0）。
+// - purpose は許諾された用途の明示列挙（internal_view | ai_reference | external_publish | pr | seo | customer_voice）。
+//   用途未記載は不許可（安全側・doc82 §6）。
+// - 登録・更新は人間ユーザーのみ（AI 不可）。UI・突合判定・writeAudit は後続の別承認（今回は器のみ）。
+model CaseStudyConsent {
+  id          String   @id @default(cuid())
+  tenantId    String
+  caseStudyId String
+  customerId  String?
+  status      String   @default("granted") // granted | revoked
+  purpose     String[]
+  evidence    String
+  grantedAt   DateTime
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  grantedById String?
+  note        String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, caseStudyId])
+}
+
 // ============================ バックアップ ====================================
 
 model BackupJob {

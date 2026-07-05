@@ -91,6 +91,7 @@
 - [[Phase2C完了判定]] — 顧客事例の5段階がすべて本番GOになり Phase 2-C を正式クローズ：人間が書き・AIは匿名化済みだけ読み・読んだら記録・外部AIには出ない。ConsentRecord / Customer Pain / 公開活用は後続別承認（Phase 2-C-CLOSE・GO）。
 - [[ConsentRecord連携設計]] — 「許諾あり」を自己申告から本物の証拠へ：台帳突合・用途明示・失効時の即遮断・公開5前提を設計固定。連携までは匿名化済みだけAIが読む・実装は別承認（ConsentRecord連携設計・READY / GO）。
 - [[ConsentRecord連携器選択]] — 事例許諾は専用台帳 CaseStudyConsent で持つと確定：メール配信同意との混在を避け、追加だけの最小変更に。schema実装は別承認・連携までは匿名化済みだけAIが読む（ConsentRecord連携器選択・READY / GO）。
+- [[CaseStudyConsentSchema]] — 許諾台帳の器ができた：追加だけの最小変更・期限必須・証跡は所在説明のみ・登録画面はまだ無く本番は空のまま。UIと突合判定は別承認（CaseStudyConsent schema・GO）。
 
 ## 🔗 コード側の正（source of truth）
 

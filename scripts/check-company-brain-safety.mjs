@@ -178,8 +178,37 @@ try {
   if (!consentInputTest.includes('validateCaseStudyConsentInput')) {
     errors.push('【否定系テストが消えています】 packages/shared/src/__tests__/case-study-consent.test.ts に validateCaseStudyConsentInput のテストが必要です（用途未記載不許可・期限必須の自動検証）。');
   }
+  if (!consentInputTest.includes('validateCaseStudyConsentReconciliation')) {
+    errors.push('【否定系テストが消えています】 packages/shared/src/__tests__/case-study-consent.test.ts に validateCaseStudyConsentReconciliation のテストが必要です（突合判定の reject 条件の自動検証・doc89 §11）。');
+  }
 } catch {
   errors.push('【否定系テストが見つかりません】 packages/shared/src/__tests__/case-study-consent.test.ts が必要です（許諾台帳の入力検証の自動検証・doc86）。');
+}
+
+// ── 突合判定の段階分離（doc89 §12・doc90）: 純粋関数のみ許可・接続/解禁の同時混入を機械検知 ──
+{
+  const shared = read('packages/shared/src/case-study-consent.ts');
+  if (!shared.includes('export function validateCaseStudyConsentReconciliation')) {
+    errors.push('【突合判定関数が見つかりません】 packages/shared/src/case-study-consent.ts に validateCaseStudyConsentReconciliation が必要です（doc89 の設計・doc90 で追加）。');
+  }
+  if (shared.includes('@prisma') || shared.includes('PrismaClient')) {
+    errors.push('【純粋関数の境界が破れています】 packages/shared/src/case-study-consent.ts が Prisma を import しています。突合判定は DB を読まない純粋関数のままにしてください（doc89 §10 案B）。');
+  }
+  // 段階分離1: CaseStudy 保存条件への接続は別承認（同じ変更に混ざったら FAIL）
+  const caseStudyActions = read('apps/web/app/(app)/brain/case-studies/actions.ts');
+  if (caseStudyActions.includes('validateCaseStudyConsentReconciliation') || caseStudyActions.includes('caseStudyConsent.findMany')) {
+    errors.push('【段階分離が破れています】 case-studies/actions.ts に突合判定の接続が入っています。保存条件への接続は別承認です（doc89 §13 段階3）。');
+  }
+  // 段階分離2: anonymized=false 解禁は別承認（匿名化の門番の実装が変わったら FAIL）
+  const caseStudyShared = read('packages/shared/src/case-study.ts');
+  if (!caseStudyShared.includes("return consentStatus === 'granted';")) {
+    errors.push('【匿名化の門番が変更されています】 packages/shared/src/case-study.ts の canDisableAnonymization が既定実装から変わっています。anonymized=false の扱い変更は別承認です（doc89 §8）。');
+  }
+  // 段階分離3: AI 参照条件への接続は別承認（company-brain-reference の CaseStudyConsent 参照は既存検査でも FAIL するが明示）
+  const brainRefSrc = read('apps/web/lib/company-brain-reference.ts');
+  if (brainRefSrc.includes('validateCaseStudyConsentReconciliation') || brainRefSrc.includes('caseStudyConsent.findMany')) {
+    errors.push('【段階分離が破れています】 company-brain-reference.ts に突合判定/台帳参照が入っています。AI参照条件の変更は別承認です（doc89 §9）。');
+  }
 }
 
 // ── 結果 ─────────────────────────────────────────────

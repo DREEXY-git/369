@@ -45,3 +45,106 @@ export function validateCaseStudyConsentInput(input: CaseStudyConsentInput):
   if (input.expiresAt.getTime() <= input.grantedAt.getTime()) return { ok: false, error: 'expiresBeforeGranted' };
   return { ok: true };
 }
+
+// ── 突合判定（doc89 準拠・Phase 段階3の純粋関数のみ・doc90） ────────────────────
+// granted（申告値）を真正な許諾として扱ってよいかを、許諾台帳の行と機械照合する判定。
+// - DB を読まない・Prisma を import しない・非同期にしない（決定的な純粋関数）。
+// - 現在時刻は now 引数・SuppressionList の照会結果は suppressed boolean で受け取る（呼び出し層の責務）。
+// - evidence は存在確認のみ（本文は判定に使わない・AI 文脈へ注入しない）。
+// - 既存の validateCaseStudyConsent（匿名化の門番）/ validateCaseStudyConsentInput（台帳入力検証）は変更しない。
+// - この関数はまだどの保存条件・AI参照にも接続されていない（接続・anonymized=false 解禁は別承認・安全ゲートで段階分離を機械検査）。
+
+export const CASE_STUDY_CONSENT_AI_READABLE_LABELS = ['NORMAL', 'INTERNAL'] as const;
+
+export type CaseStudyReconciliationCaseStudy = {
+  id: string;
+  tenantId: string;
+  consentStatus: string;
+  archivedAt: Date | null;
+  publishStatus: string;
+  label: string;
+};
+
+export type CaseStudyReconciliationConsentRow = {
+  tenantId: string;
+  caseStudyId: string;
+  status: string;
+  purpose: string[];
+  evidence: string;
+  expiresAt: Date;
+  revokedAt: Date | null;
+  grantedById: string | null;
+};
+
+export type CaseStudyConsentReconciliationReason =
+  | 'unknownTargetPurpose'
+  | 'consentStatusNotGranted'
+  | 'caseStudyArchived'
+  | 'caseStudyNotPrivate'
+  | 'labelNotAllowed'
+  | 'suppressed'
+  | 'noConsentRecord'
+  | 'tenantMismatch'
+  | 'caseStudyMismatch'
+  | 'unknownStatus'
+  | 'revoked'
+  | 'expired'
+  | 'purposeEmpty'
+  | 'unknownPurposeInLedger'
+  | 'purposeMismatch'
+  | 'evidenceEmpty'
+  | 'grantedByMissing';
+
+function consentRowFailure(
+  row: CaseStudyReconciliationConsentRow,
+  targetPurpose: CaseStudyConsentPurpose,
+  now: Date,
+): CaseStudyConsentReconciliationReason | null {
+  if (row.status === 'revoked') return 'revoked';
+  if (row.status !== 'granted') return 'unknownStatus';
+  if (row.revokedAt !== null) return 'revoked';
+  if (row.expiresAt.getTime() <= now.getTime()) return 'expired';
+  if (row.purpose.length === 0) return 'purposeEmpty';
+  if (row.purpose.some((p) => !isCaseStudyConsentPurpose(p))) return 'unknownPurposeInLedger';
+  if (!row.purpose.includes(targetPurpose)) return 'purposeMismatch';
+  if (!row.evidence.trim()) return 'evidenceEmpty';
+  if (!row.grantedById || !row.grantedById.trim()) return 'grantedByMissing';
+  return null;
+}
+
+/**
+ * 突合判定: 対象用途について「有効な台帳行」が存在するときだけ ok。
+ * 有効条件は doc89 §5 の全条件 AND（1つでも欠けたら reason つきで拒否・安全側）。
+ * 複数行がある場合、1行でも全条件を満たせば ok。満たす行が無い場合の reason は
+ * 最初に照合対象になった行の最初の不成立条件（決定的）。
+ */
+export function validateCaseStudyConsentReconciliation(input: {
+  caseStudy: CaseStudyReconciliationCaseStudy;
+  consents: CaseStudyReconciliationConsentRow[];
+  targetPurpose: string;
+  now: Date;
+  suppressed: boolean;
+}): { ok: true } | { ok: false; reason: CaseStudyConsentReconciliationReason } {
+  if (!isCaseStudyConsentPurpose(input.targetPurpose)) return { ok: false, reason: 'unknownTargetPurpose' };
+  if (input.caseStudy.consentStatus !== 'granted') return { ok: false, reason: 'consentStatusNotGranted' };
+  if (input.caseStudy.archivedAt !== null) return { ok: false, reason: 'caseStudyArchived' };
+  if (input.caseStudy.publishStatus !== 'private') return { ok: false, reason: 'caseStudyNotPrivate' };
+  if (!(CASE_STUDY_CONSENT_AI_READABLE_LABELS as readonly string[]).includes(input.caseStudy.label)) {
+    return { ok: false, reason: 'labelNotAllowed' };
+  }
+  if (input.suppressed) return { ok: false, reason: 'suppressed' };
+  if (input.consents.length === 0) return { ok: false, reason: 'noConsentRecord' };
+
+  const tenantRows = input.consents.filter((c) => c.tenantId === input.caseStudy.tenantId);
+  if (tenantRows.length === 0) return { ok: false, reason: 'tenantMismatch' };
+  const matchedRows = tenantRows.filter((c) => c.caseStudyId === input.caseStudy.id);
+  if (matchedRows.length === 0) return { ok: false, reason: 'caseStudyMismatch' };
+
+  let firstFailure: CaseStudyConsentReconciliationReason | null = null;
+  for (const row of matchedRows) {
+    const failure = consentRowFailure(row, input.targetPurpose, input.now);
+    if (failure === null) return { ok: true };
+    if (firstFailure === null) firstFailure = failure;
+  }
+  return { ok: false, reason: firstFailure ?? 'noConsentRecord' };
+}

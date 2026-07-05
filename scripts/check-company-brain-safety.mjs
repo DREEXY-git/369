@@ -223,6 +223,27 @@ try {
   }
 }
 
+// ── anonymized=false（実名寄り）の表示統治（doc94 §0・doc95）: INTERNAL_ONLY_RESTRICTED ──
+// - 一覧は badge_only: 実名寄り行の注意バッジ（AI参照対象外/外部公開不可）が消えたら FAIL。
+// - 閲覧は knowledge_update_only: 実名寄り行の内容制限（c.anonymized || canUpdate）が消えたら FAIL。
+// - Customer マスタ join 禁止: case-studies の画面（表示層）が prisma.customer を参照したら FAIL（PII 表示面を増やさない）。
+{
+  const listPage = read('apps/web/app/(app)/brain/case-studies/page.tsx');
+  if (!listPage.includes('AI参照対象外') || !listPage.includes('外部公開不可')) {
+    errors.push('【実名寄り表示の統治が消えています】 case-studies 一覧に実名寄り行の注意バッジ（AI参照対象外・外部公開不可）が必要です（doc95・badge_only）。');
+  }
+  if (!listPage.includes('c.anonymized || canUpdate')) {
+    errors.push('【実名寄りの閲覧制限が消えています】 case-studies 一覧の実名寄り行は knowledge:update 保有者だけに内容を表示してください（doc95・knowledge_update_only）。');
+  }
+  const caseStudyPages = walk(join(repoRoot, 'apps/web/app/(app)/brain/case-studies')).filter((p) => p.endsWith('page.tsx'));
+  for (const p of caseStudyPages) {
+    const src = readFileSync(p, 'utf8');
+    if (src.includes('prisma.customer')) {
+      errors.push(`【PII表示面の拡張が検出されました】 ${p} が Customer マスタを参照しています。case-studies の画面は Customer を join しません（doc95・title_body_only_no_customer_master_join）。`);
+    }
+  }
+}
+
 // ── 結果 ─────────────────────────────────────────────
 if (errors.length > 0) {
   console.error('Company Brain safety checks FAILED:');

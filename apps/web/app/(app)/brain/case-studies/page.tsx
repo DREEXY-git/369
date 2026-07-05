@@ -14,6 +14,11 @@ export const dynamic = 'force-dynamic';
 // AI参照は未接続（2-C-5 の別承認）。externalAiAllowed を true にする UI は作らない。
 // 顧客名・取引先名・成果数値・顧客の声は許諾なしに扱わない（doc71 §6-1）。表示対象は非公開（publishStatus='private'）
 // かつ NORMAL / INTERNAL のみ。匿名化を外せるのは許諾あり（granted）のときだけ（actions 側で機械拒否）。
+// anonymized=false（実名寄り）の本格扱い（doc95・doc94 §0）: INTERNAL_ONLY_RESTRICTED。
+// - 一覧は badge_only: 実名寄り行にはバッジ（AI参照対象外・外部公開不可）のみ追加し、表示面を広げない。
+// - 閲覧は knowledge_update_only: 実名寄り行のタイトル・本文断片は knowledge:update 保有者だけに表示する
+//   （匿名化済み事例と通常一覧の閲覧は従来どおり）。
+// - Customer マスタは join しない（title_body_only_no_customer_master_join・PII 表示面を増やさない）。
 
 const CONSENT_STATUS_LABEL: Record<string, string> = {
   none: '許諾なし（匿名のみ）',
@@ -120,30 +125,48 @@ export default async function BrainCaseStudiesPage({
               </tr>
             </thead>
             <tbody>
-              {caseStudies.map((c) => (
+              {caseStudies.map((c) => {
+                // 実名寄り（anonymized=false）の内容は knowledge:update 保有者だけに表示（knowledge_update_only・doc95）。
+                const canViewRestricted = c.anonymized || canUpdate;
+                return (
                 <tr key={c.id} className="border-t border-border">
                   <Td>
-                    <div className="font-medium">{c.title}</div>
-                    <div className="mt-0.5 line-clamp-2 max-w-md text-xs text-muted-foreground">{c.body}</div>
-                    {c.tags.length > 0 ? (
-                      <div className="mt-1 text-[11px] text-muted-foreground">タグ: {c.tags.join(' / ')}</div>
-                    ) : null}
+                    {canViewRestricted ? (
+                      <>
+                        <div className="font-medium">{c.title}</div>
+                        <div className="mt-0.5 line-clamp-2 max-w-md text-xs text-muted-foreground">{c.body}</div>
+                        {c.tags.length > 0 ? (
+                          <div className="mt-1 text-[11px] text-muted-foreground">タグ: {c.tags.join(' / ')}</div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <div className="max-w-md text-xs text-muted-foreground">
+                        <div className="font-medium text-foreground">実名寄り事例（閲覧制限）</div>
+                        <div className="mt-0.5">実名寄り（匿名化オフ）の内容は、編集権限（knowledge:update）を持つ人だけが閲覧できます。</div>
+                      </div>
+                    )}
                   </Td>
                   <Td>
                     <div className="max-w-xs text-xs">
-                      {c.industry ? <div>業種: {c.industry}</div> : null}
-                      {c.challenge ? <div className="mt-0.5 text-muted-foreground">{c.challenge}</div> : null}
+                      {canViewRestricted && c.industry ? <div>業種: {c.industry}</div> : null}
+                      {canViewRestricted && c.challenge ? <div className="mt-0.5 text-muted-foreground">{c.challenge}</div> : null}
                     </div>
                   </Td>
                   <Td>
                     <div className="max-w-sm text-xs">
-                      {c.solution ? <div className="line-clamp-2">{c.solution}</div> : null}
-                      {c.outcome ? <div className="mt-0.5 line-clamp-2 text-muted-foreground">{c.outcome}</div> : null}
+                      {canViewRestricted && c.solution ? <div className="line-clamp-2">{c.solution}</div> : null}
+                      {canViewRestricted && c.outcome ? <div className="mt-0.5 line-clamp-2 text-muted-foreground">{c.outcome}</div> : null}
                     </div>
                   </Td>
                   <Td>
                     <div className="flex flex-col gap-1 text-xs">
                       <Badge tone={c.anonymized ? 'slate' : 'amber'}>{c.anonymized ? '匿名化済み' : '実名寄り（許諾あり）'}</Badge>
+                      {c.anonymized ? null : (
+                        <>
+                          <Badge tone="slate">AI参照対象外</Badge>
+                          <Badge tone="slate">外部公開不可</Badge>
+                        </>
+                      )}
                       <Badge tone="slate">{CONSENT_STATUS_LABEL[c.consentStatus] ?? c.consentStatus}</Badge>
                       <Badge tone="slate">{c.publishStatus === 'private' ? '非公開' : c.publishStatus}</Badge>
                     </div>
@@ -170,7 +193,8 @@ export default async function BrainCaseStudiesPage({
                     </Td>
                   ) : null}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </Table>
         </Card>

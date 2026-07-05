@@ -98,6 +98,14 @@ export default async function EditCaseStudyPage({
             : (ERROR_MESSAGES[sp.error] ?? '入力内容を確認してください。')}
         </div>
       ) : null}
+      {cs.anonymized ? null : (
+        <div className="mb-3 rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          この事例は<span className="font-medium">実名寄り（匿名化オフ）</span>です。社内限定のまま扱われ、
+          <span className="font-medium">AI参照対象外・外部公開不可</span>です。
+          許諾が取り消し・期限切れで無効になっても<span className="font-medium">自動では匿名化に戻りません</span>。
+          その場合は手動で「匿名化する」に戻して保存してください（許諾台帳の状態は「許諾台帳」から確認できます）。
+        </div>
+      )}
       <Card>
         <CardContent className="pt-4">
           <form action={updateCaseStudyAction} className="space-y-4">

@@ -119,6 +119,43 @@ for (const p of uiFiles) {
   }
 }
 
+// ── CaseStudyConsent 台帳: 人間のみ・writeAudit・物理削除禁止・AI 非注入（doc86） ──
+{
+  const rel = 'apps/web/app/(app)/brain/case-studies/[id]/consents/actions.ts';
+  let src = '';
+  try {
+    src = read(rel);
+  } catch {
+    errors.push(`【ファイル欠落】 ${rel} が見つかりません。許諾台帳の書き込み層が移動/削除されていないか確認してください。`);
+  }
+  if (src) {
+    if (!src.includes("import { isHumanUser } from '@hokko/shared';")) {
+      errors.push(`【AIロール拒否の共通化が破れています】 ${rel} が @hokko/shared の isHumanUser を import していません（台帳の登録・取り消しは人間のみです）。`);
+    }
+    if (!src.includes('writeAudit')) {
+      errors.push(`【監査記録が破れています】 ${rel} に writeAudit がありません。許諾台帳の登録・取り消しは必ず監査ログに残します（doc86 §7）。`);
+    }
+    if (src.includes('.delete(') || src.includes('.deleteMany(') || src.includes('deleteMany')) {
+      errors.push(`【物理削除禁止が破れています】 ${rel} に delete / deleteMany が見つかりました。許諾台帳の行は削除できません（取り消し=revoke のみ・doc86 §8）。`);
+    }
+    if (!src.includes('validateCaseStudyConsentInput')) {
+      errors.push(`【台帳入力検証が破れています】 ${rel} が validateCaseStudyConsentInput（用途未記載不許可・期限必須・期限逆転拒否・@hokko/shared）を使っていません。`);
+    }
+  }
+  try {
+    const newPage = read('apps/web/app/(app)/brain/case-studies/[id]/consents/new/page.tsx');
+    if (!newPage.includes('所在説明') || !newPage.includes('原本') || !newPage.includes('個人情報')) {
+      errors.push('【証跡ガイドが消えています】 許諾台帳の登録画面に「所在説明のみ・原本や個人情報を貼らない」ガイドが必要です（doc86 §5）。');
+    }
+  } catch {
+    // 画面欠落は運用上 actions 欠落と同時に起きるため、上の欠落検出に委ねる
+  }
+  const brainRef = read('apps/web/lib/company-brain-reference.ts');
+  if (brainRef.includes('caseStudyConsent.findMany') || brainRef.includes('CaseStudyConsent')) {
+    errors.push('【AI非注入が破れています】 apps/web/lib/company-brain-reference.ts が CaseStudyConsent を参照しています。許諾台帳は AI 文脈へ注入しません（doc86 §9・解禁は個別人間承認）。');
+  }
+}
+
 // ── shared 側: 共通判定と否定系テストが存在し続けること ──────────
 const rbac = read('packages/shared/src/rbac.ts');
 if ((rbac.split('export function isHumanUser').length - 1) !== 1) {
@@ -135,6 +172,14 @@ try {
   }
 } catch {
   errors.push('【否定系テストが見つかりません】 packages/shared/src/__tests__/case-study.test.ts が必要です（Phase 2-C-4 の許諾・匿名化制御の自動検証）。');
+}
+try {
+  const consentInputTest = read('packages/shared/src/__tests__/case-study-consent.test.ts');
+  if (!consentInputTest.includes('validateCaseStudyConsentInput')) {
+    errors.push('【否定系テストが消えています】 packages/shared/src/__tests__/case-study-consent.test.ts に validateCaseStudyConsentInput のテストが必要です（用途未記載不許可・期限必須の自動検証）。');
+  }
+} catch {
+  errors.push('【否定系テストが見つかりません】 packages/shared/src/__tests__/case-study-consent.test.ts が必要です（許諾台帳の入力検証の自動検証・doc86）。');
 }
 
 // ── 結果 ─────────────────────────────────────────────

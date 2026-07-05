@@ -94,6 +94,7 @@
 - [[CaseStudyConsentSchema]] — 許諾台帳の器ができた：追加だけの最小変更・期限必須・証跡は所在説明のみ・登録画面はまだ無く本番は空のまま。UIと突合判定は別承認（CaseStudyConsent schema・GO）。
 - [[CaseStudyConsentSchema本番確認]] — 許諾台帳の器が本番に入った：build green・既存画面無回帰・画面なしが正常・基準を 812ae69 へ昇格。台帳UIと突合判定は別承認（CaseStudyConsent schema-PROD・GO）。
 - [[CaseStudyConsentUI設計]] — 許諾台帳の画面ルールを実装前に固定：一覧・登録・閲覧・取り消しだけ・人間のみ・証跡は所在説明のみ・期限必須・取り消しは履歴を残す。AIの読み方は変えない・実装は別承認（CaseStudyConsent UI設計・READY / GO）。
+- [[CaseStudyConsentUI実装]] — 許諾台帳の画面ができた：4操作のみ・人間のみ・記録つき・行は消えない・AIは台帳を読まない（自動見張りつき）・smoke 22/22。本番確認と突合判定は別承認（CaseStudyConsent UI実装・GO）。
 
 ## 🔗 コード側の正（source of truth）
 

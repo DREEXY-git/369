@@ -152,6 +152,12 @@ export default async function EditCaseStudyPage({
               <Link href="/brain/case-studies" className="rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent/60">
                 キャンセル
               </Link>
+              <Link
+                href={`/brain/case-studies/${cs.id}/consents`}
+                className="ml-auto rounded-md border border-border px-3 py-2 text-sm hover:bg-accent/60"
+              >
+                許諾台帳
+              </Link>
             </div>
           </form>
         </CardContent>

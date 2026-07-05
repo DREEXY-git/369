@@ -27,6 +27,21 @@ const ERROR_MESSAGES: Record<string, string> = {
   tags: 'タグは最大10件・各20文字以内で入力してください。',
 };
 
+// 保存条件接続（doc92）: 匿名化を外す保存が許諾台帳との突合で拒否されたときの表示文言。
+// reason コードは query（error=ledger_〜）に載るが、画面には PII・証跡本文・抑止詳細を出さない。
+const LEDGER_ERROR_MESSAGES: Record<string, string> = {
+  noConsentRecord: '許諾台帳に登録がありません。匿名化を外して保存するには、先に「許諾台帳」から有効な行を登録してください。',
+  tenantMismatch: '許諾台帳に有効な行がありません。「許諾台帳」の登録内容をご確認ください。',
+  caseStudyMismatch: '許諾台帳に有効な行がありません。「許諾台帳」の登録内容をご確認ください。',
+  revoked: '許諾が取り消されています。匿名化を外して保存するには、有効な許諾の再登録が必要です。',
+  expired: '許諾の期限が切れています。匿名化を外して保存するには、有効な許諾の再登録が必要です。',
+  purposeEmpty: '社内閲覧（internal_view）の用途を含む有効な許諾の登録が必要です。',
+  unknownPurposeInLedger: '社内閲覧（internal_view）の用途を含む有効な許諾の登録が必要です。',
+  purposeMismatch: '社内閲覧（internal_view）の用途を含む有効な許諾の登録が必要です。',
+};
+// suppressed 等の上記以外の理由は、詳細を出さずこの一般文言に丸める（doc92 §5-4）。
+const LEDGER_ERROR_FALLBACK = '有効な許諾条件を満たしていません。匿名化を外して保存することはできません。';
+
 export default async function EditCaseStudyPage({
   params,
   searchParams,
@@ -78,7 +93,9 @@ export default async function EditCaseStudyPage({
       </div>
       {sp.error ? (
         <div className="mb-3 rounded bg-red-50 px-3 py-2 text-xs text-red-700">
-          {ERROR_MESSAGES[sp.error] ?? '入力内容を確認してください。'}
+          {sp.error.startsWith('ledger_')
+            ? (LEDGER_ERROR_MESSAGES[sp.error.slice('ledger_'.length)] ?? LEDGER_ERROR_FALLBACK)
+            : (ERROR_MESSAGES[sp.error] ?? '入力内容を確認してください。')}
         </div>
       ) : null}
       <Card>
@@ -140,7 +157,7 @@ export default async function EditCaseStudyPage({
                 匿名化する（推奨・既定）
               </label>
               <p className="text-xs text-muted-foreground">
-                チェックを外せるのは許諾状態が「許諾あり」のときだけです（それ以外は保存時に拒否されます）。
+                チェックを外せるのは、許諾状態が「許諾あり」で、かつ許諾台帳に有効な行（社内閲覧の用途・期限内・取り消しなし）があるときだけです（保存時に機械確認されます）。
               </p>
             </div>
             <div className="space-y-1.5">

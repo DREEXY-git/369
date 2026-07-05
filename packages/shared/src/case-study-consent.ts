@@ -5,6 +5,8 @@
 // - この判定は consents actions 層で必ず通す（安全ゲートで機械検査）。
 // - 突合判定（granted の真正性確認・validateCaseStudyConsent の拡張）は doc83 §9 段階3 の別承認。
 
+import { isSuppressed, type SuppressionEntry } from './suppression';
+
 export const CASE_STUDY_CONSENT_PURPOSES = [
   'internal_view',
   'ai_reference',
@@ -147,4 +149,24 @@ export function validateCaseStudyConsentReconciliation(input: {
     if (firstFailure === null) firstFailure = failure;
   }
   return { ok: false, reason: firstFailure ?? 'noConsentRecord' };
+}
+
+// ── 保存条件接続の補助（doc92・CONNECT_ONLY） ────────────────────────────────
+// anonymized=false 保存時の suppressed 解決（CALLER_RESOLVES_SUPPRESSED_BOOLEAN・doc92 §0）。
+// actions 層が Customer / SuppressionList を tenantId スコープで読み、この純粋関数で boolean に
+// 解決してから validateCaseStudyConsentReconciliation に渡す。この関数自体は DB を読まない。
+// - customerId が無い事例は抑止対象の主体が無い → false（台帳行の有効性は突合判定側で検査）。
+// - customerId があるのに Customer が見つからない（テナント不一致・削除等）→ 安全側で true（保存拒否側）。
+// - Customer の email / phone が SuppressionList（email はドメイン一致含む）に載っていれば true。
+
+export function resolveCaseStudyConsentSuppressed(input: {
+  customerId: string | null;
+  customer: { email: string | null; phone: string | null } | null;
+  suppressionEntries: SuppressionEntry[];
+}): boolean {
+  if (!input.customerId) return false;
+  if (!input.customer) return true;
+  if (input.customer.email && isSuppressed(input.suppressionEntries, 'email', input.customer.email)) return true;
+  if (input.customer.phone && isSuppressed(input.suppressionEntries, 'phone', input.customer.phone)) return true;
+  return false;
 }

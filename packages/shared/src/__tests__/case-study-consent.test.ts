@@ -255,3 +255,69 @@ describe('validateCaseStudyConsentReconciliation（突合判定）', () => {
     ).toEqual({ ok: true });
   });
 });
+
+// ── suppressed 解決（resolveCaseStudyConsentSuppressed・doc92 §0 CALLER_RESOLVES_SUPPRESSED_BOOLEAN） ──
+// anonymized=false 保存時に actions 層が Customer / SuppressionList を読み boolean へ解決する補助。
+// 「customerId があるのに Customer が見つからない」は安全側（true=保存拒否側）に倒す。
+
+import { resolveCaseStudyConsentSuppressed } from '../case-study-consent';
+
+describe('resolveCaseStudyConsentSuppressed', () => {
+  const ENTRIES = [
+    { channel: 'email', value: 'ng@example.com' },
+    { channel: 'email', value: 'blocked-domain.example' },
+    { channel: 'phone', value: '090-0000-0000' },
+  ];
+
+  it('customerId なし（主体なし） → false', () => {
+    expect(
+      resolveCaseStudyConsentSuppressed({ customerId: null, customer: null, suppressionEntries: ENTRIES }),
+    ).toBe(false);
+  });
+
+  it('customerId ありなのに Customer が見つからない → 安全側で true（保存拒否側）', () => {
+    expect(
+      resolveCaseStudyConsentSuppressed({ customerId: 'cust-1', customer: null, suppressionEntries: ENTRIES }),
+    ).toBe(true);
+  });
+
+  it('email が抑止リストに完全一致 → true', () => {
+    expect(
+      resolveCaseStudyConsentSuppressed({
+        customerId: 'cust-1',
+        customer: { email: 'NG@example.com', phone: null },
+        suppressionEntries: ENTRIES,
+      }),
+    ).toBe(true);
+  });
+
+  it('email がドメイン一致で抑止 → true', () => {
+    expect(
+      resolveCaseStudyConsentSuppressed({
+        customerId: 'cust-1',
+        customer: { email: 'someone@blocked-domain.example', phone: null },
+        suppressionEntries: ENTRIES,
+      }),
+    ).toBe(true);
+  });
+
+  it('phone が抑止リストに一致 → true', () => {
+    expect(
+      resolveCaseStudyConsentSuppressed({
+        customerId: 'cust-1',
+        customer: { email: null, phone: '090-0000-0000' },
+        suppressionEntries: ENTRIES,
+      }),
+    ).toBe(true);
+  });
+
+  it('email / phone とも抑止リストに載っていない → false', () => {
+    expect(
+      resolveCaseStudyConsentSuppressed({
+        customerId: 'cust-1',
+        customer: { email: 'ok@example.com', phone: '080-1111-2222' },
+        suppressionEntries: ENTRIES,
+      }),
+    ).toBe(false);
+  });
+});

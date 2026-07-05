@@ -185,7 +185,8 @@ try {
   errors.push('【否定系テストが見つかりません】 packages/shared/src/__tests__/case-study-consent.test.ts が必要です（許諾台帳の入力検証の自動検証・doc86）。');
 }
 
-// ── 突合判定の段階分離（doc89 §12・doc90）: 純粋関数のみ許可・接続/解禁の同時混入を機械検知 ──
+// ── 突合判定の段階分離（doc89 §12・doc90。保存条件接続のみ doc92 で人間承認済み） ──
+// 匿名化の門番の変更・AI 参照条件への接続は引き続き別承認（混入したら FAIL）。
 {
   const shared = read('packages/shared/src/case-study-consent.ts');
   if (!shared.includes('export function validateCaseStudyConsentReconciliation')) {
@@ -194,10 +195,21 @@ try {
   if (shared.includes('@prisma') || shared.includes('PrismaClient')) {
     errors.push('【純粋関数の境界が破れています】 packages/shared/src/case-study-consent.ts が Prisma を import しています。突合判定は DB を読まない純粋関数のままにしてください（doc89 §10 案B）。');
   }
-  // 段階分離1: CaseStudy 保存条件への接続は別承認（同じ変更に混ざったら FAIL）
+  // 保存条件接続（doc92 で人間承認済み・CONNECT_ONLY）: 匿名化を外す保存への突合必須化が
+  // 「承認された形」で存在し続けることを検査する（消えたら FAIL・形が変わったら FAIL）。
+  // ※この検査自体が doc89 §13 段階5 の「接続禁止 → 承認済み接続の形」への更新＝承認の証跡。
   const caseStudyActions = read('apps/web/app/(app)/brain/case-studies/actions.ts');
-  if (caseStudyActions.includes('validateCaseStudyConsentReconciliation') || caseStudyActions.includes('caseStudyConsent.findMany')) {
-    errors.push('【段階分離が破れています】 case-studies/actions.ts に突合判定の接続が入っています。保存条件への接続は別承認です（doc89 §13 段階3）。');
+  if (!caseStudyActions.includes('validateCaseStudyConsentReconciliation')) {
+    errors.push('【保存条件接続が消えています】 case-studies/actions.ts に validateCaseStudyConsentReconciliation が必要です（匿名化を外す保存は許諾台帳との突合必須・doc92 CONNECT_ONLY）。');
+  }
+  if (!caseStudyActions.includes('where: { tenantId: user.tenantId, caseStudyId: existing.id }')) {
+    errors.push('【台帳取得のテナント境界が破れています】 case-studies/actions.ts の許諾台帳取得は tenantId / caseStudyId でスコープしてください（doc92 §5-2）。');
+  }
+  if (!caseStudyActions.includes('error=ledger_createNotAllowed')) {
+    errors.push('【新規作成の匿名化オフ拒否が消えています】 create は anonymized=false を拒否してください（台帳行は作成後にしか登録できないため・doc92 §5-1）。');
+  }
+  if (!caseStudyActions.includes("targetPurpose: 'internal_view'")) {
+    errors.push('【保存条件の対象用途が変更されています】 保存条件の突合は targetPurpose internal_view です（変更は別承認・doc92 §0）。');
   }
   // 段階分離2: anonymized=false 解禁は別承認（匿名化の門番の実装が変わったら FAIL）
   const caseStudyShared = read('packages/shared/src/case-study.ts');

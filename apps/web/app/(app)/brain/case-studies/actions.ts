@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { isHumanUser } from '@hokko/shared';
 import { validateCaseStudyConsent } from '@hokko/shared';
+import { validateCaseStudyConsentReconciliation, resolveCaseStudyConsentSuppressed } from '@hokko/shared';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
 
@@ -16,6 +17,11 @@ import { prisma, writeAudit } from '@/lib/db';
 // label は NORMAL / INTERNAL のみ扱う。高機密ラベルは扱わない。
 // 匿名化（anonymized）を外せるのは consentStatus='granted'（許諾あり）のときだけ
 // （@hokko/shared validateCaseStudyConsent・単体テストあり・doc71 §6-4）。
+// 保存条件接続（doc92・CONNECT_ONLY）: 匿名化を外す保存は、申告値（granted）に加えて
+// 許諾台帳（CaseStudyConsent）の有効な行（用途 internal_view・期限内・取り消しなし）との
+// 突合（validateCaseStudyConsentReconciliation）を必須にする。解禁ではない（AI参照・公開には使われない）。
+// 新規作成時は台帳行がまだ存在し得ないため anonymized=false を一律拒否し、
+// 「匿名化ありで作成 → 許諾台帳に登録 → 編集で匿名化を外す」運用に固定する（doc92 §5-1）。
 // customerId / consentRecordId の参照選択 UI は今回未実装（ConsentRecord 連携は後続の別承認）。
 // 入力ガイド（運用）: 顧客名・取引先名・成果数値・顧客の声は許諾なしに書かない。
 // 機械的な禁止ワード検査は誤判定が多いため行わず、UI のガイド表示と運用で担保する（doc51 §4-3 と同方針）。
@@ -104,6 +110,9 @@ export async function createCaseStudyAction(formData: FormData) {
   const parsed = parseCaseStudyForm(formData);
   if (!parsed.ok) redirect(`/brain/case-studies/new?error=${parsed.error}`);
 
+  // 新規作成では CaseStudy ID が無く許諾台帳の行を突合できないため、匿名化オフは拒否（doc92 §5-1）。
+  if (!parsed.value.anonymized) redirect('/brain/case-studies/new?error=ledger_createNotAllowed');
+
   const created = await prisma.caseStudy.create({
     data: {
       tenantId: user.tenantId,
@@ -150,6 +159,48 @@ export async function updateCaseStudyAction(formData: FormData) {
 
   const parsed = parseCaseStudyForm(formData);
   if (!parsed.ok) redirect(`/brain/case-studies/${id}/edit?error=${parsed.error}`);
+
+  // 保存条件接続（doc92・CONNECT_ONLY）: 匿名化を外す保存だけ、許諾台帳の有効な行との突合を必須化。
+  // suppressed は actions 層で Customer / SuppressionList を tenantId スコープで読んで解決する
+  // （CALLER_RESOLVES_SUPPRESSED_BOOLEAN・doc92 §0）。純粋関数は DB を読まない。
+  if (!parsed.value.anonymized) {
+    const consents = await prisma.caseStudyConsent.findMany({
+      where: { tenantId: user.tenantId, caseStudyId: existing.id },
+    });
+    let suppressed = false;
+    if (existing.customerId) {
+      const customer = await prisma.customer.findFirst({
+        where: { id: existing.customerId, tenantId: user.tenantId },
+        select: { email: true, phone: true },
+      });
+      const suppressionEntries = await prisma.suppressionList.findMany({
+        where: { tenantId: user.tenantId },
+        select: { channel: true, value: true },
+      });
+      suppressed = resolveCaseStudyConsentSuppressed({
+        customerId: existing.customerId,
+        customer,
+        suppressionEntries,
+      });
+    }
+    const reconciled = validateCaseStudyConsentReconciliation({
+      caseStudy: {
+        id: existing.id,
+        tenantId: user.tenantId,
+        consentStatus: parsed.value.consentStatus,
+        archivedAt: existing.archivedAt,
+        publishStatus: existing.publishStatus,
+        label: parsed.value.label,
+      },
+      consents,
+      targetPurpose: 'internal_view',
+      now: new Date(),
+      suppressed,
+    });
+    // 拒否理由は reason コードとして query に載せる（REDIRECT_WITH_REASON_CODE・doc92 §0）。
+    // 画面側の文言は PII・証跡本文・抑止詳細を出さない一般化した日本語にする。
+    if (!reconciled.ok) redirect(`/brain/case-studies/${id}/edit?error=ledger_${reconciled.reason}`);
+  }
 
   await prisma.caseStudy.update({
     where: { id: existing.id },

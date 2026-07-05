@@ -96,6 +96,7 @@
 - [[CaseStudyConsentUI設計]] — 許諾台帳の画面ルールを実装前に固定：一覧・登録・閲覧・取り消しだけ・人間のみ・証跡は所在説明のみ・期限必須・取り消しは履歴を残す。AIの読み方は変えない・実装は別承認（CaseStudyConsent UI設計・READY / GO）。
 - [[CaseStudyConsentUI実装]] — 許諾台帳の画面ができた：4操作のみ・人間のみ・記録つき・行は消えない・AIは台帳を読まない（自動見張りつき）・smoke 22/22。本番確認と突合判定は別承認（CaseStudyConsent UI実装・GO）。
 - [[CaseStudyConsentUI本番確認]] — 許諾台帳が本番で1周動いた：架空事例で登録→取り消し→片付けを実測・証跡ガイドも表示・基準を 1913456 へ昇格。AIの読み方は不変・次は突合判定（CaseStudyConsent UI-PROD・GO）。
+- [[CaseStudyConsent突合判定設計]] — 「許諾あり」を本物とみなす前の照合ルールを固定：有効な台帳行・期限・取り消し・用途を全部確認して初めて有効。実名解禁ではない・AIの読み方は不変・実装は別承認（突合判定設計・READY / GO）。
 
 ## 🔗 コード側の正（source of truth）
 

@@ -32,6 +32,7 @@
 - **2-A-3b-2（ProductCatalogItem 書き込み最小実装）＋本番確認GO 完了（記録: doc42＋doc43＋doc14 §42）**: 商品カタログに同じ型で3操作を実装。**安全境界（AI mutation禁止・label 2択・externalAiAllowed 封印・ソフトアーカイブ）を最初から組み込み、修正ループ0回で完走**。**priceNote は説明テキストのみで請求・課金・見積・会計に接続しない**。**smoke は14本体制で 14/14 green（既存13本回帰なし）**。**本番確認も利用者実測で GO（2026-07-04）＝Company Brain の2テーブルの人間書き込みは本番確認まで完了**。
 - **2-A-3c-1（AI参照経路＋writeDataAccess 設計・docs-only）完了（記録: doc44）**: AI が Company Brain を読む段の設計を固定。参照範囲=tenantId・archivedAt:null・NORMAL/INTERNAL のみ／外部LLM送信は externalAiAllowed=true＋maskText 済みのみ（true UI 無し＝構造的にゼロ）／記録は ai_reference をレコードごと1件／第一接続タスクはナレッジ検索。
 - **2-A-3c-2（Company Brain AI参照の最小実装）完了 — 一度 HOLD → 再実測 GO で解消済み（実装: doc45／HOLD: doc46＋doc14 §43／解消GO: doc47＋doc14 §44）**: ナレッジ検索のみに Company Brain 参照を注入（read-only・NORMAL/INTERNAL・canAccessLabel・外部LLM時は externalAiAllowed ゲートで注入ゼロの安全側デフォルト）。初回本番確認（2026-07-04）は「値引き承認ルール」の AI回答・参照セクション未確認で HOLD。read-only 原因調査と利用者再実測（2026-07-04）により、**原因は本番データ前提差（対象 CompanyPolicy が本番に不在）でありコードのバグではない**と確定。本番UIで会社方針を作成後、AI回答・「参照した会社の頭脳」・参照元タイトル・CompanyPolicy の ai_reference ログすべて GO。**Phase 2-A-3c-2 は本番確認まで完全クローズ**。高機密ラベル・externalAiAllowed true UI・外部LLM送信の解禁は 3c-5 の個別人間承認まで行わない。ENSHiN OS の外部発信・口コミ・SNS・顧客の声公開・許諾管理実装は未着手。
+- **CaseStudyConsent schema: 本番確認 GO（実装: doc84／本番確認: doc85＋doc14 §57・2026-07-05）。CaseStudyConsent schema は本番確認まで完全クローズ**。利用者実測で Vercel Ready・`812ae69`・build green（追加のみ migration のため build 成功=migrate deploy 成功の前例枠組み）・CI green・既存主要画面無回帰・**CaseStudyConsent 画面なし=schema-only のため正常**を確認。**本番確認GO済みプロダクト基準は CaseStudyConsent schema / `812ae69` へ昇格**。**UI 未実装・writeAudit 未実装・突合判定未実装・anonymized=false 未解禁・ConsentRecord連携までは anonymized=true のみAI参照**＝書き込み経路ゼロで本番の台帳テーブルは空のまま。次: doc85 push（別承認）→ 台帳UI（doc83 §9 段階2）/ 突合判定（段階3）の承認判断。以下は実装時の記録。
 - **CaseStudyConsent schema: 追加完了（schema-only・判定 GO・2026-07-05・記録: doc84）／UI・突合判定は未実装・別承認待ち**。§0 人間決定4点（consentRecordId 据え置き・evidence は所在説明のみ TEXT_POINTER_ONLY・**expiresAt 必須=NULL_NOT_ALLOWED（期限なし許諾は認めない）**・登録は人間のみ）に基づき、doc83 案B の器 **CaseStudyConsent model 1件のみ**を schema に追加＋migration `20260705002819_phase2c_consent_case_study_consent`（**追加のみ・破壊的SQLなし**: CREATE TABLE＋INDEX 2本のみ・機械確認済み）。**既存 ConsentRecord/CaseStudy/SuppressionList/Customer 無変更・relation 追加なし・PII 複製なし**。検証全green（validate・migrate dev＋status・test 222・typecheck・lint・build。smoke は schema-only のため未実施=成功扱いしない）。**書き込み経路ゼロ（UI なし）＝本番テーブルは空のまま・writeAudit/validateCaseStudyConsent 拡張/突合判定は未実装（doc83 §9 の段階2〜3・別承認）**。**ConsentRecord連携までは anonymized=true のみAI参照・anonymized=false は未解禁**。次: doc84 push（別承認）→ 本番確認（schema-only・画面なしが正常）→ 台帳UI/突合判定の承認判断。
 - **ConsentRecord連携器選択: docs-only 完了（判定 READY / GO・2026-07-05・記録: doc83）／schema実装は未着手・別承認待ち**。doc82 の人間選択事項だった許諾台帳の器を確定: **案B推奨 = CaseStudyConsent（事例許諾専用新モデル）**。理由: 既存 ConsentRecord はメール営業チャネル同意用で意味が異なり、相乗り（案A）は配信同意と事例許諾の行が混在して監査・運用リスクになる。案B は**追加のみ migration・破壊的SQLなし・既存テーブル無変更**で前例どおりの最小審査。フィールド案（tenantId/caseStudyId/customerId=ID参照のみ/status granted・revoked/purpose 6区分明示・用途未記載は不許可/evidence/grantedAt/expiresAt/revokedAt）と突合判定・実装5段階（schema→UI→突合判定→匿名化解除判断→公開活用、各段個別承認）を doc83 に固定。**ConsentRecord連携までは anonymized=true のみAI参照維持・anonymized=false は別承認**・外部公開/PR/SEO/顧客の声公開は禁止のまま。schema 承認前に人間確定する Unknowns 4点（consentRecordId の扱い・evidence 保管・expiresAt null の意味・登録権限者）も記録。次: doc83 push（別承認）→ CaseStudyConsent schema 実装承認判断。
 - **ConsentRecord連携設計: docs-only 完了（判定 READY / GO・2026-07-05・記録: doc82）／実装は未着手・別承認待ち**。Phase 2-C クローズ後の後続設計第一弾。**consentStatus=granted だけでは真正な許諾証拠として扱わない**ことを固定し、真正な許諾は将来 ConsentRecord 突合（誰が・何の用途で・いつまで・どんな証跡で）で確認する方針を設計。**ConsentRecord連携までは anonymized=true のみ参照を維持**・実名寄り事例/成果数値/顧客の声は AI にも公開にも使わない。read-only 監査の発見: **既存 ConsentRecord はメール営業のチャネル同意用で、用途・失効・期限・証跡を持たない**→ 連携の器は（案A）既存拡張 /（案B）事例許諾専用新モデルの人間選択（**推奨は案B**=追加のみ migration）。匿名化解除の将来条件（granted＋有効な consentRecordId＋同一tenant＋revoked/expired/suppressed でない＋用途明示＋公開系は ApprovalRequest）・取り消し時の安全側挙動（anonymized=true へ戻す・AI参照除外・非公開化・writeAudit・ai_reference 履歴保持）・公開活用の5前提（連携・表現審査・公開前人間承認・取り下げ・証跡）を doc82 に固定。**schema/コード変更なし・anonymized=false 解禁なし・外部公開/PR/SEO/SNS/顧客の声公開は禁止のまま**。次: doc82 push（別承認）→ ConsentRecord連携の実装判断（段階承認）。
@@ -58,7 +59,11 @@
 
 ## 最新の本番確認GO済みプロダクト基準
 
-- 最新の本番確認 GO 済みプロダクト基準: **Phase 2-C-5**
+- 最新の本番確認 GO 済みプロダクト基準: **CaseStudyConsent schema**
+- 内容: **CaseStudyConsent（顧客事例の許諾専用台帳）の器の本番反映 GO 記録。schema-only・追加のみ migration・破壊的SQLなし・UI 未実装・突合判定未実装・anonymized=false 未解禁・ConsentRecord連携までは anonymized=true のみAI参照**
+- CaseStudyConsent schema 基準 commit（本番確認 GO 済み基準）: `812ae69`（※現在 HEAD ではなく基準 commit。現在位置は git を参照。昇格記録: doc85＋doc14 §57・2026-07-05）
+- 詳細: `docs/audit/85_case_study_consent_schema_production_confirmation.md`・doc14 §57
+- （前基準: Phase 2-C-5 = CaseStudy AI参照の本番確認 GO。以下は当時の記録として保持）
 - 内容: **CaseStudy AI参照（ナレッジ検索での顧客事例参照＝匿名化済み anonymized=true のみ＋ai_reference（entityType=CaseStudy）監査ログ）の本番確認 GO 記録。Company Brain AI参照4テーブル体制が本番確認済み**
 - Phase 2-C-5 基準 commit（本番確認 GO 済み基準）: `6d656a3`（※現在 HEAD ではなく基準 commit。現在位置は git を参照。昇格記録: doc80＋doc14 §55・2026-07-05）
 - 本番確認: 利用者の Vercel Production / 本番画面実測による **GO（2026-07-05 申告・実測値はチャット提出・実測日は利用者申告値をそのまま記録）**。AI が本番接続確認したものではない。架空・匿名の事例1件作成→タイトルでナレッジ検索→「参照した会社の頭脳」に表示→`/admin/data-access-logs` に ai_reference（entityType=CaseStudy）→テスト事例アーカイブ片付け・既存画面無回帰・外部送信/SNS/口コミ/顧客の声公開なし。
@@ -156,10 +161,10 @@
 
 ## 次にやること（人間が選択）
 
-1. **CaseStudyConsent schema 記録（doc84）の push（push-only・別承認。feature＋main）**。
-2. **push 後の本番確認（利用者実測・§0 テンプレート・schema-only のため CaseStudyConsent の画面なしが正常）**。
-3. **台帳 UI / 突合判定の承認判断（doc83 §9 の段階2〜3・人間のみ・writeAudit・別承認）**。
-4. **Customer Pain の扱い判断（高機密ラベル対応が先・別承認）／Stage 2 / Stage 3 / ★2 / UX改善（随時・別承認）**。
+1. **CaseStudyConsent schema 本番確認記録（doc85）の push（push-only・別承認。feature＋main）**。
+2. **台帳 UI の承認判断（doc83 §9 段階2・人間のみ・writeAudit・別承認）**。
+3. **突合判定の承認判断（doc83 §9 段階3・validateCaseStudyConsent 拡張・否定系テスト・安全ゲート・別承認）**。
+4. **Customer Pain / Stage 2 / Stage 3 / ★2 / UX改善（随時・別承認）**。
 5. **CI / Test / Release Governance 等の品質基盤強化（別承認）**。
 - いずれの場合も **3c-5 の解禁・外部LLM送信・高機密ラベル解禁・Phase 8 実課金・ENSHiN OS 外部発信には、個別人間承認なしに進まない**。
 

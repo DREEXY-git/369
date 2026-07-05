@@ -92,6 +92,7 @@
 - [[ConsentRecord連携設計]] — 「許諾あり」を自己申告から本物の証拠へ：台帳突合・用途明示・失効時の即遮断・公開5前提を設計固定。連携までは匿名化済みだけAIが読む・実装は別承認（ConsentRecord連携設計・READY / GO）。
 - [[ConsentRecord連携器選択]] — 事例許諾は専用台帳 CaseStudyConsent で持つと確定：メール配信同意との混在を避け、追加だけの最小変更に。schema実装は別承認・連携までは匿名化済みだけAIが読む（ConsentRecord連携器選択・READY / GO）。
 - [[CaseStudyConsentSchema]] — 許諾台帳の器ができた：追加だけの最小変更・期限必須・証跡は所在説明のみ・登録画面はまだ無く本番は空のまま。UIと突合判定は別承認（CaseStudyConsent schema・GO）。
+- [[CaseStudyConsentSchema本番確認]] — 許諾台帳の器が本番に入った：build green・既存画面無回帰・画面なしが正常・基準を 812ae69 へ昇格。台帳UIと突合判定は別承認（CaseStudyConsent schema-PROD・GO）。
 
 ## 🔗 コード側の正（source of truth）
 

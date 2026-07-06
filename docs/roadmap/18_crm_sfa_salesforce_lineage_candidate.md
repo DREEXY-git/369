@@ -129,11 +129,63 @@ related:
 - **入れない / 別承認**: 生のクレーム全文・失注理由生テキスト・通話録全文・外部公開フラグ（`docs/audit/114` の「入れてはいけない列」を継承）。
 - **AI に読ませない範囲**: 顧客 PII は company-brain-reference に注入しない。
 
-## 17. Phase対応（要約）
+## 17. Phase対応（詳細）
 
-- **事業 Phase 0-20**: LeadMap AI を起点に Lead→Deal→Pipeline の薄い縦切りから。CRM/SFA の最小CRUD＋権限＋監査＋デモデータを一気通貫。
-- **OS本体 Phase 2.5-18（PDF系統）**: Company Brain foundation（Phase 2-A 完了）に CRM を接続し、read-only 集約 → 人間書き込み → AI提案（下書き）→ 承認送信 の順で段階実装。
-- **戦略構想 Phase 18.5-26**: Sales Playbook の Marketplace 化・AI社員（営業AI）の Developer Cloud 提供（別承認）。
+> 要約: 本 CRM/SFA Lineage は **事業ロードマップ Phase 2（Salesforce Mini / CRM基盤）** を主対象とし、**Phase 0（Core OS / 安全基盤）・Phase 1（Company Brain 基盤）** を前提、**Phase 3-19（AI Growth Engine / Human Certification Gate / Oracle Mini・ERP / Data Cloud / Service Cloud / Marketing Cloud / Enterprise Governance）** を隣接、**PDF系 OS本体 Phase 2.5-18** と **戦略構想 Phase 18.5-26** を将来接続として位置づける。**いずれも本書では実装しない（docs-only / Candidate）**。
+
+### 17-1. 今回の作業Phase
+
+- 作業レーン: **Strategy / SaaS Catalog / CRM-SFA Lineage / Documentation Governance**。
+- 種別: **docs-only / Candidate / commit-only**。
+- **今回は CRM 実装Phaseではない**（Phase 2 CRM/SFA の設計候補を記録するだけ）。実装・schema・migration・外部連携・OAuth・SaaS契約判断はしない。
+
+### 17-2. 事業ロードマップ Phase 0-20 における位置
+
+- **主対象Phase — Phase 2: Salesforce Mini / CRM基盤**。
+  - 対象機能: 顧客管理 / 連絡先管理 / リード管理 / 商談管理 / パイプライン / 活動履歴 / タスク / AI営業提案。
+  - LeadMap AI を起点に **Lead→Deal→Pipeline の薄い縦切り**（最小CRUD＋権限＋監査＋デモデータ）を一気通貫する前提。
+- **前提Phase**
+  - **Phase 0: Core OS / 安全基盤** — tenantId / RBAC / writeAudit / writeDataAccess / Approval / Human Certification Gate の土台（既に基盤あり）。
+  - **Phase 1: Company Brain 基盤** — 会社方針 / 商品 / Sales Playbook / 顧客事例 / FAQ / Company Brain参照（Phase 2-A で foundation 完了）。
+- **隣接Phase**
+  - **Phase 3: AI Growth Engine** — 獲得〜育成ループ（接続候補）。
+  - **Phase 4: Human Certification Gate** — 外部送信・契約・請求の承認境界。
+  - **Phase 5: Oracle Mini / ERP基盤** — 売上見込み〜経営計画への handoff 候補。
+  - **Phase 12: Data Cloud / BI** — 分析・KPI 接続候補。
+  - **Phase 13: Service Cloud / Customer Success** — 受注後サポート（別 Lineage）。
+  - **Phase 14: Marketing Cloud / PR / SEO** — 獲得前マーケ・外部発信（別 Lineage）。
+  - **Phase 19: Enterprise Governance** — エンタープライズ統制の将来要件。
+
+### 17-3. PDF系 OS本体 Phase 2.5-18 との対応
+
+- **OS本体 Phase 2.5: 初期MVP** — CRM の read-only 集約から着手（Company Brain foundation に接続）。
+- **OS本体 Phase 4: Brain拡充** — Sales Playbook / 会社方針を Company Brain に拡充し CRM から参照。
+- **OS本体 Phase 5: AI社員テンプレ化** — 営業AI社員のテンプレート化（下書き提案・承認境界つき）。
+- **OS本体 Phase 7: Fit-Gap Engine** — 既存CRMからの移行/差分分析（外部連携は別承認）。
+- **OS本体 Phase 8: β外部提供** — CRM/SFA を含む β 提供（外部送信は Human Certification Gate）。
+- **OS本体 Phase 9-10: GA / 一般提供** — CRM/SFA の一般提供。
+- いずれも **read-only 集約 → 人間書き込み → AI提案（下書き）→ 承認送信** の順で段階実装（今回は実装しない）。
+
+### 17-4. 戦略構想 Phase 18.5-26 との対応
+
+- **Phase 20: AI Employee Studio Template** — 営業AI社員を Studio でテンプレ化（将来接続候補）。
+- **Phase 22: SDK & Developer Portal** — CRM 連携ツールを SDK / Developer Portal で提供（将来接続候補）。
+- **Phase 23: Safety Review & Certification** — 営業AI・連携ツールの安全審査/認証（将来接続候補）。
+- **Phase 24: 369 Marketplace Launch** — Sales Playbook / 営業AI社員の Marketplace 流通（将来接続候補）。
+- **Phase 26: Open AI Workforce Economy** — AI社員経済圏への CRM/SFA 接続（将来接続候補）。
+- **いずれも今回実装しない**（Developer Cloud / Marketplace / Open AI Workforce Economy は将来接続候補）。
+
+### 17-5. Phase境界と今回やらないこと
+
+- **今回は Phase 2 のCRM実装ではない**。**Phase 2 CRM/SFA の設計候補**である。
+- **Phase 3 AI Growth Engine** は接続候補であり**今回実装しない**。
+- **Phase 4 Human Certification Gate** は承認境界であり**今回実装しない**。
+- **Phase 5 Oracle Mini / ERP** への接続は handoff 候補であり**今回実装しない**。
+- **Phase 12 Data Cloud / BI** は分析接続候補であり**今回実装しない**。
+- **Phase 13 Service Cloud / CS** は別 Lineage であり**今回実装しない**。
+- **Phase 14 Marketing Cloud / PR / SEO** は外部公開・投稿・配信を**しない**。
+- **Phase 19 Enterprise Governance** は将来要件として記録するだけ。
+- **Phase 20 / 22 / 23 / 24 / 26** の Developer Cloud / Marketplace / Open AI Workforce Economy は将来接続候補であり**今回実装しない**。
 
 ## 18. 収益ポイント
 

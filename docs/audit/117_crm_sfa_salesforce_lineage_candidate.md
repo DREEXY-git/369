@@ -29,6 +29,16 @@
 - 上位カタログ: `docs/roadmap/17`（組み込み予定SaaSカタログ・区分①にCRM/SFA/Salesforce Mini）。本書はその CRM/SFA 部分の深掘り・**補完**であり置換しない。
 - 上位概念: `docs/roadmap/09`（AI Workforce Infrastructure）。成長/安全: `docs/roadmap/15`。PII設計: `docs/audit/114`。メール営業ルール: `CLAUDE.md`。
 
+## 3-1. ロードマップ上の現在地 / Phase対応（補強）
+
+- **Product Phase**: Strategy / SaaS Catalog / CRM-SFA Lineage / Documentation Governance（**docs-only / Candidate / commit-only**・**今回は CRM 実装Phaseではない**）。
+- **主対象Phase — 事業ロードマップ Phase 2: Salesforce Mini / CRM基盤**（顧客管理 / 連絡先管理 / リード管理 / 商談管理 / パイプライン / 活動履歴 / タスク / AI営業提案）。
+- **前提Phase**: **Phase 0: Core OS / 安全基盤**（tenantId / RBAC / writeAudit / writeDataAccess / Approval / Human Certification Gate）・**Phase 1: Company Brain 基盤**（会社方針 / 商品 / Sales Playbook / 顧客事例 / FAQ / Company Brain参照）。
+- **隣接Phase**: **Phase 3: AI Growth Engine**・**Phase 4: Human Certification Gate**・**Phase 5: Oracle Mini / ERP基盤**・**Phase 12: Data Cloud / BI**・**Phase 13: Service Cloud / Customer Success**・**Phase 14: Marketing Cloud / PR / SEO**・**Phase 19: Enterprise Governance**。
+- **PDF系 OS本体 Phase 2.5-18 との対応**: **OS本体 Phase 2.5: 初期MVP**・**OS本体 Phase 4: Brain拡充**・**OS本体 Phase 5: AI社員テンプレ化**・**OS本体 Phase 7: Fit-Gap Engine**・**OS本体 Phase 8: β外部提供**・**OS本体 Phase 9-10: GA / 一般提供**。
+- **戦略構想 Phase 18.5-26 との対応**: **Phase 20: AI Employee Studio Template**・**Phase 22: SDK & Developer Portal**・**Phase 23: Safety Review & Certification**・**Phase 24: 369 Marketplace Launch**・**Phase 26: Open AI Workforce Economy**。
+- **Phase境界**: **今回は Phase 2 のCRM実装ではない**（Phase 2 CRM/SFA の設計候補）。Phase 3/4/5/12/13/14/19 および Phase 20/22/23/24/26 は接続候補・別 Lineage・将来要件であり、**今回実装しない**。Phase 14 Marketing Cloud / PR / SEO は外部公開・投稿・配信をしない。詳細は `docs/roadmap/18 §17`。
+
 ## 4. 明記したルール（恒久）
 
 - 本 Lineage は **Candidate**。**実装・契約・API連携・DB化・schema化・正式採用ではない**。schema/画面/外部連携は各々別承認。

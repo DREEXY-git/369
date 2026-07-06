@@ -41,6 +41,7 @@ related:
 | SaaSカタログ | 組み込み予定SaaS（内包/代替/連携/Marketplace/PLUG/Employee App） | `docs/roadmap/17` |
 | CRM / SFA Lineage | CRM/SFA/Salesforce Mini 深掘り（Lead〜商談〜引き継ぎ・AI営業提案・承認境界） | `docs/roadmap/18` |
 | CRM最小縦切り判断 | 実装可否3案比較（Lead-only / Lead+Deal / +Pipeline・推奨=案A） | `docs/roadmap/19` |
+| CRM Lead-only最小設計 | Lead候補列・status enum・権限方針・停止条件（実装前・Contact PII非採用） | `docs/roadmap/20` |
 
 ## 4. Candidate / Official
 

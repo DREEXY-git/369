@@ -244,6 +244,131 @@ try {
   }
 }
 
+// ── 高機密ラベル 候補A の守り（doc110・doc111 候補B） ──────────
+// doc109 候補A（Customer Pain 高機密詳細の閲覧可否を判定する純粋関数）が後退したら FAIL。
+// - 標準閲覧式5条件（tenantId × knowledge:update × canAccessLabel × isHumanUser × archivedAt null）の AND が消えたら FAIL。
+// - Customer Pain が apps/web runtime・AI参照層（company-brain-reference）へ混入したら FAIL。
+// ※ この検査は「見られるかの判定（純粋関数）」の守り。実画面・実データ・writeDataAccess/writeAudit 実接続は候補C の別承認。
+function walkSafe(dir, out = []) {
+  let entries;
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return out;
+  }
+  for (const name of entries) {
+    if (name === 'node_modules' || name === '.next' || name === 'dist') continue;
+    const p = join(dir, name);
+    const st = statSync(p);
+    if (st.isDirectory()) walkSafe(p, out);
+    else if (/\.(ts|tsx)$/.test(name)) out.push(p);
+  }
+  return out;
+}
+{
+  const CPA_SRC = 'packages/shared/src/customer-pain-access.ts';
+  const CPA_TEST = 'packages/shared/src/__tests__/customer-pain-access.test.ts';
+  let cpa = '';
+  try {
+    cpa = read(CPA_SRC);
+  } catch {
+    errors.push(`【候補Aが見つかりません】 ${CPA_SRC} が見つかりません。Customer Pain 高機密詳細の閲覧判定（純粋関数・doc110）が移動/削除されていないか確認してください。`);
+  }
+  if (cpa) {
+    // 純粋関数の境界: DB を読まない（Prisma import なし）。
+    if (cpa.includes('@prisma') || cpa.includes('PrismaClient')) {
+      errors.push(`【純粋関数の境界が破れています】 ${CPA_SRC} が Prisma を import しています。閲覧判定は DB を読まない純粋関数のままにしてください（doc110）。`);
+    }
+    // 標準閲覧式の関数が存在すること。
+    if (!cpa.includes('export function canViewCustomerPainDetail')) {
+      errors.push(`【標準閲覧式が消えています】 ${CPA_SRC} に canViewCustomerPainDetail がありません（doc105 §6 の5条件 AND・doc110）。`);
+    }
+    if (!cpa.includes('export function evaluateCustomerPainAccess')) {
+      errors.push(`【拒否理由付き判定が消えています】 ${CPA_SRC} に evaluateCustomerPainAccess がありません（安全な列挙値のみを返す判定・doc110）。`);
+    }
+    // CUSTOMER_PAIN_LABEL は CUSTOMER_CONFIDENTIAL を指すこと（高機密ラベルの固定）。
+    if (!cpa.includes("CUSTOMER_PAIN_LABEL: ConfidentialityLabel = 'CUSTOMER_CONFIDENTIAL'")) {
+      errors.push(`【機密ラベルの固定が変更されています】 ${CPA_SRC} の CUSTOMER_PAIN_LABEL は CUSTOMER_CONFIDENTIAL を指す必要があります（label定義変更は別承認・doc104/doc105）。`);
+    }
+    // 標準閲覧式5条件が式内に存在すること。
+    if (!cpa.includes("canForRoles(viewer.roles, 'knowledge', 'update')")) {
+      errors.push(`【権限条件が消えています】 ${CPA_SRC} の閲覧式に knowledge:update（canForRoles(viewer.roles, 'knowledge', 'update')）がありません（doc105 §5）。`);
+    }
+    if (!cpa.includes('canAccessLabel(viewer.roles, CUSTOMER_PAIN_LABEL)')) {
+      errors.push(`【ラベル条件が消えています】 ${CPA_SRC} の閲覧式に canAccessLabel がありません（label 許可ロール判定・doc105 §5）。`);
+    }
+    if (!cpa.includes('isHumanUser(viewer)')) {
+      errors.push(`【AIロール除外が消えています】 ${CPA_SRC} の閲覧式に isHumanUser がありません。label 単独では AI/STAFF に開くため人間性の判定が必須です（doc105 §4・§5）。`);
+    }
+    if (!cpa.includes('record.archivedAt == null')) {
+      errors.push(`【アーカイブ判定が消えています】 ${CPA_SRC} の閲覧式に archivedAt null 判定がありません（doc105 §5）。`);
+    }
+    if (!cpa.includes('viewer.tenantId === record.tenantId')) {
+      errors.push(`【テナント境界が消えています】 ${CPA_SRC} の閲覧式に tenantId 一致判定がありません（doc105 §5）。`);
+    }
+    if (!cpa.includes('CUSTOMER_PAIN_DENY_REASONS')) {
+      errors.push(`【拒否理由の列挙が消えています】 ${CPA_SRC} に CUSTOMER_PAIN_DENY_REASONS（安全な列挙値）がありません（doc105 §9）。`);
+    }
+    // OR緩和の混入検知: canViewCustomerPainDetail の本文に "||" が現れたら FAIL（5条件 AND を緩めない・doc105 §6）。
+    const viewStart = cpa.indexOf('export function canViewCustomerPainDetail');
+    const viewEnd = cpa.indexOf('export function evaluateCustomerPainAccess');
+    const viewBody = viewStart >= 0 && viewEnd > viewStart ? cpa.slice(viewStart, viewEnd) : '';
+    if (viewBody.includes('||')) {
+      errors.push(`【OR緩和が混入しています】 ${CPA_SRC} の canViewCustomerPainDetail に "||" が見つかりました。標準閲覧式は5条件の AND 交差のみで、OR での緩和は禁止です（doc105 §6）。`);
+    }
+  }
+  // 否定系テストが存在し、主要な拒否理由・OR緩和・列挙値の検査を含み続けること。
+  let cpaTest = '';
+  try {
+    cpaTest = read(CPA_TEST);
+  } catch {
+    errors.push(`【否定系テストが見つかりません】 ${CPA_TEST} が必要です（tenant/権限/label/AIロール/archived/OR緩和なし/安全な理由列挙の自動検証・doc110）。`);
+  }
+  if (cpaTest) {
+    for (const token of [
+      'tenant_mismatch',
+      'no_knowledge_update',
+      'label_role_denied',
+      'ai_role',
+      'archived',
+      'OR 緩和',
+      'CUSTOMER_PAIN_DENY_REASONS',
+    ]) {
+      if (!cpaTest.includes(token)) {
+        errors.push(`【否定系テストが弱体化しています】 ${CPA_TEST} に "${token}" の検証がありません（候補A の守りの後退を検知できません・doc110）。`);
+      }
+    }
+  }
+  // Customer Pain が apps/web runtime に混入していないこと（画面/Server Action/DB は候補C の別承認）。
+  // ※ 既存の会社ブレイン/CaseStudy の externalAiAllowed / publishStatus は対象外（グローバル禁止しない）。
+  //    ここで見るのは Customer Pain 固有トークンだけ。
+  const CP_TOKENS = ['CustomerPain', 'customerPain', 'customer_pain'];
+  for (const p of walkSafe(join(repoRoot, 'apps'))) {
+    const src = readFileSync(p, 'utf8');
+    const hit = CP_TOKENS.find((t) => src.includes(t));
+    if (hit) {
+      errors.push(`【Customer Pain 実装が runtime に混入しています】 ${p} に "${hit}" が現れました。Customer Pain の画面/Server Action/DB は候補C（schema/migration を伴う別の重い人間承認）です。`);
+    }
+  }
+  // AI 参照層（company-brain-reference）に Customer Pain が混入していないこと（AIに読ませない・doc105 §15）。
+  {
+    const brainRef = read('apps/web/lib/company-brain-reference.ts');
+    const hit = CP_TOKENS.find((t) => brainRef.includes(t));
+    if (hit) {
+      errors.push(`【AI非注入が破れています】 apps/web/lib/company-brain-reference.ts に "${hit}" が現れました。Customer Pain は AI 文脈へ注入しません（AI参照条件変更は別承認・doc105 §15）。`);
+    }
+  }
+  // 機密ラベル定義が既存値のまま（schema / labels.ts の CUSTOMER_CONFIDENTIAL は各2件）。変更は別承認。
+  const schemaSrc = read('packages/db/prisma/schema.prisma');
+  if ((schemaSrc.split('CUSTOMER_CONFIDENTIAL').length - 1) !== 2) {
+    errors.push('【label定義が変更されています】 packages/db/prisma/schema.prisma の CUSTOMER_CONFIDENTIAL が既存の2件ではありません（schema/label定義の変更は別承認）。');
+  }
+  const labelsSrc = read('packages/shared/src/labels.ts');
+  if ((labelsSrc.split('CUSTOMER_CONFIDENTIAL').length - 1) !== 2) {
+    errors.push('【label定義が変更されています】 packages/shared/src/labels.ts の CUSTOMER_CONFIDENTIAL が既存の2件ではありません（label定義の変更は別承認）。');
+  }
+}
+
 // ── 結果 ─────────────────────────────────────────────
 if (errors.length > 0) {
   console.error('Company Brain safety checks FAILED:');

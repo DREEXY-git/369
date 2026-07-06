@@ -47,6 +47,7 @@ related:
 | Phase 2完了・Phase 3 Gate | Phase 2 部分完了／Phase 3 AI Growth Engine 進入は HOLD（移行条件6項目・人間承認事項） | `docs/roadmap/23` |
 | Phase 2正式完了記録 | Phase 2 CONDITIONAL COMPLETE（人間 Phase Gate 承認事項）／Phase 3 進入 HOLD（残件6条件） | `docs/roadmap/24` |
 | 高機密ラベルruntime監査 | AI参照封印は閉／人間UI閲覧の統制配線は未確認（判定B: HOLD・Phase 3残件②） | `docs/roadmap/25` |
+| CRM顧客閲覧統制の追加監査 | Customer詳細は assertCanViewConfidential で閉／一覧・Contactは未確認（判定B: HOLD） | `docs/roadmap/26` |
 
 ## 4. Candidate / Official
 

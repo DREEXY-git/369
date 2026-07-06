@@ -32,6 +32,7 @@
 - **Phase 2-A 正式完了**（判定 GO・2026-07-04・`85f1bf3`・doc48）＝Company Brain foundation 本番確認 GO まで完了。
 - **CRM/SFA（Salesforce Mini）既存実装済み**（doc121 案A）＝`LocalBusinessLead`/`Customer`/`Deal`/`/leadmap`/`leadmap/actions.ts`（requireUser/hasPermission('leadmap')/tenantId/writeAudit/OutreachApproval）。
 - **CRM/SFA の Phase 2 完了記録は未作成**・**高機密ラベル runtime 統制は設計のみ**（doc108〜114）・**CRM 不足補強（archivedAt/internalNote）未着手**。
+- 「ロードマップ上の現在地」は、**10項目の明示見出し**（現在のPhase／完了／未完了／次Phase／必須条件／GO・HOLD判定／理由／人間承認／禁止／反映先）として `docs/roadmap/23 §21（21-1〜21-10）` に固定した。
 
 ## 4. 判定の理由
 

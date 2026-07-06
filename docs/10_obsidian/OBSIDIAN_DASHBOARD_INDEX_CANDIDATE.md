@@ -40,6 +40,7 @@ related:
 | Candidate一覧 | Function Master 231-252 等 | `docs/roadmap/14` |
 | SaaSカタログ | 組み込み予定SaaS（内包/代替/連携/Marketplace/PLUG/Employee App） | `docs/roadmap/17` |
 | CRM / SFA Lineage | CRM/SFA/Salesforce Mini 深掘り（Lead〜商談〜引き継ぎ・AI営業提案・承認境界） | `docs/roadmap/18` |
+| CRM最小縦切り判断 | 実装可否3案比較（Lead-only / Lead+Deal / +Pipeline・推奨=案A） | `docs/roadmap/19` |
 
 ## 4. Candidate / Official
 

@@ -45,6 +45,7 @@ related:
 | CRM Lead-only実装Gate | 実装スプリント可否 最終判断（推奨=案X・実装着手は別承認・別承認文言） | `docs/roadmap/21` |
 | 既存LeadMap追認・差分 | 既存 LocalBusinessLead/leadmap を CRM Lead 正本候補に追認（案A・新規Lead作らない） | `docs/roadmap/22` |
 | Phase 2完了・Phase 3 Gate | Phase 2 部分完了／Phase 3 AI Growth Engine 進入は HOLD（移行条件6項目・人間承認事項） | `docs/roadmap/23` |
+| Phase 2正式完了記録 | Phase 2 CONDITIONAL COMPLETE（人間 Phase Gate 承認事項）／Phase 3 進入 HOLD（残件6条件） | `docs/roadmap/24` |
 
 ## 4. Candidate / Official
 

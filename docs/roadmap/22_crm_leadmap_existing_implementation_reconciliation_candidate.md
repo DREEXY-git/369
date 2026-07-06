@@ -123,7 +123,7 @@ doc121 の Definition of Ready は「既存 Lead / CrmLead model がある」「
 ## 18. Contact PII / Consent / Security Gate
 
 - 既存 `Customer`/`Contact`/`LocalBusinessContact` は PII を保持し、`Customer.label` は既定 **CUSTOMER_CONFIDENTIAL**。**高機密ラベル運用（doc108〜114）はここに接続**する。
-- Consent: outreach は `ConsentRecord`/`SuppressionList`/`OutreachApproval` 前提（既存設計）。Security Gate: tenantId/RBAC/writeAudit は充足、PII の company-brain-reference 非注入は維持。
+- Consent Gate: outreach は `ConsentRecord`/`SuppressionList`/`OutreachApproval` 前提（既存設計）。Security Gate: tenantId/RBAC/writeAudit は充足、PII の company-brain-reference 非注入は維持。
 
 ## 19. Human Certification Gate
 

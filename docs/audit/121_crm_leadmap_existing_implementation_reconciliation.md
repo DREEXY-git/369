@@ -44,6 +44,7 @@
 
 - doc118〜120 は **greenfield（新規 Lead 1テーブル・Contact PII 非保存・新 status enum・crm:*/knowledge 権限）前提の Candidate** だった。
 - 実装は既に存在（案A）。**doc118〜120 は削除せず**、greenfield 前提の設計 Candidate として温存し、本書＋roadmap22 で既存実装との突合結果を正本化する。
+- 内訳: **doc118**（3案比較）／**doc119**（Lead-only 最小設計）／**doc120**（実装スプリント可否 最終判断）はいずれも greenfield 前提。既存実装は各設計項目を実装済みで、安全境界も既存で充足する — **Human Certification Gate**（外部送信は `leadmap:external_send`＋`OutreachApproval` PENDING で人間承認）・**Consent Gate**（`ConsentRecord`/`SuppressionList` 前提）・**Security Gate**（tenantId/RBAC/writeAudit/PII 非注入）・**Business Event Ledger**（`LeadPipelineStageHistory`/`DealStageHistory`/writeAudit を将来集約する接続点）。詳細は `docs/roadmap/22 §18〜§24`。
 
 ## 6. 今回やらなかったこと
 

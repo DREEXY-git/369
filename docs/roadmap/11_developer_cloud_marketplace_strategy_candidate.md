@@ -38,6 +38,12 @@ Agent Manifest / Role Definition / Tool Permissions / Company Brain Scope / Prom
 - **Agent Manifest 候補項目**: name / version / role / runtime / tools / company_brain_scope / permissions / approval_required / kpi / billing / audit / forbidden_actions / developer / marketplace。
 - **権限は三値**: `ai_only` / `human_approval` / `forbidden`。
 
+### 4.1 補足コンポーネント（Candidate・実装承認済みではない）
+
+- **AI Employee Studio**: テンプレート型・ブロックビルダー型・SDK型（§3）の3タイプを束ねる、非エンジニアでも AI社員を制作・調整できる将来の制作UI候補。正式実装・公開は別承認。
+- **Tool Manifest**: AI社員が使えるツール・権限・外部送信有無・Human Certification 条件・課金単位を記述する候補仕様（Agent Manifest と対で扱う）。三値権限（`ai_only` / `human_approval` / `forbidden`）と整合させる。
+- **Billing Meter**: 開発時課金・稼働時課金・Revenue Share（§7）の前提となる利用量計測の候補。タスク実行/ツール呼出/Company Brain 参照/推論トークン等を計測する（実課金は既存方針どおり Phase 8 まで凍結）。
+
 ## 5. Safety Review / Certification（10審査 + バッジ）
 
 - 審査: Manifest整合 / ツール権限妥当性 / Company Brainスコープ / Prompt Policy / エッジケース / 監査ログ完全性 / PIIリーク耐性 / 悪意入力耐性 / コスト暴走防止 / 業界規制遵守。

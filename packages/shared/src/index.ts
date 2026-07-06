@@ -24,5 +24,6 @@ export * from './golden-path-actions';
 export * from './dunning';
 export * from './case-study';
 export * from './case-study-consent';
+export * from './customer-pain-access';
 // 注: './webhook' は node:crypto を使うため barrel に含めない（client汚染防止）。
 //     サーバ/ワーカーは '@hokko/shared/webhook' から直接 import する。

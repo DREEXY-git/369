@@ -43,6 +43,7 @@ related:
 | CRM最小縦切り判断 | 実装可否3案比較（Lead-only / Lead+Deal / +Pipeline・推奨=案A） | `docs/roadmap/19` |
 | CRM Lead-only最小設計 | Lead候補列・status enum・権限方針・停止条件（実装前・Contact PII非採用） | `docs/roadmap/20` |
 | CRM Lead-only実装Gate | 実装スプリント可否 最終判断（推奨=案X・実装着手は別承認・別承認文言） | `docs/roadmap/21` |
+| 既存LeadMap追認・差分 | 既存 LocalBusinessLead/leadmap を CRM Lead 正本候補に追認（案A・新規Lead作らない） | `docs/roadmap/22` |
 
 ## 4. Candidate / Official
 

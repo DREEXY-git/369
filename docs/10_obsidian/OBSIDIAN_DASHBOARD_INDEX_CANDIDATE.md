@@ -38,6 +38,7 @@ related:
 | AI Safety | 禁止機能・安全代替・Human Certification Gate | `docs/roadmap/15`・`docs/roadmap/03-04` |
 | Growth | 広告費ゼロ成長ループ | `docs/roadmap/15` |
 | Candidate一覧 | Function Master 231-252 等 | `docs/roadmap/14` |
+| SaaSカタログ | 組み込み予定SaaS（内包/代替/連携/Marketplace/PLUG/Employee App） | `docs/roadmap/17` |
 
 ## 4. Candidate / Official
 

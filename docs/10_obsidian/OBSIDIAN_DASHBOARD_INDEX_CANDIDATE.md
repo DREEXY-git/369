@@ -58,6 +58,7 @@ related:
 | CI Stage 3 E2E F1 test fix | A3+B1をtests-only最小修正（typecheck/lint緑）／C11件残でRED継続・push後CIで4件緑確認（判定HOLD） | `docs/roadmap/34` |
 | CI Stage 3 E2E F1 result and F1b | F1 push後CI=59passed/13failed（棚卸・案件名緑化／人員配置リスクstrict-mode露見・Golden PathはC化）＋F1bでリスク1件tests-only修正（判定HOLD） | `docs/roadmap/35` |
 | CI Stage 3 E2E F1b result and F1c | F1bで60passed/12failed・operations_exec全緑／F1cでFinanceEvent・入金実績strict-modeをtests-only修正（残C10件・判定HOLD） | `docs/roadmap/36` |
+| CI Stage 3 E2E F1c result | F1c後CI=62passed/10failed・FinanceEvent/入金実績緑化・残10件はC=SEED_DATA_DRIFTへ収束・次はF2診断（判定HOLD） | `docs/roadmap/37` |
 
 ## 4. Candidate / Official
 

@@ -26,9 +26,9 @@ test('イベント案件を作成できる', async ({ page }) => {
   await page.locator('input[name="revenue"]').fill('800000');
   await page.getByRole('button', { name: '案件を作成' }).click();
   await page.waitForURL('**/operations/events/**');
-  await expect(page.getByText('E2Eテスト案件')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'E2Eテスト案件' })).toBeVisible();
   // 社長は粗利サマリーを閲覧できる
-  await expect(page.getByText('粗利率')).toBeVisible();
+  await expect(page.getByText('粗利率').first()).toBeVisible();
 });
 
 test('在庫移動を記録できる', async ({ page }) => {

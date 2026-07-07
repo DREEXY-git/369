@@ -15,7 +15,7 @@ async function login(page: Page, email: string) {
 test('棚卸ページが表示される', async ({ page }) => {
   await login(page, 'ceo@ikezaki.local');
   await page.goto('/operations/stocktakes');
-  await expect(page.getByRole('heading', { name: /棚卸/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '棚卸（実地在庫照合）' })).toBeVisible();
 });
 
 test('発注管理ページが表示される', async ({ page }) => {
@@ -42,7 +42,7 @@ test('イベント詳細に人員・リスク・物流が表示される', async
   await page.locator('input[name="name"]').fill('E2E実行テスト案件');
   await page.getByRole('button', { name: '案件を作成' }).click();
   await page.waitForURL('**/operations/events/**');
-  await expect(page.getByText('人員配置', { exact: false })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /人員配置/ }).first()).toBeVisible();
   await expect(page.getByText('リスク', { exact: false })).toBeVisible();
   await expect(page.getByText('物流タスク', { exact: false })).toBeVisible();
 });

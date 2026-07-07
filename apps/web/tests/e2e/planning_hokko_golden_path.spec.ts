@@ -16,7 +16,7 @@ async function login(page: Page, email: string) {
 test('プランニングホッコー入口から案件詳細へ遷移できる', async ({ page }) => {
   await login(page, 'ceo@ikezaki.local');
   await page.goto('/planning-hokko');
-  await expect(page.getByText('現在地と次の一手（Golden Path）', { exact: false })).toBeVisible();
+  await expect(page.getByText('Golden Path — 現在地と次の一手', { exact: false })).toBeVisible();
   await page.getByRole('link', { name: /案件詳細・次の一手/ }).first().click();
   await page.waitForURL('**/operations/events/**');
 });

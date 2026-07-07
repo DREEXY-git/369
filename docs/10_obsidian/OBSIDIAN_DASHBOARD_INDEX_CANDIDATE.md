@@ -50,6 +50,7 @@ related:
 | CRM顧客閲覧統制の追加監査 | Customer詳細は assertCanViewConfidential で閉／一覧・Contactは未確認（判定B: HOLD） | `docs/roadmap/26` |
 | Phase 3前残件の設計判断メモ | 送信ゲートは Suppression 強制で閉／閲覧レイヤ行レベル統制は据え置き判断・opt-out 正式化（判定B: HOLD） | `docs/roadmap/27` |
 | Phase 3 Gate 人間判断チェックリスト | Gate残件6条件＋人間判断6論点＋GO/HOLD条件を整理（判定B: HOLD・材料整備済み） | `docs/roadmap/28` |
+| Phase 3 Gate 移行判断の確定 | 6論点を人間承認＋回帰ゲート実測（5緑・e2eはCI確認）／方針GO・Phase3進入は残2点までHOLD | `docs/roadmap/29` |
 
 ## 4. Candidate / Official
 

@@ -218,6 +218,7 @@
 4. **CI / Test / Release Governance 等の品質基盤強化（別承認）**。
 5. **高機密ラベル実装・解禁は、最小実装設計後の個別人間承認**。
 - いずれの場合も **外部LLM送信・高機密ラベル解禁・EXTERNAL_SEND_ENABLED true 解禁・Phase 8 実課金・ENSHiN OS 外部発信には、個別人間承認なしに進まない**。
+- 旧候補・過去の判断履歴は各 audit / roadmap docs に温存し、CURRENT_STATE は現時点の次アクション候補を優先表示する。
 
 ## 今は絶対にやらないこと
 

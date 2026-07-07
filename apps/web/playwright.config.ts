@@ -9,11 +9,16 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   fullyParallel: false,
   retries: 0,
-  reporter: 'list',
+  // F2 診断（doc137/roadmap38）: 失敗時の証跡を CI artifact として取得するため
+  // html reporter を追加（既定 outputFolder=playwright-report）。list は開発時の可読性維持。
+  reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   use: {
     baseURL: process.env.E2E_BASE_URL || 'http://localhost:3000',
     locale: 'ja-JP',
-    trace: 'on-first-retry',
+    // retries:0 のため on-first-retry では trace が取得できない。失敗時に trace/screenshot を
+    // 保持する設定へ（診断用・test-results/ に出力・gitignore 済み・本番非接続）。
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {

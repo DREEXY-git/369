@@ -43,7 +43,7 @@ test('イベント詳細に人員・リスク・物流が表示される', async
   await page.getByRole('button', { name: '案件を作成' }).click();
   await page.waitForURL('**/operations/events/**');
   await expect(page.getByRole('heading', { name: /人員配置/ }).first()).toBeVisible();
-  await expect(page.getByText('リスク', { exact: false })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /リスク/ }).first()).toBeVisible();
   await expect(page.getByText('物流タスク', { exact: false })).toBeVisible();
 });
 

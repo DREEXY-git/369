@@ -1,6 +1,10 @@
 # CI Stage 1（Phase X-05-1・doc63 §4 Stage 1 準拠）
 # DB不要・secrets不要・本番接触なし。既存の package scripts のみを実行する。
-# Stage 2（build）・Stage 3（E2E smoke）は別承認（doc63 §6）。
+# Stage 3（E2E smoke）は stage3_e2e ジョブとして追加（doc129/roadmap30 設計）。
+# stage3_e2e は ephemeral Postgres service（本番DB非接続・使い捨て）で
+# migrate deploy → seed（DEMO）→ build → playwright を実行する。
+# 外部送信なし（EXTERNAL_SEND_ENABLED=false / LogEmailProvider）・実LLMなし（LLM_PROVIDER=fake）・
+# AIコストなし・runtime解禁なし・secrets不要・本番非接触。
 name: CI
 
 on:
@@ -48,3 +52,90 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+
+  # Stage 3: E2E smoke（playwright）。稼働中 Web（pnpm start）＋ seed 済み ephemeral DB を前提とする。
+  # 本番DB非接続・secrets不要・外部送信なし・実LLMなし。stage1 成功後にのみ実行する。
+  stage3_e2e:
+    runs-on: ubuntu-latest
+    needs: stage1
+    timeout-minutes: 30
+    # 安全側の env。実送信は無効（既定）・LLM は fake・DB は service コンテナ（ローカル）。
+    env:
+      DATABASE_URL: postgresql://app:app@localhost:5432/ikezaki_os
+      DIRECT_URL: postgresql://app:app@localhost:5432/ikezaki_os
+      SESSION_SECRET: ci-e2e-insecure-session-secret-0123456789abcdef
+      APP_URL: http://localhost:3000
+      E2E_BASE_URL: http://localhost:3000
+      LLM_PROVIDER: fake
+      MAIL_PROVIDER: log
+      EXTERNAL_SEND_ENABLED: 'false'
+    services:
+      postgres:
+        # docker-compose と同じ pgvector 入り pg16。使い捨て（本番非接続）。
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: ikezaki_os
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d ikezaki_os"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # db スクリプトは dotenv -e ../../.env を読むため、CI 専用の .env を生成する。
+      # 値はすべて非機密（ephemeral DB / fake LLM / 送信無効）。.env は gitignore 済みでコミットされない。
+      - name: Write CI .env (ephemeral, non-secret)
+        run: |
+          cat > .env <<'ENVEOF'
+          DATABASE_URL=postgresql://app:app@localhost:5432/ikezaki_os
+          DIRECT_URL=postgresql://app:app@localhost:5432/ikezaki_os
+          SESSION_SECRET=ci-e2e-insecure-session-secret-0123456789abcdef
+          APP_URL=http://localhost:3000
+          LLM_PROVIDER=fake
+          MAIL_PROVIDER=log
+          EXTERNAL_SEND_ENABLED=false
+          ENVEOF
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Apply migrations (ephemeral DB)
+        run: pnpm db:migrate:deploy
+
+      - name: Seed demo data
+        run: pnpm db:seed
+
+      - name: Build web
+        run: pnpm build
+
+      - name: Install Playwright browser (chromium)
+        run: pnpm --filter @hokko/web exec playwright install --with-deps chromium
+
+      - name: Run E2E (playwright)
+        run: pnpm --filter @hokko/web exec playwright test
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore

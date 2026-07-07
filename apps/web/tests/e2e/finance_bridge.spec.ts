@@ -16,7 +16,7 @@ test('Finance Bridge ダッシュボードが表示される', async ({ page }) 
   await login(page, 'ceo@ikezaki.local');
   await page.goto('/finance/bridge');
   await expect(page.getByRole('heading', { name: /Finance Bridge/ })).toBeVisible();
-  await expect(page.getByText('FinanceEvent', { exact: false })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '直近の FinanceEvent' })).toBeVisible();
 });
 
 test('イベント案件からFinanceブリッジを作成できる', async ({ page }) => {

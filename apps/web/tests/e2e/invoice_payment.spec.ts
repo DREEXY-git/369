@@ -26,7 +26,7 @@ test('資金繰り画面に予定 vs 実績が表示される', async ({ page })
   await login(page, 'ceo@ikezaki.local');
   await page.goto('/finance/cashflow');
   await expect(page.getByText('資金繰り 予定 vs 実績', { exact: false })).toBeVisible();
-  await expect(page.getByText('入金実績', { exact: false })).toBeVisible();
+  await expect(page.getByText('入金実績', { exact: true })).toBeVisible();
 });
 
 test('スタッフは請求金額・入金履歴・資金繰りを閲覧できない', async ({ page }) => {

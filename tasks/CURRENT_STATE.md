@@ -238,11 +238,11 @@
 
 ## 次にやること（人間が選択）
 
-1. **doc151/roadmap52 push-only（別承認）: P3-CT-3 監査ログ配線設計 commit を feature branch `claude/ci-stage3-e2e-f1d-selectors-hikwbg` へ push（main へは push しない・force なし・amend/rebase/reset なし）**。push 後 CI（stage1・stage3_e2e）を read-only 確認し、Run E2E が **74 passed / 0 failed**（growth_control_tower の社長閲覧・担当者 redaction 2件が引き続き green）であることを確認。
-2. **P3-CT-3 実装ミッション（別承認）**。roadmap52 §6.2/§8 のとおり `apps/web/lib/domains/growth/control-tower.ts` 1ファイルのみ変更（confidential_view へ policyDecision/metadata(allowlist 3項目) 付与＋redacted 閲覧の `action:'read'` 1件追加）。新 action 値・新テーブル・metadata への PII/finance 実値が必要になれば STOP・別承認。
+1. **doc151/roadmap52 push-only（別承認）: P3-CT-3 監査ログ配線設計 commit `293ef2e`（未push・反映状態は git refs を正とする）を feature branch `claude/ci-stage3-e2e-f1d-selectors-hikwbg` へ push（main へは push しない・force なし・amend/rebase/reset なし）**。push 後 CI（stage1・stage3_e2e）を read-only 確認し、Run E2E が **74 passed / 0 failed**（growth_control_tower の社長閲覧・担当者 redaction 2件が引き続き green）であることを確認。
+2. **P3-CT-3 実装ミッション（別承認）**。roadmap52 §6.2/§8 のとおり `apps/web/lib/domains/growth/control-tower.ts` 1ファイルのみ変更候補（confidential_view へ policyDecision/metadata(allowlist 3項目) 付与＋redacted 閲覧の `action:'read'` 1件追加）。新 action 値・新 schema・metadata への PII/finance 実値が必要になれば STOP・別承認。
 3. **外部送信・実LLM・課金・本番 deploy・runtime 解禁・externalAiAllowed true・EXTERNAL_SEND_ENABLED true・状態永続化（dismiss/snooze/pin 等）は、各々個別の人間承認まで行わない**（封印は個別承認制を維持）。
-3. **CI / Test / Release Governance 等の品質基盤強化（別承認）**。
-4. **高機密ラベル実装・解禁は、最小実装設計後の個別人間承認**。
+4. **CI / Test / Release Governance 等の品質基盤強化（別承認）**。
+5. **高機密ラベル実装・解禁は、最小実装設計後の個別人間承認**。
 - いずれの場合も **外部LLM送信・高機密ラベル解禁・EXTERNAL_SEND_ENABLED true 解禁・Phase 8 実課金・ENSHiN OS 外部発信には、個別人間承認なしに進まない**。
 - 旧候補・過去の判断履歴は各 audit / roadmap docs に温存し、CURRENT_STATE は現時点の次アクション候補を優先表示する。
 

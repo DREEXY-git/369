@@ -50,6 +50,7 @@ import {
   BookText,
   Brain,
   BookMarked,
+  Radar,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -75,6 +76,7 @@ export const NAV: NavGroup[] = [
     title: 'Growth・DX OS',
     items: [
       { label: '成長ダッシュボード', href: '/growth', icon: TrendingUp },
+      { label: 'Growthコントロールタワー', href: '/growth/control-tower', icon: Radar },
       { label: '成長イベント台帳', href: '/growth/events', icon: Activity },
       { label: 'Marketing OS', href: '/marketing', icon: Megaphone },
       { label: 'DX OS', href: '/dx', icon: Cpu },

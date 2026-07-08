@@ -21,6 +21,7 @@ export * from './operations';
 export * from './golden-path';
 export * from './golden-path-dashboard';
 export * from './golden-path-actions';
+export * from './growth-control-tower';
 export * from './dunning';
 export * from './case-study';
 export * from './case-study-consent';

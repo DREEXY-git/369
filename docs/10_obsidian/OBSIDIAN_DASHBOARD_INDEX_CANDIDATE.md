@@ -64,6 +64,7 @@ related:
 | CI Stage 3 E2E F1d test selector fix | log確定strict-mode 4件(dunning:15/50・executive_dashboard:15/37)をtests-onlyでheading/本文リンクexactに限定・62/10→66/6見込み・C暫定6件は未修正・app/seed/schema/ci.yml/playwright.config.ts非変更（判定HOLD） | `docs/roadmap/40` |
 | CI Stage 3 E2E F1d result | F1dで66passed/6failed・strict-mode4件緑化・+4passed/-4failed・regressionなし・残C暫定6件・D=0・Phase3 HOLD | `docs/roadmap/41` |
 | CI Stage 3 E2E C6 artifact analysis | artifact(ID 8158827253)目視で残6件を最終分類：C=0/D=0/F=0・真因はtests-only(A=selector 4件/B=text 2件)・機密漏えいなし・F3 seed不要・tests-only(F1e)で66/6→72/0見込み・重要訂正「C暫定6件」はC=0（判定HOLD） | `docs/roadmap/42` |
+| CI Stage 3 E2E F1e tests-only fix | 残6件をe2e spec のみ最小修正(A=selector 4件は/new除外で実案件へ+operations:44は想定売上入力/race解消・B=text 2件は実在見出しへ)・app不変(redaction/finance文言は実在)・66/6→72/0見込み・F3 seed/schema不要・redaction2件はpush後CIで再検証（判定HOLD） | `docs/roadmap/43` |
 
 ## 4. Candidate / Official
 

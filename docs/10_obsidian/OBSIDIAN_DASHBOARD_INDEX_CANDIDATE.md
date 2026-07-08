@@ -62,6 +62,7 @@ related:
 | CI Stage 3 E2E F2 diagnostics | 失敗時のhtml report/trace/screenshotをartifact取得する診断基盤をconfig-only追加（結果不変62/10）・次はpush→C/D確定（判定HOLD） | `docs/roadmap/38` |
 | CI Stage 3 E2E F2 log-based artifact-blocked analysis | artifact取得不能(proxy 403)→job logで再分類：A=4(strict-mode/tests-only可)・C暫定=6・D=0／重大訂正で「全C」を是正（判定HOLD） | `docs/roadmap/39` |
 | CI Stage 3 E2E F1d test selector fix | log確定strict-mode 4件(dunning:15/50・executive_dashboard:15/37)をtests-onlyでheading/本文リンクexactに限定・62/10→66/6見込み・C暫定6件は未修正・app/seed/schema/ci.yml/playwright.config.ts非変更（判定HOLD） | `docs/roadmap/40` |
+| CI Stage 3 E2E F1d result | F1dで66passed/6failed・strict-mode4件緑化・+4passed/-4failed・regressionなし・残C暫定6件・D=0・Phase3 HOLD | `docs/roadmap/41` |
 
 ## 4. Candidate / Official
 

@@ -20,7 +20,7 @@ test('SENT 請求書の詳細に #dunning セクションが表示される（OW
   const dunning = page.locator('#dunning');
   if (await dunning.count()) {
     await expect(dunning).toBeVisible();
-    await expect(dunning.getByText(/督促/)).toBeVisible();
+    await expect(dunning.getByRole('heading', { name: /入金確認・督促/ })).toBeVisible();
   }
 });
 
@@ -50,7 +50,7 @@ test('督促送信は承認申請が必要（送信承認を申請ボタン）',
 test('承認ページに dunning_send の種別ラベルが表示される', async ({ page }) => {
   await login(page, 'ceo@ikezaki.local');
   await page.goto('/approvals');
-  await expect(page.getByText('承認待ち')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '承認待ち' })).toBeVisible();
   const label = page.getByText('督促送信（お支払い状況の確認）');
   if (await label.count()) {
     await expect(label.first()).toBeVisible();

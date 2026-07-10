@@ -5,7 +5,7 @@ import { getControlTowerData } from '@/lib/domains/growth/control-tower';
 import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Stat } from '@/components/ui';
-import { formatDateTime, type ControlTowerPriority } from '@hokko/shared';
+import { formatDateTime, isHumanUser, type ControlTowerPriority } from '@hokko/shared';
 import { generateControlTowerNextStepAction } from './actions';
 
 export const dynamic = 'force-dynamic';
@@ -21,15 +21,28 @@ const PRIORITY_TONE: Record<ControlTowerPriority, string> = {
   low: 'slate',
 };
 
-export default async function GrowthControlTowerPage() {
+export default async function GrowthControlTowerPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ denied?: string; blocked?: string }>;
+}) {
   const user = await requireUser();
+  const sp = await searchParams;
   // 金額（原価・粗利・未回収）は財務閲覧権限が必要。redact はデータ整形層で担保する。
   const canViewFinance = hasPermission(user, 'finance', 'read');
+  // 生成は人間かつ営業下書きの作成権限（leadmap:create）を持つ人のみ（Server Action 側と同じ判定を UI にも適用）。
+  const canGenerateDraft = isHumanUser(user) && hasPermission(user, 'leadmap', 'create');
   const { cards, actionableCount } = await getControlTowerData(user.tenantId, canViewFinance, user.userId);
   // P3-CT-4: 生成済みの「次の一手ドラフト」（AIOutput・下書きのみ）を read-only 表示する。
   // 生成は人間のボタン操作のみ。送信・承認・削除の導線は作らない。
+  // finance 系カード由来のメモは件数を含み得るため、財務権限のない閲覧者には表示しない（表示経路の redaction・二重防御）。
+  const financeCardKeys = cards.filter((c) => c.financeGated).map((c) => c.key);
   const nextStepDrafts = await prisma.aIOutput.findMany({
-    where: { tenantId: user.tenantId, task: 'generateControlTowerNextStep' },
+    where: {
+      tenantId: user.tenantId,
+      task: 'generateControlTowerNextStep',
+      ...(canViewFinance ? {} : { entityId: { notIn: financeCardKeys } }),
+    },
     orderBy: { createdAt: 'desc' },
     take: 3,
   });
@@ -45,6 +58,14 @@ export default async function GrowthControlTowerPage() {
           </Link>
         }
       />
+
+      {(sp.denied || sp.blocked) ? (
+        <p className="mb-3 rounded-md bg-secondary/40 px-3 py-2 text-xs text-muted-foreground">
+          {sp.blocked
+            ? '安全チェックにより AI 下書きの生成を中止しました（入力に危険な指示が含まれる可能性があります）。'
+            : 'AI 下書きメモを作成する権限がありません（生成には営業下書きの作成権限が必要です）。'}
+        </p>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="成長機会カード" value={cards.length} tone="purple" icon={<Radar />} />
@@ -82,14 +103,14 @@ export default async function GrowthControlTowerPage() {
                   {card.redacted ? (
                     // 安全な説明のみ（redacted カードでは生成不可・二重防御の UI 側）。
                     <span className="text-[11px] text-muted-foreground">AI 下書きは財務権限者のみ作成できます。</span>
-                  ) : (
+                  ) : canGenerateDraft ? (
                     <form action={generateControlTowerNextStepAction}>
                       <input type="hidden" name="cardKey" value={card.key} />
                       <Button type="submit" variant="outline" size="sm" data-testid={`ct-generate-${card.key}`}>
                         <Sparkles className="mr-1" /> AI 下書きメモを作る
                       </Button>
                     </form>
-                  )}
+                  ) : null}
                   <Link href={card.href}>
                     <Button variant="ghost" size="sm">
                       次の一手 <ArrowRight className="ml-1" />

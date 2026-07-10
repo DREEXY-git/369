@@ -40,6 +40,12 @@
 1. P3-CT-4 実装 push-only（別承認・main へ push しない・force なし）→ push 後 CI を read-only 確認し 76/0 と growth_control_tower 4件 green をログ本文で確認。
 2. 緑なら P3-CT-5 設計（別承認）。外部送信・実LLM・課金・本番・状態永続化は引き続き個別承認制。
 
-## 7. 判定
+## 7. 追補（push 前レビューによる修正・2026-07-10）
+
+- push する前に、**6視点の独立 AI レビュー（15エージェント）**で commit を総点検したところ、**重要な見落としを1件発見**しました: 社長が金額系カード（未回収リスク等）の下書きメモを作ると、メモ本文に「未回収・延滞の案件が N 件」という**財務件数**が入り、それが**財務権限のない担当者にも表示されてしまう**（カード側では隠している数字がメモ経由で見える）。
+- **push 前に修正済み**: 財務権限のない人には金額系カード由来のメモを表示しないフィルタを追加（見る側の二重防御）。あわせて、生成権限のない人にはボタン自体を出さない・拒否理由を画面に表示する、の2点も改善。この穴を CI で恒久的に見張る自動テストも1件追加（74→**77件**）。
+- 再検証: 単体 278 件合格・型/lint/安全チェックすべて緑。未 push の段階で発見・修正したため、**外部への影響はゼロ**です。
+
+## 8. 判定
 
 判定: **P3-CT-4 実装完了（commit-only）／コード3ファイルのみ／AI は提案のみ・下書きのみ・二重防御・入力制限／writeAudit=ai_run・UsageEvent=ai.output.generated のみ／STOP 非該当**。**schema変更なし・migrationなし・seed変更なし・RBAC変更なし・ci.yml/playwright.config.ts/package.json/lockfile変更なし・外部送信なし・実LLMなし・AIコストなし・課金なし・本番なし・runtime 解禁なし・externalAiAllowed true 解禁なし・EXTERNAL_SEND_ENABLED true 解禁なし・状態永続化なし・redaction 不変・Customer/Contact 生 PII 非増加・369-vault非編集・push なし（commit-only）**。前提 CI は run 29116334142（74/0）。次は P3-CT-4 実装 push-only（別承認）。

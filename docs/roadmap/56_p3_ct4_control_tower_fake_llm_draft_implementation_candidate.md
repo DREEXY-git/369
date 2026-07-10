@@ -101,3 +101,12 @@ Control Tower に送信ボタンを作っていない。外部送信は既存 Ap
 ## 17. 判定
 
 判定: **P3-CT-4 Control Tower FakeLLM 下書き生成 実装完了（commit-only）／コード変更は actions.ts 新規＋page.tsx＋e2e spec の3ファイルのみ／人間起点・FakeLLM+deterministic・生成物は AIOutput の下書きのみ／redacted 生成拒否の二重防御・FakeLLM 入力から finance 実値と生 PII を排除／writeAudit=ai_run・DataAccessLog=P3-CT-3 方針維持・UsageEvent=ai.output.generated のみ／STOP 非該当**。**業務データ mutation は AIOutput/監査ログの追記のみ・schema変更なし・migrationなし・seed変更なし・RBAC変更なし・labels変更なし・ci.yml/playwright.config.ts/package.json/lockfile変更なし・外部送信なし・実LLMなし・AIコストなし・課金なし・本番なし・runtime 解禁なし・externalAiAllowed true 解禁なし・EXTERNAL_SEND_ENABLED true 解禁なし・状態永続化なし・redaction 不変（担当者に原価・粗利・未回収の実値なし）・Customer/Contact 生 PII 非増加・369-vault非編集・push なし（commit-only）**。単体 278 passed・型/lint/safety 緑・e2e 実緑は push 後 CI（76/0 見込み）。前提 CI は run 29116334142（74/0）。次は P3-CT-4 実装 push-only（別承認）。
+
+## 18. 追補（2026-07-10・push 前 敵対的レビューによる修正 — commit 83fd4bc への fix commit）
+
+push 前に **6視点の敵対的レビュー（15エージェント・独立検証つき）** を commit `83fd4bc` に対して実行し、以下を確定・修正した（**push 前に発見・未 push のため外部影響ゼロ**）。
+
+- **high（6視点すべてが独立検出・全 verify real=true）: finance 件数が AI 下書きメモ表示経由で漏れる。** 社長が finance カード（未回収リスク/低粗利改善候補）から生成したメモ本文には、deterministicDraft の `現状: ${card.reason}`（「未回収・延滞の案件が N 件あります。」等）と FakeLLM echo（`件数: N`/`要約: …`）の2経路で **finance 件数**が入る。一方 page.tsx のメモ表示クエリは tenantId＋task のみで**閲覧者の canViewFinance を見ていなかった**ため、担当者がメモ経由でカード redaction が隠している件数を見られた。**修正**: メモ表示クエリに閲覧者側 redaction フィルタを追加（canViewFinance=false は financeGated カード由来メモを `entityId notIn` で除外・生成側の二重防御に加え表示側にも防御を追加）。
+- **low: leadmap:create を持たないロール（READ_ONLY/ADMIN 等）にも生成ボタンが表示され、押しても無言で失敗（denied/blocked クエリが未表示）。** **修正**: ボタン描画を `isHumanUser(user) && hasPermission(user,'leadmap','create')` でゲート（Server Action と同一判定を UI にも適用）＋ `?denied=1`/`?blocked=injection` に安全な通知文を表示（既存 redaction 文言・'表示可'/'非表示' と非重複＝既存 e2e 不変）。
+- **e2e 恒久担保**: 社長テストに unpaid_risk メモ生成を追加＋新テスト「担当者には finance 由来の AI 下書きメモが表示されない」（同一ファイル直列実行で決定的）。**テスト数 74→77**（本文中の「76」見込みは 77 に更新）。
+- 再検証: `pnpm test` 278 passed / 0 failed・web/shared typecheck exit 0・lint exit 0・safety exit 0・diff-check OK・secret NONE・禁止領域差分 0。変更は page.tsx＋e2e spec＋docs のみ（schema/RBAC/seed/actions.ts の安全境界は不変）。

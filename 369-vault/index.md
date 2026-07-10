@@ -21,6 +21,9 @@
 - [[本番確認記録プロンプトの型]] — 実測値だけで GO/HOLD を記録させる型。
 - [[push専用プロンプトの型]] — fast-forward push だけを安全に行う型。
 - [[状態管理修復プロンプトの型]] — docs の陳腐化・一時状態を安定化させる型。
+- [[実装前Gateプロンプトの型]] — 実装前に「既存 schema・RBAC・seed だけで成立するか」を判定し、成立しなければ STOP する型。
+- [[CI結果ログ本文確認プロンプトの型]] — success という結論だけで断定せず、CI ログ本文で件数・封印 env・対象 spec を確認する型。
+- [[push前敵対的レビューの型]] — push 前の commit を複数視点の独立レビューで総点検し、穴の修正と見張りテスト追加をセットで行う型。
 
 ## 📚 知識
 
@@ -122,6 +125,25 @@
 - [[高機密ラベル実装解禁可否判断候補AB完了後]] — 候補A（判定ロジック）＋候補B（見張り）が完成した上で、人間が「まだ実際には解禁しない」と正式決定：土台ができただけで解禁の理由にはならない・実データを扱う本実装（候補C＝器/schema）は別の重い人間承認・次は候補C前提設計docs-onlyか品質基盤強化。解禁ではない・AIに読ませない・公開しない・個人情報や実顧客データは保存しない＝コードは無変更（実装解禁 可否判断・GO）。
 - [[CustomerPain候補C前提設計]] — Customer Pain を実際にデータとして扱う本実装（候補C）に進む前の紙の設計：入れ物（schema）と migration を作るのが最も重く別の重い人間承認・今回はまだ schema を作らない・個人情報や顧客名は入れない・customerId参照すら別承認・見るたび参照ログ・書くたび監査ログ・AIに読ませない・公開しない。本実装ではない＝コードは無変更（候補C 前提設計・READY / GO）。
 - [[CustomerPainスキーマ設計]] — Customer Pain を保存する「入れ物（データベースの表）」の形を紙で設計：持たせる列の候補（ID・会社ID・見出し・本文・分類・状態・機密ラベル・アーカイブ日時・作成/更新者ID）と、絶対に入れない列（顧客名・連絡先・生本文・公開系・顧客ID）を明記・customerIdやenum化は別の重い承認・物理削除なし・AIに読ませない・公開しない・個人情報や実顧客データは保存しない。schema変更もmigrationもしない＝コードは無変更（Customer Pain スキーマ設計・READY / GO）。
+- [[CRM最小縦切り方針決定]] — CRM/SFA の最初の範囲を3案（Lead-only／Lead+Deal／＋Pipeline）で比較し「案A: リードだけ」を推奨で固定：Contact PII 最小化・土台集中・停止条件つき。実装ではない＝コードは無変更（CRM最小縦切り 方針決定・READY / GO）。
+- [[CRMリードのみ最小設計]] — 推奨案A「リードだけ」を実装判断できる細かさまで紙で設計：会社名・状態・担当・社内メモまでに限定し顧客個人情報は入れない・機密度は NORMAL/INTERNAL のみ・RBAC は変えない。実装ではない＝コードは無変更（CRM Lead-only 最小設計・READY / GO）。
+- [[CRMリードのみ実装Gate]] — 「作り始めてよい条件は揃っている」ことを紙で最終判断：範囲は Lead 1テーブル＋最小CRUD＋一覧・PIIなし・既存権限暫定・外部送信なし。着手そのものはさらに別承認（CRM Lead-only 実装Gate・READY / GO）。
+- [[CRMLeadMap既存実装突合]] — 新規 Lead を作ろうとしたら本格的な LeadMap（リード〜商談〜顧客）が既に実装済みと判明し停止：既存 LocalBusinessLead / /leadmap を CRM リード正本候補として追認（案A）・doc118〜120 は温存。read-only 監査＝コードは無変更（CRM LeadMap 既存実装突合・READY / GO（案A））。
+- [[Phase2完了判定とPhase3Gate]] — Phase 2（会社の頭脳＋CRM/営業）は部分完了・Phase 3（AI Growth Engine）進入は移行条件6項目が未完のため HOLD 推奨を紙で判定：判定の確定は人間の Phase Gate 承認事項＝コードは無変更（Phase 2 完了判定・READY / GO／Phase 3 進入 HOLD）。
+- [[Phase2正式完了記録]] — Phase 2 の正式完了記録を紙で固定：頭脳は正式完了・CRM/営業は実装済みだが本番確認/回帰の正式記録が無いため CONDITIONAL COMPLETE（条件付き完了）・完了宣言は人間の Phase Gate 承認事項・Phase 3 残件6条件を明記＝コードは無変更（Phase 2 正式完了記録・READY / GO／CONDITIONAL COMPLETE）。
+- [[高機密Runtime統制監査]] — 顧客機密（CUSTOMER_CONFIDENTIAL）が漏れない仕組みを read-only で点検：AI参照経路の封印は二重ガードで閉じていると実測・人間が見る顧客画面側の配線は未確認のため安全側で HOLD・解禁ではない＝コードは無変更（高機密 runtime 統制監査・B — HOLD）。
+- [[CustomerContact閲覧統制追加監査]] — doc124 の「未確認」を追加点検し重要訂正：Customer 詳細画面は assertCanViewConfidential（権限＋ラベル判定＋閲覧ログ）で統制済みと確認・顧客一覧の行レベルと Contact 単体経路は未確認のため HOLD 継続・解禁ではない＝コードは無変更（Customer/Contact 閲覧統制 追加監査・B — HOLD）。
+- [[Phase3Gate残統制方針と人間判断チェックリスト]] — Phase 3 前に残る決めごと（一覧の機密制御・リード連絡先閲覧・Contactのラベル従属・opt-out正式化・同意記録の用途別分離・回帰ゲート必須化）を紙で整理し、社長が決めるチェックリストにした回。コードは無変更・送信封印とAI境界は維持（Phase 3 Gate 残統制方針＋チェックリスト・HOLD）。
+- [[Phase3Gate判断確認]] — 6つの方針を人間が「推奨どおりで承認」と決定し、品質チェックは6つ中5つ合格（欠陥ゼロ）・残るe2eはCIで確認すると決めた回。方針=GO・Phase 3 進入は「e2eのCI合格＋最終承認」の2点がそろうまでHOLD。コードは無変更（Phase 3 Gate 判断確認・方針GO / 進入HOLD）。
+- [[CIStage3E2E設計と実装]] — CI第3段 `stage3_e2e` を設計→実装した回：使い捨てのpgvector一時DBにseedを入れ、build→chromium上でPlaywrightの画面通しテストを実走。封印env（fake/log/false）のまま本番DB非接続・変更はci.yml 1ファイルのみ（CI Stage 3 E2E・設計HOLD→実装完了 / Phase 3 進入HOLD）。
+- [[CIStage3E2E失敗修復と72Green化]] — E2E 72本中15本失敗から全緑（72 passed / 0 failed）までの長編アーク統合ノート：F1→F1b→F1c→F2→F1d→artifact分析→F1e の時系列と教訓（tests-onlyで直す・ログ本文で確認・分類は証拠で訂正）。真因はすべてテスト側・アプリ不具合0・機密漏えいなし（doc131〜143・stage3_e2e GREEN・Phase 3 は最終Gate承認前 HOLD）。
+- [[Phase3最終Gate判断シートとGO記録]] — Phase 3 進入の判断材料を1枚にまとめ（doc144・HOLD）、回帰ゲート3回連続 72/0・機密漏えいなし・封印維持を根拠に人間が GO 判断6件を出した正式記録（doc145）。GO は封印解除でも実装開始でもなく、外部送信・実LLM・課金・本番deployは個別承認制のまま＝コードは無変更（Phase 3 最終 Gate・HOLD → GO）。
+- [[ControlTowerV0設計と実装前Gate]] — Phase 3 の最初の縦切り「成長機会の管制塔 v0」を設計し（doc146）、実装前 Gate で「状態永続化なし・既存 schema・RBAC・seed のみで成立」と判定して P3-CT-1 の計画を確定（doc147）。段組みは P3-CT-0〜7 で各段別承認＝コードは無変更（Control Tower v0・設計完了 / Gate PASS）。
+- [[P3CT1ReadOnly画面とE2Eセレクタ強化]] — 管制塔 v0 の見るだけ画面 `/growth/control-tower`（9枚カード・スタッフに金額実値なし）を実装し（doc148・単体271件緑）、伏せ字メッセージ2件を件数で厳密確認するようE2Eテストのみ補強（doc149）。書き換えなし・schema/RBAC/seed 無変更（P3-CT-1・実装完了・tests 補強完了）。
+- [[P3CT2優先度ロジック]] — Control Tower のカードの並び順を「重要度×(基礎+緊急度)×信頼度」の説明できる式に精緻化した回：純粋ロジックのみ・各カードにスコア内訳を持たせ説明可能に・担当者への金額隠しは不変・schema/RBAC/seed 無変更・単体278件緑（doc150・P3-CT-2 優先度ロジック精緻化・実装完了・commit-only）。
+- [[P3CT3監査ログ配線]] — Control Tower の「誰が・いつ・何の目的で見たか」を機密閲覧の帳簿（DataAccessLog）に残す設計→実装の回：財務が伏せられた担当者の閲覧も1件記録・metadata は財務表示有無/カード枚数/要対応数の3項目のみ（金額・カード別件数・個人情報は禁止）・コード変更は1ファイルのみ（doc151〜152・P3-CT-3・設計 Gate PASS→実装完了）。
+- [[P3CT4FakeLLM下書き生成]] — Control Tower に「AI 下書きメモ」ボタンを設計→実装前Gate→実装の三段で追加した回：FakeLLMのみ・下書きのみ・人間起点のみ・redactedカードは二重防御で生成拒否。push前の6視点敵対的レビューで high 1件（メモ表示経由の財務件数漏れ）をpush前に発見・修正し e2e 74→77件（doc153〜155・P3-CT-4・Gate PASS→実装完了）。
+- [[P3CT4完全クローズとP3CT5準備]] — P3-CT-4 の完成を CI run 29122397143 の「77 passed / 0 failed」をログ本文で確認して正本化した回：76→77 の整合整理・Control Tower 専用テスト5件緑・次段は P3-CT-5（承認導線 deep link 強化・新規送信は作らない）（doc156・P3-CT-4 完全クローズ＋P3-CT-5 準備・docs-only）。
 
 ## 🔗 コード側の正（source of truth）
 

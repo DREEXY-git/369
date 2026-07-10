@@ -144,6 +144,8 @@
 - [[P3CT3監査ログ配線]] — Control Tower の「誰が・いつ・何の目的で見たか」を機密閲覧の帳簿（DataAccessLog）に残す設計→実装の回：財務が伏せられた担当者の閲覧も1件記録・metadata は財務表示有無/カード枚数/要対応数の3項目のみ（金額・カード別件数・個人情報は禁止）・コード変更は1ファイルのみ（doc151〜152・P3-CT-3・設計 Gate PASS→実装完了）。
 - [[P3CT4FakeLLM下書き生成]] — Control Tower に「AI 下書きメモ」ボタンを設計→実装前Gate→実装の三段で追加した回：FakeLLMのみ・下書きのみ・人間起点のみ・redactedカードは二重防御で生成拒否。push前の6視点敵対的レビューで high 1件（メモ表示経由の財務件数漏れ）をpush前に発見・修正し e2e 74→77件（doc153〜155・P3-CT-4・Gate PASS→実装完了）。
 - [[P3CT4完全クローズとP3CT5準備]] — P3-CT-4 の完成を CI run 29122397143 の「77 passed / 0 failed」をログ本文で確認して正本化した回：76→77 の整合整理・Control Tower 専用テスト5件緑・次段は P3-CT-5（承認導線 deep link 強化・新規送信は作らない）（doc156・P3-CT-4 完全クローズ＋P3-CT-5 準備・docs-only）。
+- [[完全機能台帳正本化とカテゴリ番号整合]] — 369 の全機能の住所録（完全機能台帳 v1.0・50カテゴリ＋20大＋19領域＋5本柱＋Global AI Rules＋MVP禁止26項目）を GitHub 正本に固定し、過去 docs の「C41-C44=AI Growth」という番地の書き間違いを追記主義で訂正記録（正: Phase 3 = C18-C22＋C27＋C38）（roadmap58/doc157・正本化完了・docs-only）。
+- [[ControlTowerV0完遂とP3CT5承認導線]] — 管制塔の最終段 P3-CT-5（承認導線 deep link・リンクのみ・実行ボタンなし・件数countのみ）を統合オートパイロットで完了し Control Tower v0 が全段完成：push 前レビューで昔からの穴（リード閲覧3ページの権限ゲート欠如）も発見して先に修正・CI「80 passed / 0 failed」をログ本文確認・専用テスト8件体制（roadmap59-60/doc158-159・CT v0 完遂）。
 
 ## 🔗 コード側の正（source of truth）
 

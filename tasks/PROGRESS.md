@@ -242,6 +242,11 @@
 
 - Phase 2-A-3a「Company Brain 最小可視化（seed＋read-only 一覧）」: `packages/db/prisma/seed.ts`（CompanyPolicy 5件＋ProductCatalogItem 8件・全件 externalAiAllowed=false・label は NORMAL/INTERNAL のみ・PII/secret/実価格なし）＋read-only 2画面新規（`/brain/policies`・`/brain/catalog`。requireUser＋knowledge:read＋tenantId スコープ・作成/編集/削除/Server Action なし）＋ナビ1行（`components/shell/nav.ts` に「会社の頭脳」）＋smoke 末尾1本追加＋`docs/audit/36_phase2a3a_company_brain_readonly.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/Phase2A3aCompanyBrain可視化.md`（index からリンク）＋本ファイル。**検証全green（test 211・typecheck・lint・build・seed policies:5/catalogItems:8・smoke 12/12 green・既存11本回帰なし）**。**schema・migration・RBAC・labels・package/lock 無変更／作成・編集・writeAudit/writeDataAccess 本実装は 2-A-3b へ送り（別承認）／課金・決済・外部送信・本番接触なし**。詳細 `docs/audit/36_phase2a3a_company_brain_readonly.md`。反映状態は git refs を正とする。
 
+## P3-CT-5 完全クローズ＋Control Tower v0 完遂 — 統合オートパイロット v4.0・判定 CT v0 全段完遂 / CI 80/0 ログ本文確認 / 台帳正本化・番号整合込み
+
+- **doc157-159 / `docs/roadmap/58-60`＋コード5ファイル**（2026-07-10）。1回の統合実行（人間承認 = push GO 2回）で、台帳正本化（C41-C44 整合・`25b5cb9`）→ CT-5 設計+Gate PASS（`848317c`）→ 実装（承認導線 deep link・リンクのみ・`14d6b7d`）→ 敵対的レビュー3視点（既存 medium 1件 = leadmap 閲覧3ページの read ゲート欠如を push 前修正・`d1d8e36`）→ push → CI **run 29127896331 = success・`80 passed (1.2m)` / 0 failed をログ本文確認**（env fake/log/false・growth_control_tower 8件 green・15 run 連続 green）。**P3-CT-0〜5 全段完遂 = Control Tower v0 完成**（e2e 72→80件）。schema/RBAC定義/seed/ci.yml 不変・外部送信/実LLM/課金/本番なし。
+- 記録: doc157-159＋roadmap58-60。次は roadmap60 push-only（人間 GO）→ Phase 3 次縦切りの人間選定（候補は roadmap60 §6）。
+
 ## P3-CT-4 完全クローズ＋P3-CT-5 準備 — Candidate・docs-only・実装なし・push なし・判定 P3-CT-4 完全クローズ / CI 77/0 ログ本文確認 / 次段 P3-CT-5
 
 - **doc156 / `docs/roadmap/57_p3_ct4_closeout_and_p3_ct5_preparation_candidate.md`**（2026-07-10）。push 済み commit `d45491c` の CI **run 29122397143（run #154）= success・stage1/stage3_e2e success・Run E2E `77 passed (1.2m)` / 0 failed をログ本文で直接確認**（env fake/log/false・growth_control_tower 5件 green・stage3_e2e 13 run 連続 green）を正本化。roadmap56 本文の「76 見込み」は §18 追補＋roadmap57 §4 で **77 確定**に整理（追記主義・本文非書き換え）。P3-CT-0〜4 完了・CT-6/7 畳み込み消化・**次段 = P3-CT-5（承認導線 deep link 強化・新規送信は作らない）**のスナップショット、Phase 系譜/3系統/50カテゴリ（C41-C44 = CT-4 確定）/20大カテゴリ/追加19領域/5本柱接続、初期 MVP 禁止事項非接触確認、P3-CT-5 設計＋実装前 Gate 統合ミッションの次回プロンプト（roadmap57 §19）を1枚に固定。**実装なし・コード変更なし・schema/migration/RBAC/seed 変更なし・外部送信/実LLM/AIコスト/課金/本番なし・369-vault非編集・push なし（commit-only）**。

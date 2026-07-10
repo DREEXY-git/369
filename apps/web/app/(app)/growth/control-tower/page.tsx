@@ -46,6 +46,21 @@ export default async function GrowthControlTowerPage({
     orderBy: { createdAt: 'desc' },
     take: 3,
   });
+  // P3-CT-5: 人間の判断待ちへの deep link（リンクのみ・承認/送信/実行のボタンは置かない）。
+  // 承認一覧は請求金額等の finance 機密を含むため、件数も承認権限者（approval:approve）のみ取得・表示する。
+  // 件数は count のみで、金額・PII・件名・本文は取得しない。
+  const canApprove = hasPermission(user, 'approval', 'approve');
+  const canViewLeads = hasPermission(user, 'leadmap', 'read');
+  const [pendingApprovalCount, outreachDraftCount] = await Promise.all([
+    canApprove
+      ? prisma.approvalRequest.count({ where: { tenantId: user.tenantId, status: 'PENDING' } })
+      : Promise.resolve(null),
+    canViewLeads
+      ? prisma.outreachDraft.count({
+          where: { tenantId: user.tenantId, status: { in: ['DRAFT', 'PENDING_APPROVAL'] } },
+        })
+      : Promise.resolve(null),
+  ]);
 
   return (
     <div className="animate-fade-in">
@@ -122,6 +137,46 @@ export default async function GrowthControlTowerPage({
           </Card>
         ))}
       </div>
+
+      {canApprove || canViewLeads ? (
+        <Card className="mt-5">
+          <CardHeader>
+            <CardTitle className="text-base">人間の判断待ち（承認導線）</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            <p className="text-xs text-muted-foreground">
+              送信・承認・実行はこの画面からは行いません。実行は承認画面での人間の判断のみです。
+            </p>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              {canApprove ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">
+                    承認待ち <span className="font-bold tabular-nums">{pendingApprovalCount}</span> 件
+                  </span>
+                  <Link href="/approvals">
+                    <Button variant="outline" size="sm" data-testid="ct-link-approvals">
+                      承認待ちを開く <ArrowRight className="ml-1" />
+                    </Button>
+                  </Link>
+                </div>
+              ) : null}
+              {canViewLeads ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">
+                    営業メール下書き（送信待ち）{' '}
+                    <span className="font-bold tabular-nums">{outreachDraftCount}</span> 件
+                  </span>
+                  <Link href="/leadmap/leads">
+                    <Button variant="outline" size="sm" data-testid="ct-link-outreach">
+                      下書き一覧を開く <ArrowRight className="ml-1" />
+                    </Button>
+                  </Link>
+                </div>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card className="mt-5">
         <CardHeader>

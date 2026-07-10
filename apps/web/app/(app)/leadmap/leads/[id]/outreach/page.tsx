@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Input, Textarea, EmptyState } from '@/components/ui';
@@ -10,6 +10,7 @@ import {
   requestOutreachApprovalAction,
   classifyReplyAction,
 } from '../../../actions';
+import { AccessDenied } from '@/components/access-denied';
 import { isSuppressed, formatDateTime } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,17 @@ export default async function OutreachPage({
   const { id } = await params;
   const sp = await searchParams;
   const user = await requireUser();
+  // 営業メール下書きは店舗宛先・本文を含む。leadmap:read を持たないロールには
+  // データ取得前に遮断する（/approvals と同型・P3-CT-5 push 前レビューの指摘対応）。
+  if (!hasPermission(user, 'leadmap', 'read')) {
+    return (
+      <AccessDenied
+        title="営業メール下書き"
+        reason="営業メール下書きの閲覧には LeadMap の閲覧権限（leadmap:read）が必要です"
+        breadcrumb={[{ label: 'リード一覧', href: '/leadmap/leads' }]}
+      />
+    );
+  }
   const lead = await prisma.localBusinessLead.findFirst({
     where: { id, tenantId: user.tenantId },
     include: {

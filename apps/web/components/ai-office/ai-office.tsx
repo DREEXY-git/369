@@ -15,9 +15,12 @@ import {
   AI_WORKFORCE_STATES,
   AI_WORKFORCE_STATE_LABEL,
   AI_WORKFORCE_STATE_COLOR,
+  getAiCharacter,
   type AiWorkforceState,
 } from '@hokko/shared';
 import type { AiWorkforceReadModel } from '@/lib/domains/ai-workforce/read-model';
+import { AiPortrait } from './portrait';
+import { buildCharacter, buildDesk } from './avatar-3d';
 
 const STATE_ICON: Record<AiWorkforceState, string> = {
   idle: '💤',
@@ -115,10 +118,17 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
     controls.maxDistance = 40;
     controls.listenToKeyEvents(renderer.domElement); // 矢印キーでパン（キーボード操作）
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-    const dir = new THREE.DirectionalLight(0xffffff, 1.2);
+    // 照明: 環境光＋半球光（空色の回り込み）＋キーライト＋承認デスクの暖色。奥行きは fog で演出
+    // （fog 色は背景と同じ #0f172a のため、e2e の「背景からの乖離ピクセル」検査条件は不変）。
+    scene.fog = new THREE.Fog('#0f172a', 26, 62);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.62));
+    scene.add(new THREE.HemisphereLight(0x93c5fd, 0x1e293b, 0.6));
+    const dir = new THREE.DirectionalLight(0xffffff, 1.15);
     dir.position.set(8, 16, 8);
     scene.add(dir);
+    const deskLight = new THREE.PointLight(0xfbbf24, 0.7, 9);
+    deskLight.position.set(APPROVAL_DESK.x, 2.4, APPROVAL_DESK.z);
+    scene.add(deskLight);
 
     // 床とゾーン（外部 texture なし・単色マテリアルのみ）。
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(26, 20), new THREE.MeshLambertMaterial({ color: '#1e293b' }));
@@ -126,37 +136,78 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
     scene.add(floor);
     scene.add(new THREE.GridHelper(26, 26, 0x334155, 0x263248));
 
-    const makeTextSprite = (text: string, opts: { size?: number; color?: string } = {}) => {
+    const makeTextSprite = (
+      text: string,
+      opts: { size?: number; color?: string; sub?: string; subColor?: string; plate?: boolean } = {},
+    ) => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d')!;
       canvas.width = 512;
-      canvas.height = 128;
-      ctx.font = 'bold 44px sans-serif';
+      canvas.height = 160;
+      if (opts.plate) {
+        // ネームプレート: 角丸の半透明プレート＋キャラ色の下線（読みやすさ優先）。
+        const w = 460;
+        const x = (512 - w) / 2;
+        ctx.fillStyle = 'rgba(8,12,24,0.72)';
+        ctx.beginPath();
+        ctx.roundRect(x, 18, w, 124, 26);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(226,232,240,0.35)';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        if (opts.subColor) {
+          ctx.fillStyle = opts.subColor;
+          ctx.beginPath();
+          ctx.roundRect(x + 24, 126, w - 48, 6, 3);
+          ctx.fill();
+        }
+      }
       ctx.textAlign = 'center';
+      ctx.font = 'bold 52px sans-serif';
       ctx.fillStyle = opts.color ?? '#e2e8f0';
-      ctx.fillText(text, 256, 78);
+      ctx.fillText(text, 256, opts.sub ? 74 : 96);
+      if (opts.sub) {
+        ctx.font = '30px sans-serif';
+        ctx.fillStyle = opts.subColor ?? '#94a3b8';
+        ctx.fillText(opts.sub, 256, 116);
+      }
       const tex = new THREE.CanvasTexture(canvas);
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
       const s = opts.size ?? 4;
-      sprite.scale.set(s, s / 4, 1);
+      sprite.scale.set(s, s * (160 / 512), 1);
       return sprite;
     };
 
     for (const z of ZONES) {
-      const pad = new THREE.Mesh(new THREE.PlaneGeometry(8, 5), new THREE.MeshLambertMaterial({ color: z.color, transparent: true, opacity: 0.55 }));
+      const pad = new THREE.Mesh(new THREE.PlaneGeometry(8, 5), new THREE.MeshLambertMaterial({ color: z.color, transparent: true, opacity: 0.5 }));
       pad.rotation.x = -Math.PI / 2;
       pad.position.set(z.x, 0.01, z.z);
       scene.add(pad);
-      const label = makeTextSprite(z.label, { size: 5 });
-      label.position.set(z.x, 2.6, z.z - 2.2);
+      // ゾーンの縁取り（区画の輪郭を立たせる）
+      const edge = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.PlaneGeometry(8, 5)),
+        new THREE.LineBasicMaterial({ color: '#64748b', transparent: true, opacity: 0.5 }),
+      );
+      edge.rotation.x = -Math.PI / 2;
+      edge.position.set(z.x, 0.02, z.z);
+      scene.add(edge);
+      const label = makeTextSprite(z.label, { size: 4.6 });
+      label.position.set(z.x, 2.9, z.z - 2.2);
       scene.add(label);
+      // 執務デスク（ゾーン奥・emissive モニタ。データ表示ではなく生活感の演出）
+      const zoneDesk = buildDesk('#7dd3fc');
+      zoneDesk.position.set(z.x, 0, z.z + 1.7);
+      scene.add(zoneDesk);
     }
-    // 人間の承認デスク。
-    const desk = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.9, 1.4), new THREE.MeshLambertMaterial({ color: '#b45309' }));
-    desk.position.set(APPROVAL_DESK.x, 0.45, APPROVAL_DESK.z);
-    scene.add(desk);
-    const deskLabel = makeTextSprite('人間の承認デスク', { size: 5, color: '#fbbf24' });
-    deskLabel.position.set(APPROVAL_DESK.x, 2.2, APPROVAL_DESK.z);
+    // 人間の承認デスク（木製・暖色ライト・書類トレイ）。
+    const approvalDesk = buildDesk('#fbbf24');
+    approvalDesk.position.set(APPROVAL_DESK.x, 0, APPROVAL_DESK.z);
+    scene.add(approvalDesk);
+    const tray = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.36), new THREE.MeshLambertMaterial({ color: '#e7e0d0' }));
+    tray.position.set(APPROVAL_DESK.x, 0.88, APPROVAL_DESK.z + 0.2);
+    scene.add(tray);
+    const deskLabel = makeTextSprite('人間の承認デスク', { size: 4.6, color: '#fbbf24', plate: true, subColor: '#f59e0b' });
+    deskLabel.position.set(APPROVAL_DESK.x, 2.5, APPROVAL_DESK.z);
     scene.add(deskLabel);
 
     // AI 社員（部署ゾーン内に整列配置・状態色＋名前ラベル＋承認待ちは接続線）。
@@ -171,22 +222,26 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
       const px = zone.x - 2.4 + (i % 3) * 2.4;
       const pz = zone.z - 0.6 + Math.floor(i / 3) * 1.8;
 
-      const group = new THREE.Group();
+      // キャラクター設定（見た目・人物名）から JRPG 調アバターを組み立てる。
+      // 状態は足元リングの色＋ネームプレートの文字で冗長表現（色だけに依存しない）。
+      const profile = getAiCharacter(a.key);
       const color = AI_WORKFORCE_STATE_COLOR[a.state];
-      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 0.9, 4, 12), new THREE.MeshLambertMaterial({ color }));
-      body.position.y = 0.95;
-      group.add(body);
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), new THREE.MeshLambertMaterial({ color: '#e2e8f0' }));
-      head.position.y = 1.85;
-      group.add(head);
-      const nameLabel = makeTextSprite(`${STATE_ICON[a.state]} ${a.name.slice(0, 10)}`, { size: 3.4 });
-      nameLabel.position.y = 2.7;
+      const built = buildCharacter(profile, color);
+      const group = built.group;
+      const displayName = profile.fullName === '（設定未作成）' ? a.name : profile.fullName;
+      const nameLabel = makeTextSprite(displayName, {
+        size: 3.6,
+        plate: true,
+        sub: `${STATE_ICON[a.state]} ${AI_WORKFORCE_STATE_LABEL[a.state]}`,
+        subColor: color,
+      });
+      nameLabel.position.y = 2.75;
       group.add(nameLabel);
       group.position.set(px, 0, pz);
       group.userData = { agentId: a.id, state: a.state };
       scene.add(group);
       meshes.set(a.id, group);
-      clickable.push(body, head);
+      clickable.push(...built.clickable);
 
       if (a.state === 'waiting_approval') {
         const points = [new THREE.Vector3(px, 1.4, pz), new THREE.Vector3(APPROVAL_DESK.x, 1.2, APPROVAL_DESK.z)];
@@ -230,7 +285,9 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
       raf = requestAnimationFrame(animate);
       const t = clock.getElapsedTime();
       for (const [, g] of meshes) {
-        if ((g.userData.state as string) === 'working') g.position.y = Math.sin(t * 3) * 0.08;
+        const st = g.userData.state as string;
+        if (st === 'working') g.position.y = Math.sin(t * 3) * 0.08;
+        else if (st === 'waiting_approval') g.rotation.y = Math.sin(t * 1.4) * 0.08; // 承認デスクの方をうかがう仕草
       }
       controls.update();
       renderer.render(scene, camera);
@@ -345,12 +402,19 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
                       <td className="px-3 py-2">
                         <button
                           type="button"
-                          className="text-left font-medium text-primary hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ring"
+                          className="flex items-center gap-2.5 text-left focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ring"
                           onClick={() => setSelectedId(a.id)}
                         >
-                          {a.name}
+                          <span className="shrink-0 overflow-hidden rounded-md">
+                            <AiPortrait profile={getAiCharacter(a.key)} size={36} />
+                          </span>
+                          <span>
+                            <span className="block font-medium text-primary hover:underline">
+                              {getAiCharacter(a.key).fullName === '（設定未作成）' ? a.name : getAiCharacter(a.key).fullName}
+                            </span>
+                            <span className="block text-[11px] text-muted-foreground">{a.name} ／ {a.role}</span>
+                          </span>
                         </button>
-                        <div className="text-[11px] text-muted-foreground">{a.role}</div>
                       </td>
                       <td className="px-3 py-2 text-xs">{a.department}</td>
                       <td className="px-3 py-2">
@@ -372,27 +436,110 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
         {/* 詳細パネル（固定領域・選択で本文のみ入れ替え＝レイアウト不変）。 */}
         <div className="min-h-[320px] rounded-md border p-4" data-testid="ai-office-detail">
           {selected ? (
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center justify-between">
-                <div className="text-base font-bold">{selected.name}</div>
-                <span className="text-lg" aria-hidden>{STATE_ICON[selected.state]}</span>
-              </div>
-              <div className="text-xs text-muted-foreground">{selected.role} ／ {selected.department}</div>
-              <Row k="状態" v={`${AI_WORKFORCE_STATE_LABEL[selected.state]}`} />
-              <Row k="根拠" v={selected.stateReason} />
-              {selected.blockedReason ? <Row k="ブロック理由" v={selected.blockedReason} /> : null}
-              <Row k="現在のタスク" v={selected.currentTask ?? '—'} />
-              <Row k="最終活動" v={selected.lastActivityLabel} />
-              <Row k="承認待ち" v={selected.pendingApprovals > 0 ? `${selected.pendingApprovals} 件` : 'なし'} />
-              <Row k="実行回数" v={String(selected.runCount)} />
-              <Row k="権限レベル" v={selected.permissionLevel} />
-              <Row k="データ鮮度" v={selected.lastActivityLabel} />
-              <Row k="次の推奨" v={selected.nextRecommendedAction} />
-              <div className="flex gap-2 pt-2 text-xs">
-                <Link className="text-primary hover:underline" href={`/ai-agents/${selected.id}`}>活動ログを見る</Link>
-                {selected.pendingApprovals > 0 ? <Link className="text-primary hover:underline" href="/approvals">承認待ち一覧へ</Link> : null}
-              </div>
-              <p className="pt-1 text-[11px] text-muted-foreground">この画面から実行・承認・削除はできません（read-only）。</p>
+            <div className="space-y-3 text-sm">
+              {(() => {
+                const prof = getAiCharacter(selected.key);
+                const hasProfile = prof.fullName !== '（設定未作成）';
+                return (
+                  <div data-testid="ai-office-profile">
+                    {/* 人物ヘッダー（ポートレート＋名前・二つ名） */}
+                    <div className="flex items-start gap-3">
+                      <span className="shrink-0 overflow-hidden rounded-lg shadow-md">
+                        <AiPortrait profile={prof} size={84} />
+                      </span>
+                      <div className="min-w-0">
+                        {prof.epithet ? (
+                          <div className="truncate text-[11px] font-medium" style={{ color: prof.appearance.accentColor }}>
+                            ― {prof.epithet} ―
+                          </div>
+                        ) : null}
+                        <div className="text-base font-bold leading-tight" data-testid="ai-office-profile-name">
+                          {hasProfile ? prof.fullName : selected.name}
+                          <span className="ml-1.5 text-lg align-middle" aria-hidden>{STATE_ICON[selected.state]}</span>
+                        </div>
+                        {prof.kana ? <div className="text-[11px] text-muted-foreground">{prof.kana}（{prof.codeName}）</div> : null}
+                        <div className="mt-0.5 text-xs text-muted-foreground">{selected.name} ／ {selected.role}</div>
+                        <div className="text-xs text-muted-foreground">{selected.department}</div>
+                      </div>
+                    </div>
+
+                    {/* 稼働状態（実測・証拠由来） */}
+                    <div className="mt-3 rounded-md bg-secondary/40 p-2.5">
+                      <div className="mb-1.5 text-[11px] font-semibold text-muted-foreground">稼働状態（実測・証拠由来）</div>
+                      <div className="space-y-1.5">
+                        <Row k="状態" v={AI_WORKFORCE_STATE_LABEL[selected.state]} />
+                        <Row k="根拠" v={selected.stateReason} />
+                        {selected.blockedReason ? <Row k="ブロック理由" v={selected.blockedReason} /> : null}
+                        <Row k="現在のタスク" v={selected.currentTask ?? '—'} />
+                        <Row k="最終活動" v={selected.lastActivityLabel} />
+                        <Row k="承認待ち" v={selected.pendingApprovals > 0 ? `${selected.pendingApprovals} 件` : 'なし'} />
+                        <Row k="実行回数" v={String(selected.runCount)} />
+                        <Row k="権限レベル" v={selected.permissionLevel} />
+                        <Row k="次の推奨" v={selected.nextRecommendedAction} />
+                      </div>
+                    </div>
+
+                    {/* プロフィール（キャラクター設定） */}
+                    <div className="mt-3">
+                      <div className="mb-1.5 text-[11px] font-semibold text-muted-foreground">プロフィール（キャラクター設定）</div>
+                      <div className="space-y-2.5">
+                        <div>
+                          <div className="text-xs font-medium">性格</div>
+                          <p className="text-xs text-muted-foreground">{prof.personality}</p>
+                        </div>
+                        {prof.skills.length > 0 ? (
+                          <div>
+                            <div className="mb-1 text-xs font-medium">スキル</div>
+                            <div className="space-y-1">
+                              {prof.skills.map((s) => (
+                                <div key={s.name} className="grid grid-cols-[7.5rem_1fr_1.6rem] items-center gap-2">
+                                  <div className="truncate text-[11px] text-muted-foreground">{s.name}</div>
+                                  <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
+                                    <div
+                                      className="h-full rounded-full"
+                                      style={{ width: `${(s.level / 5) * 100}%`, backgroundColor: prof.appearance.accentColor }}
+                                    />
+                                  </div>
+                                  <div className="text-right text-[11px] font-medium tabular-nums">{s.level}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                        {prof.traits.length > 0 ? (
+                          <div>
+                            <div className="text-xs font-medium">クセ・特徴・個性</div>
+                            <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-[11px] text-muted-foreground">
+                              {prof.traits.map((t) => <li key={t}>{t}</li>)}
+                            </ul>
+                          </div>
+                        ) : null}
+                        {prof.commonMistakes.length > 0 ? (
+                          <div>
+                            <div className="text-xs font-medium">よくあるミス（人間がレビューで見る所）</div>
+                            <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-[11px] text-muted-foreground">
+                              {prof.commonMistakes.map((t) => <li key={t}>{t}</li>)}
+                            </ul>
+                          </div>
+                        ) : null}
+                        <div>
+                          <div className="text-xs font-medium">評価（人事コメント・設定）</div>
+                          <p className="text-[11px] text-muted-foreground">{prof.evaluationNote}</p>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground/80">
+                          プロフィールはキャラクター設定です。稼働状態・実行回数などの実測データとは区別して表示しています。
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 pt-2 text-xs">
+                      <Link className="text-primary hover:underline" href={`/ai-agents/${selected.id}`}>活動ログを見る</Link>
+                      {selected.pendingApprovals > 0 ? <Link className="text-primary hover:underline" href="/approvals">承認待ち一覧へ</Link> : null}
+                    </div>
+                    <p className="pt-1 text-[11px] text-muted-foreground">この画面から実行・承認・削除はできません（read-only）。</p>
+                  </div>
+                );
+              })()}
             </div>
           ) : (
             <div className="text-sm text-muted-foreground">

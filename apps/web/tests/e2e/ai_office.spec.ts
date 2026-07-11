@@ -64,16 +64,27 @@ test('社長は 3D オフィスを閲覧でき、canvas は非 blank・コンソ
   expect(benign, `console errors: ${benign.join(' | ')}`).toHaveLength(0);
 });
 
-test('一覧から AI 社員を選択すると詳細パネルに状態・根拠・権限が表示され、フィルタが機能する', async ({ page }) => {
+test('一覧から AI 社員を選択すると詳細パネルに実測状態とプロフィール（設定）が表示され、フィルタが機能する', async ({ page }) => {
   await login(page, 'ceo@ikezaki.local');
   await page.goto('/ai-office');
   // 2D 一覧から選択（キーボード/クリック共通の操作経路）。
   const list = page.getByTestId('ai-office-2d-list');
   await list.getByRole('button').first().click();
   const detail = page.getByTestId('ai-office-detail');
-  await expect(detail.getByText('状態')).toBeVisible();
-  await expect(detail.getByText('根拠')).toBeVisible();
+  // 実測（証拠由来）とキャラクター設定が明確に区別されて表示される。
+  await expect(detail.getByText('稼働状態（実測・証拠由来）')).toBeVisible();
+  await expect(detail.getByText('プロフィール（キャラクター設定）')).toBeVisible();
+  await expect(detail.getByText('根拠', { exact: true })).toBeVisible();
   await expect(detail.getByText('権限レベル')).toBeVisible();
+  // 人物プロフィール: ポートレート・人物名・スキル・性格・クセ・よくあるミス・評価。
+  await expect(detail.getByTestId('ai-portrait')).toBeVisible();
+  await expect(detail.getByTestId('ai-office-profile-name')).not.toBeEmpty();
+  await expect(detail.getByText('スキル', { exact: true })).toBeVisible();
+  await expect(detail.getByText('性格', { exact: true })).toBeVisible();
+  await expect(detail.getByText('クセ・特徴・個性')).toBeVisible();
+  await expect(detail.getByText('よくあるミス（人間がレビューで見る所）')).toBeVisible();
+  await expect(detail.getByText('評価（人事コメント・設定）')).toBeVisible();
+  await expect(detail.getByText('プロフィールはキャラクター設定です。稼働状態・実行回数などの実測データとは区別して表示しています。')).toBeVisible();
   await expect(detail.getByText('この画面から実行・承認・削除はできません（read-only）。')).toBeVisible();
   // 状態フィルタ: 存在しない状態（error 等）を選ぶと一覧が絞られる/0件表示になる（値非依存の絞り込み検証）。
   const before = await list.getByRole('row').count();
@@ -92,7 +103,8 @@ test('モバイルでは操作可能な簡略表示に切り替わる', async ({
   // 3D canvas はマウントされない（簡略表示）。一覧からの選択は可能。
   await expect(page.getByTestId('ai-office-canvas')).toHaveCount(0);
   await page.getByTestId('ai-office-2d-list').getByRole('button').first().click();
-  await expect(page.getByTestId('ai-office-detail').getByText('状態')).toBeVisible();
+  await expect(page.getByTestId('ai-office-detail').getByText('稼働状態（実測・証拠由来）')).toBeVisible();
+  await expect(page.getByTestId('ai-office-detail').getByTestId('ai-portrait')).toBeVisible();
   await page.screenshot({ path: 'test-results/ai-office-mobile.png', fullPage: false });
 });
 

@@ -59,6 +59,8 @@ export const JOB_HANDLERS: Record<JobName, Handler> = {
   // Stream B2（roadmap74）: Agent Control Plane v0 の producer 接続はこの1本のみ。
   // runWithAgentLifecycle が RUNNING→SUCCEEDED/FAILED（例外時・マスク済みエラー）を記録し、
   // 二重 Run・terminal 巻き戻しを許可表で防止する。他ジョブは従来どおり recordRun（SUCCEEDED のみ）。
+  // v5.8 High-2: fn 失敗時は wrapper が FAILED 記録後にマスク済み例外を再 throw する。
+  // ここで catch しないこと（BullMQ が失敗を観測して retry / failed telemetry を成立させる）。
   MORNING_REPORT_JOB: async ({ tenantId }) => {
     const lc = await runWithAgentLifecycle(
       { tenantId, agentKey: 'chief_of_staff', task: 'AI朝礼レポート生成', summary: '朝礼レポートを生成しました' },

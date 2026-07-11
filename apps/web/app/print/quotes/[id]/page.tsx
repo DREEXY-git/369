@@ -6,7 +6,7 @@ import { toNumber } from '@/lib/utils';
 import { PrintButton } from '@/components/print-button';
 import { AccessDenied } from '@/components/access-denied';
 import { formatJpy, formatDate } from '@hokko/shared';
-import { canSeeCustomerLabel } from '@/lib/security/customer-visibility';
+import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,26 +20,22 @@ export default async function QuotePrintPage({ params }: { params: Promise<{ id:
   const [quote, tenant] = await Promise.all([
     prisma.quote.findFirst({
       where: { id, tenantId: user.tenantId },
-      // 顧客は宛先の name と可視判定の label のみ取得（連絡先等 PII の over-fetch 防止）。
-      include: { lineItems: true, deal: { include: { customer: { select: { name: true, label: true } } } } },
+      include: { lineItems: true, deal: true },
     }),
     prisma.tenant.findUnique({ where: { id: user.tenantId } }),
   ]);
   if (!quote) notFound();
 
-  const rawCustomer =
-    quote.deal?.customer ??
-    (quote.customerId
-      ? await prisma.customer.findFirst({
-          where: { id: quote.customerId, tenantId: user.tenantId },
-          select: { name: true, label: true },
-        })
-      : null);
-  // 顧客名（宛先）は CRM の閲覧境界（WIP1）に従う: customer:read ＋ 可視ラベルのときのみ表示。
-  const customer =
-    rawCustomer && hasPermission(user, 'customer', 'read') && canSeeCustomerLabel(user.roles, rawCustomer.label)
-      ? rawCustomer
-      : null;
+  // v5.8 Medium-4 修正: 宛先（顧客名）は取得段階から遮断（権限なし= select しない・
+  // 権限あり= label 条件付き別クエリ。不可視は「宛先未設定」と区別不能でオラクルにならない）。
+  let customer: { name: string } | null = null;
+  const linkedCustomerId = quote.deal?.customerId ?? quote.customerId;
+  if (linkedCustomerId && hasPermission(user, 'customer', 'read')) {
+    customer = await prisma.customer.findFirst({
+      where: { id: linkedCustomerId, tenantId: user.tenantId, label: { in: visibleCustomerLabels(user.roles) } },
+      select: { name: true },
+    });
+  }
   const subtotal = toNumber(quote.subtotal);
   const discounted = Math.round(subtotal * (1 - toNumber(quote.discountRate) / 100));
   const tax = toNumber(quote.total) - discounted;

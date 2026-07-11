@@ -7,7 +7,7 @@ import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Table, Th, Td, Badge, Button, Stat } from '@/components/ui';
 import { AccessDenied } from '@/components/access-denied';
 import { formatJpy, formatDate } from '@hokko/shared';
-import { canSeeCustomerLabel } from '@/lib/security/customer-visibility';
+import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,15 +31,20 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   }
   const quote = await prisma.quote.findFirst({
     where: { id, tenantId: user.tenantId },
-    // 顧客は表示に使う name と可視判定に使う label のみ取得（連絡先等 PII の over-fetch 防止）。
-    include: { lineItems: true, deal: { include: { customer: { select: { name: true, label: true } } } } },
+    include: { lineItems: true, deal: true },
   });
   if (!quote) notFound();
-  // 顧客名は CRM の閲覧境界（WIP1）に従う: customer:read ＋ 可視ラベルのときのみ表示。
-  const customerName =
-    quote.deal?.customer && hasPermission(user, 'customer', 'read') && canSeeCustomerLabel(user.roles, quote.deal.customer.label)
-      ? quote.deal.customer.name
-      : '';
+  // v5.8 Medium-4 修正: 顧客名は「表示抑止」ではなく取得段階から遮断する（WIP-4 受入条件）。
+  // customer:read が無ければ customer を select しない。権限があっても label 条件付き別クエリで
+  // 可視範囲のみ取得する（不可視は空 = 未設定と区別不能でオラクルにならない）。
+  let customerName = '';
+  if (quote.deal && hasPermission(user, 'customer', 'read')) {
+    const c = await prisma.customer.findFirst({
+      where: { id: quote.deal.customerId, tenantId: user.tenantId, label: { in: visibleCustomerLabels(user.roles) } },
+      select: { name: true },
+    });
+    customerName = c?.name ?? '';
+  }
 
   const gm = toNumber(quote.grossMarginRate);
 

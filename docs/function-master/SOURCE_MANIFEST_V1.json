@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "1.0",
+  "source": {
+    "filename": "pasted-text.txt",
+    "rawSha256": "a07458fb3fdd9218ce3473a87246ff14c8fecc42b0a24e0c21e68a1a71884667",
+    "normalizedSha256": "18e3cc79a80bc218b7a619b61b320b6a672ce958a348158efc6aa52f54165ad3",
+    "normalizedLineCount": 8512,
+    "appendixA": {
+      "startLine": 599,
+      "endLine": 5563
+    },
+    "appendixB": {
+      "startLine": 5568,
+      "endLine": 8510
+    }
+  },
+  "counts": {
+    "categories": 50,
+    "categoryFunctions": 2553,
+    "globalRules": 51,
+    "appendixASupplement": 1963,
+    "functionMasterRegions": 126,
+    "candidateGroups": 22,
+    "candidateDetails": 349,
+    "appendixBRequirements": 2362,
+    "userRequirements": 9,
+    "stableIds": 7485
+  },
+  "knownSourceGaps": [
+    {
+      "id": "C49",
+      "status": "SOURCE_DETAIL_MISSING",
+      "note": "Appendix A category summary exists, but its detailed category section is absent."
+    }
+  ]
+}

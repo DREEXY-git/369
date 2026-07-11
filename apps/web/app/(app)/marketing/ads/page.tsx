@@ -71,8 +71,14 @@ export default async function AdsReadModelPage({ searchParams }: { searchParams:
   }
   const channels = GROWTH_CHANNELS.map((ch) => {
     const cur = byChannel.get(ch) ?? { campaigns: 0, metrics: 0 };
-    return { key: ch, label: GROWTH_CHANNEL_LABEL[ch], ...cur, state: channelDataState(cur.campaigns, cur.metrics) };
+    return { key: ch as string, label: GROWTH_CHANNEL_LABEL[ch], ...cur, state: channelDataState(cur.campaigns, cur.metrics) };
   });
+  // 既知6チャネル外の channel 値（自由文字列で登録され得る）も無言で消さずに「その他」行で示す。
+  for (const [key, cur] of byChannel) {
+    if (!(GROWTH_CHANNELS as readonly string[]).includes(key)) {
+      channels.push({ key, label: `その他（${key}）`, ...cur, state: channelDataState(cur.campaigns, cur.metrics) });
+    }
+  }
 
   // Ads チャネルの集計（記録ベース）。
   const adsCampaigns = campaigns.filter((c) => c.channel === 'ads');

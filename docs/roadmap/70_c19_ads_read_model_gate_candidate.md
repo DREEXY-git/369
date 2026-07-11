@@ -33,6 +33,18 @@ roadmap69 §2 の表が正。C21 は ContentAsset＋ai-generate.ts の拡張で 
 ## 5. Gate 判定
 
 - [x] schema/seed/RBAC/labels 変更なし・封印 env 不変
-- [ ] ローカル電池 green（unit/tsc/lint/safety）
-- [ ] 敵対的レビュー → 指摘反映
+- [x] ローカル電池 green（unit 288/0・tsc 0・lint 0・safety 0）
+- [x] 敵対的レビュー → 指摘反映（§6 追補）
 - [ ] Draft PR 作成・CI green（96 = 93+3 見込み）をログ本文で確認
+
+## 6. 追補（敵対的レビューの結果と反映・2026-07-11）
+
+独立レビュー（6761d2c 対象・封印/権限/tenant/E2E/表示誠実性は全て健全と確認・96=93+3 検算一致）。検出と反映:
+
+| # | 深刻度 | 指摘 | 反映 |
+|---|---|---|---|
+| 1 | Medium×2 | 生成が runStructured 経由のため env（LLM_PROVIDER）設定時に実 LLM 経路が存在し「実 LLM 封印」がコード担保でない＋その場合 AIOutput.model='fake' が虚偽記録になる | **web 側は `fakeAdsImprovement` 直呼びに変更**（ai-generate.ts と同型・実 LLM 経路が構造的に不在＝封印をコードで担保・model='fake' が常に真）。`generateAdsImprovement`（実 LLM＋fake フォールバック）は packages/ai に残し、**Human Certification Gate 後の実 LLM 化 WIP でのみ接続する** |
+| 2 | Low | 注入検出が campaignName のみ（channel は自由文字列で未検査）・AIOutput.safetyFlags が常に [] | channel を検査対象に追加・flagged 時は safetyFlags に記録 |
+| 3 | Low | 既知6チャネル外の channel 値の記録が状態盤から無言で消える | 「その他（値）」行として表示 |
+| 4 | Info | e2e テスト3の名称が実カバレッジ（ボタン可視のみ）を過大表示 | 名称を「生成ボタンが表示され」に修正 |
+| 5 | Info（記録のみ） | EXECUTIVE/ADMIN/READ_ONLY は marketing:create 非保持で下書き生成不可（「権限者のみ」表示）。役員に生成権を与えるかは未決 → Phase 3.5 の DoR 論点として記録。ads-insight の3書込は非トランザクション（既存 ai-generate と同型）。toLocaleString のロケール依存は同一ランタイム内決定論で十分 | — |

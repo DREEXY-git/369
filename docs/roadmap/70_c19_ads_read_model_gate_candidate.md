@@ -35,7 +35,7 @@ roadmap69 §2 の表が正。C21 は ContentAsset＋ai-generate.ts の拡張で 
 - [x] schema/seed/RBAC/labels 変更なし・封印 env 不変
 - [x] ローカル電池 green（unit 288/0・tsc 0・lint 0・safety 0）
 - [x] 敵対的レビュー → 指摘反映（§6 追補）
-- [ ] Draft PR 作成・CI green（96 = 93+3 見込み）をログ本文で確認
+- [x] Draft PR #4 作成・CI green をログ本文で確認: run 29146968424（#172）・head ecb07c6・`96 passed (1.4m)` / 0 failed（ads_read_model 3件 ✓）→ **Stream A 縦切り（C19-RO-01）クローズ**
 
 ## 6. 追補（敵対的レビューの結果と反映・2026-07-11）
 

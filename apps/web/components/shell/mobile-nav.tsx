@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -16,6 +16,10 @@ export function MobileNav({ allowedHrefs }: { allowedHrefs?: string[] }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const pathname = usePathname();
+  // v6.4 WIP-4（focus/aria）: 開閉トリガーと初期フォーカス先を保持し、開いたら drawer 内へフォーカスを移し、
+  // 閉じたら元のトリガーへ戻す（キーボード利用者が背後の本文に取り残されないようにする）。
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
   // 権限フィルタ（roadmap74 §9）: Sidebar と同一の許可 href 一覧でフィルタ（未指定時は全表示）。
   const allowed = allowedHrefs ? new Set(allowedHrefs) : null;
   const groups = NAV.map((g) => ({
@@ -40,12 +44,26 @@ export function MobileNav({ allowedHrefs }: { allowedHrefs?: string[] }) {
     };
   }, [open]);
 
+  // v6.4 WIP-4（focus/aria）: 開いたら drawer 内（閉じるボタン）へ初期フォーカスを移し、閉じたら
+  // トリガーへフォーカスを戻す（open→false / アンマウントのどちらでも cleanup で復帰）。
+  useEffect(() => {
+    if (!open) return;
+    const trigger = triggerRef.current; // 常設のトリガー（cleanup 時も同一 DOM ノード）。
+    closeRef.current?.focus();
+    return () => {
+      trigger?.focus();
+    };
+  }, [open]);
+
   return (
     <div className="md:hidden">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(true)}
         aria-label="メニューを開く"
+        aria-haspopup="dialog"
+        aria-expanded={open}
         className="rounded-lg p-2 text-foreground/70 transition hover:bg-secondary hover:text-foreground"
       >
         <Menu className="h-5 w-5" />
@@ -63,6 +81,9 @@ export function MobileNav({ allowedHrefs }: { allowedHrefs?: string[] }) {
               />
               {/* ドロワー本体（viewport 全高） */}
               <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="メインメニュー"
                 className="absolute left-0 top-0 flex h-full w-72 max-w-[82%] animate-fade-in flex-col bg-sidebar text-sidebar-foreground shadow-pop"
                 data-testid="mobile-nav-drawer"
               >
@@ -77,6 +98,7 @@ export function MobileNav({ allowedHrefs }: { allowedHrefs?: string[] }) {
                 </div>
               </div>
               <button
+                ref={closeRef}
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="閉じる"

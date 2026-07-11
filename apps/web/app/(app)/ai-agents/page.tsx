@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
-import { prisma } from '@/lib/db';
+import { prisma, writeDataAccess } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, EmptyState } from '@/components/ui';
 import { AccessDenied } from '@/components/access-denied';
@@ -46,15 +46,53 @@ export default async function AiAgentsPage() {
   }
   // v6.1 統一: 一覧の人物・ポートレートは getAiCharacter(key) を正本にし、稼働状態は 3D Office と
   // 同じ read model（deriveAgentState 由来）を使う。生の AIAgent.status は表示に使わない。
+  // v6.4 High（child tenant isolation）修正: run は tenantId 明示 + 最小 select（input/output/error は取得しない）。
+  // agent は表示に必要な name のみを relation 越しに select（親 relation は run の tenantId で既にスコープ済み）。
   const [model, runs] = await Promise.all([
     getAiWorkforceReadModel(user.tenantId),
     prisma.aIAgentRun.findMany({
       where: { tenantId: user.tenantId },
-      include: { agent: true, actions: true },
+      select: {
+        id: true,
+        task: true,
+        status: true,
+        humanReviewed: true,
+        sentExternally: true,
+        startedAt: true,
+        agent: { select: { name: true } },
+      },
       orderBy: { startedAt: 'desc' },
       take: 15,
     }),
   ]);
+  // 活動ログの action 要約は、run relation 任せにせず **tenantId を明示**した別クエリで取得し、最小 select に絞る。
+  const runIds = runs.map((r) => r.id);
+  const actionRows =
+    runIds.length > 0
+      ? await prisma.aIAgentAction.findMany({
+          where: { tenantId: user.tenantId, runId: { in: runIds } },
+          select: { runId: true, summary: true },
+          orderBy: { createdAt: 'asc' },
+        })
+      : [];
+  const summariesByRun = new Map<string, string[]>();
+  for (const a of actionRows) {
+    const arr = summariesByRun.get(a.runId) ?? [];
+    arr.push(a.summary);
+    summariesByRun.set(a.runId, arr);
+  }
+
+  // 機密表示（AI社員の稼働・活動ログ一覧）の参照を DataAccessLog に**メタデータのみ**で記録
+  // （run payload・action 本文・秘密・PII は記録しない・件数のみ）。permission-deny は上で早期 return 済み。
+  await writeDataAccess({
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    actorType: 'user',
+    entityType: 'ai_agent_list',
+    action: 'read',
+    purpose: 'AI社員 一覧・活動ログ閲覧',
+    metadata: { agentCount: model.agents.length, runCount: runs.length },
+  });
 
   return (
     <div>
@@ -119,7 +157,7 @@ export default async function AiAgentsPage() {
                   <span className="font-medium">{r.task}</span>
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {r.actions.map((a) => a.summary).join(' / ') || '—'}
+                  {(summariesByRun.get(r.id) ?? []).join(' / ') || '—'}
                 </div>
               </div>
               <div className="shrink-0 text-right">

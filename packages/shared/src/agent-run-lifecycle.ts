@@ -115,6 +115,38 @@ function countBackslashesBefore(s: string, i: number): number {
   return n;
 }
 
+// 閉じ引用符の後続 tail（〜走査末尾）が構造的に健全か（危険な dangling quote が無いか）を検証する。
+// 文字列外に現れる escaped quote（`\"`/`\'`・別 depth の偽装終端）や、末尾で開きっぱなしの文字列は「破損」。
+// これが v6.4 を破った攻撃（偽 closer を開始と同 depth に、本物の終端引用符を別 depth に置く）の検出点。
+// 健全（quote 無し／同 depth の均衡ペアのみ）なときだけ clean close を信頼して最小マスクにできる。
+function tailIsStructurallyClean(s: string, from: number, end: number): boolean {
+  let inStr = false;
+  let strQuote = '';
+  let i = from;
+  while (i < end) {
+    const c = s[i]!;
+    if (c === '\\') {
+      // 文字列の外にある escaped quote（`\"`）は「別 depth の偽装終端」= 危険。
+      const next = s[i + 1];
+      if (!inStr && (next === '"' || next === "'")) return false;
+      i += 2; // escape は次の1文字を消費（文字列内外を問わず）。
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      if (!inStr) {
+        inStr = true;
+        strQuote = c;
+      } else if (c === strQuote) {
+        inStr = false;
+        strQuote = '';
+      }
+      // strQuote と異なる引用符が文字列内にある場合は literal（無視）。
+    }
+    i++;
+  }
+  return !inStr; // 開きっぱなし（unbalanced）は破損。
+}
+
 // 値領域の終端 index を返す（quote/escape 状態を理解して消費する）。
 function scanValueEnd(s: string, start: number, headerKey: boolean): number {
   // 先頭の backslash を数えて、実体の先頭文字が引用符かどうか（= quotedish）を判定。
@@ -124,27 +156,28 @@ function scanValueEnd(s: string, start: number, headerKey: boolean): number {
   const quotedish = first === '"' || first === "'";
 
   if (quotedish) {
-    // v6.4 P1 修正: parity（偶奇）や「次文字」（攻撃者が操作可能）に依存せず、**実 backslash depth（個数）が
-    // 開始引用符と完全一致する引用符**だけを同レベルの区切りとみなす。これで開始 depth 1（`\"`）と
-    // 内部 depth 3（`\\\"`）を区別する（v6.3 は両者を parity で同一視し内部 quote 直後の delimiter で誤終了→漏洩）。
-    // - 同レベル引用符が **ちょうど1個** → 一意な閉じ引用符 → そこまで消費（内部の delimiter/改行/別 depth の
-    //   引用符はすべて内側として読み飛ばす）。
-    // - 0 個（unclosed）または 2 個以上（曖昧・破損）→ **fail-closed で入力末尾までマスク**（漏洩させない）。
+    // v6.5 P1 全面修正: 「閉じ引用符の個数/parity/次文字」だけを信頼する規則は、偽 closer を開始と同 depth に、
+    // 本物の終端引用符を別 depth に置く生成 matrix（Codex 再監査で 84/84 sentinel 残存）で破られる。
+    // 単純に「最初の同 depth 閉じ引用符で終端」とすると、その後ろに置かれた秘密 suffix を漏らすため。
+    // → clean close（開始と同 depth の最初の閉じ引用符）を「候補」とし、その**後続 tail を構造検証**する。
+    //   tail に文字列外の escaped/別 depth quote（dangling）や未均衡があれば、値の終端は構造的に確定できない＝
+    //   **走査末尾まで fail-closed でマスク**して秘密 suffix を漏らさない。tail が健全なときだけ最小マスク
+    //   （＝別フィールドを跨いだ均衡ペアは値の外＝保持、改行を跨ぐ 1 値内の秘密は tail 健全でも値内として消費）。
     const q = s[p]!; // 開始引用符文字（" または '）
     const openDepth = p - start; // 開始引用符の直前 backslash 個数（= 実 escape depth）
-    let firstCloser = -1;
-    let sameDepthCount = 0;
+    let firstClose = -1;
     for (let k = p + 1; k < s.length; k++) {
       if (s[k] === q && countBackslashesBefore(s, k) === openDepth) {
-        if (firstCloser < 0) firstCloser = k;
-        sameDepthCount += 1;
-        if (sameDepthCount > 1) break; // 曖昧確定 → fail-closed
+        firstClose = k;
+        break;
       }
     }
-    if (sameDepthCount !== 1) return s.length; // 0（unclosed）または 2 個以上（曖昧・破損）→ fail-closed
-    let end = firstCloser + 1;
-    // 閉じ引用符の直後に空白/構造区切りを挟まず token が続く場合（例: `"abc"SUFFIXSECRET`）は、
-    // その glued token も秘密の可能性として一緒にマスクする（over-mask・漏洩させない安全側）。
+    // 同 depth の閉じ引用符が無い（unclosed）→ fail-closed。
+    if (firstClose < 0) return s.length;
+    // clean close の後続 tail に dangling quote / 未均衡があれば構造未確定 → fail-closed。
+    if (!tailIsStructurallyClean(s, firstClose + 1, s.length)) return s.length;
+    // 健全: 閉じ引用符まで＋直後に空白/構造区切りを挟まず続く glued token（`"abc"SUFFIXSECRET`）も一緒にマスク。
+    let end = firstClose + 1;
     while (end < s.length && !/[\s,;:&)}\]]/.test(s[end]!)) end++;
     return end;
   }

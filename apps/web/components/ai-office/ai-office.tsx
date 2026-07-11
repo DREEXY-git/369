@@ -9,6 +9,7 @@
 // - 状態更新でレイアウト全体を動かさない（canvas は固定高・パネルは固定幅の別領域）。
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import {
@@ -68,6 +69,9 @@ function zoneFor(department: string) {
 export function AiOffice({ model, initialAgentId = null }: { model: AiWorkforceReadModel; initialAgentId?: string | null }) {
   // /ai-agents からの deep link（?agent=<id>）で初期選択。無効値はページ側で null 化済み。
   const [selectedId, setSelectedId] = useState<string | null>(initialAgentId);
+  // v6.4 P2（AiOffice URL 同期）: client-nav（?agent=A→B）とブラウザ back/forward で選択を追従させる。
+  const searchParams = useSearchParams();
+  const agentParam = searchParams.get('agent');
   const [deptFilter, setDeptFilter] = useState<string>('all');
   const [stateFilter, setStateFilter] = useState<string>('all');
   const [isNarrow, setIsNarrow] = useState(false);
@@ -99,6 +103,17 @@ export function AiOffice({ model, initialAgentId = null }: { model: AiWorkforceR
     mq.addEventListener('change', update);
     return () => mq.removeEventListener('change', update);
   }, []);
+
+  // v6.4 P2: URL の ?agent= が「現テナントの実在 AI 社員」を指すときだけ選択へ反映する。
+  // - client-nav（?agent=A → ?agent=B）: agentParam の変化で B に同期。
+  // - ブラウザ back/forward: popstate で agentParam が戻る/進む → 選択も追従。
+  // - 無効・別テナント ID（model.agents に無い）: 無視（存在を漏らさず・手動選択を上書きしない）。
+  // - クエリ無し（agentParam == null）: 何もしない（手動選択を尊重）。下の「先頭自動選択」に委ねる。
+  useEffect(() => {
+    if (agentParam && model.agents.some((a) => a.id === agentParam)) {
+      setSelectedId(agentParam);
+    }
+  }, [agentParam, model.agents]);
 
   // v5.8 §6: 初期表示で最初の可視 AI 社員を自動選択し、プロフィールを最初から見せる
   // （空の詳細パネルを第一印象にしない）。既にユーザーが選択済みなら上書きしない。
@@ -562,7 +577,7 @@ export function AiOffice({ model, initialAgentId = null }: { model: AiWorkforceR
                       <div className="space-y-2.5">
                         <div>
                           <div className="text-xs font-medium">性格</div>
-                          <p className="text-xs text-muted-foreground">{prof.personality}</p>
+                          <p className="text-xs text-muted-foreground" data-testid="ai-office-profile-personality">{prof.personality}</p>
                         </div>
                         {prof.skills.length > 0 ? (
                           <div>

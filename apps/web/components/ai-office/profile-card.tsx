@@ -41,7 +41,7 @@ export function AiProfileCard({ profile, portraitSize = 84 }: { profile: AiChara
         <div className="space-y-2.5">
           <div>
             <div className="text-xs font-medium">性格</div>
-            <p className="text-xs text-muted-foreground">{profile.personality}</p>
+            <p className="text-xs text-muted-foreground" data-testid="ai-profile-personality">{profile.personality}</p>
           </div>
           {profile.skills.length > 0 ? (
             <div>

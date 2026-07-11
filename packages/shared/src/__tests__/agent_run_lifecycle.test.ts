@@ -342,3 +342,66 @@ describe('maskRunError v6.4（depth-matrix・内部 depth3 quote 直後 delimite
     expect(out).not.toContain('\n');
   });
 });
+
+// v6.5 P1 全面修正: 偽 closer を開始と同 depth に、本物の終端引用符を別 depth に置く「生成 matrix」
+// （Codex 再監査で 84/84 sentinel 残存の攻撃クラス）を機械的に網羅する否定テスト。
+// - 文字列固有パッチではなく、tail の構造検証で clean close 後の dangling quote を検出し fail-closed する。
+// - sentinel（O0F144S64）と decoy 内の元秘密の両方が、出力に一文字も残らないことを直接 assert する。
+describe('maskRunError v6.5（汎用 sentinel matrix・偽closer＋別depth終端 quote）', () => {
+  const SENTINEL = 'O0F144S64'; // comma の外に置かれる本物の秘密
+  const SENSITIVE_KEYS = ['password', 'token', 'authorization', 'api_key', 'secret', 'session'];
+  const QUOTES = ['"', "'"];
+  const DECOYS = ['abc', 'x', 'decoy']; // 偽 closer で閉じる短い値（この中身も秘密扱い）
+  const TERMINALS = [String.raw`\"`, String.raw`\'`, String.raw`\\\"`, String.raw`\\"`]; // 別 depth の終端 quote
+  const SEPS = [',', ', ', ',,', ' ,'];
+
+  const matrix: string[] = [];
+  for (const key of SENSITIVE_KEYS)
+    for (const q of QUOTES)
+      for (const decoy of DECOYS)
+        for (const sep of SEPS)
+          for (const term of TERMINALS) {
+            matrix.push(`{${q}${key}${q}:${q}${decoy}${q}${sep}${SENTINEL}${term}}`); // 区切りあり
+            matrix.push(`{${q}${key}${q}:${q}${decoy}${q}${SENTINEL}${term}}`); // glued
+          }
+
+  it(`matrix 全 ${matrix.length} 件で sentinel が 0 残存（direct maskRunError・8000/200 両方）`, () => {
+    const leaks: string[] = [];
+    for (const input of matrix) {
+      for (const maxLen of [8000, 200]) {
+        const out = maskRunError(input, maxLen);
+        if (out.includes(SENTINEL)) leaks.push(`${input}  =>  ${out}`);
+      }
+    }
+    expect(leaks, `残存例:\n${leaks.slice(0, 5).join('\n')}`).toEqual([]);
+  });
+
+  it('matrix 全件で decoy 内の元秘密（abc/x/decoy を秘密化）も 0 残存', () => {
+    // decoy をユニークな秘密トークンに差し替え、値本体も漏れないことを確認する。
+    const leaks: string[] = [];
+    for (const key of SENSITIVE_KEYS)
+      for (const q of QUOTES)
+        for (const sep of SEPS)
+          for (const term of TERMINALS) {
+            const inner = 'INNERSECRET65';
+            const input = `{${q}${key}${q}:${q}${inner}${q}${sep}${SENTINEL}${term}}`;
+            const out = maskRunError(input, 8000);
+            if (out.includes(inner) || out.includes(SENTINEL)) leaks.push(`${input}  =>  ${out}`);
+          }
+    expect(leaks, `残存例:\n${leaks.slice(0, 5).join('\n')}`).toEqual([]);
+  });
+
+  it('matrix は攻撃クラスを十分に張る（>= 80 件）', () => {
+    expect(matrix.length).toBeGreaterThanOrEqual(80);
+  });
+
+  // 線形性（ReDoS/二次爆発なし）の粗い上限。長大入力でも実用時間内に返る。
+  it('巨大入力でも線形・タイムアウトしない（8000 上限）', () => {
+    const big = `{"password":"${'a'.repeat(20000)}",${SENTINEL}\\"}`;
+    const started = performance.now();
+    const out = maskRunError(big, 8000);
+    const elapsed = performance.now() - started;
+    expect(out).not.toContain(SENTINEL);
+    expect(elapsed).toBeLessThan(1000);
+  });
+});

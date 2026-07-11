@@ -157,6 +157,55 @@ describe('runWithAgentLifecycle（v5.8 hardening）', () => {
     }
   });
 
+  it('v6.5 P1: 偽closer＋別depth終端 quote の生成 matrix が、保存値・再throw・Action要約の3経路で 0 残存', async () => {
+    // Codex 84/84 sentinel 残存の攻撃クラス（decoy を同 depth の偽 closer で閉じ、本物の秘密を comma の外に置き、
+    // 別 depth の終端 quote を付す）を worker 経路で網羅する。sentinel と decoy 内秘密の両方が全経路で残らない。
+    const SENTINEL = 'O0F144S64';
+    const INNER = 'INNERSECRET65';
+    const KEYS = ['password', 'token', 'authorization', 'session'];
+    const QUOTES = ['"', "'"];
+    const TERMINALS = [String.raw`\"`, String.raw`\'`, String.raw`\\\"`];
+    const SEPS = [',', ', ', ' ,'];
+    const inputs: string[] = [];
+    for (const key of KEYS)
+      for (const q of QUOTES)
+        for (const sep of SEPS)
+          for (const term of TERMINALS)
+            inputs.push(`upstream {${q}${key}${q}:${q}${INNER}${q}${sep}${SENTINEL}${term}} boom`);
+
+    let i = 0;
+    for (const input of inputs) {
+      const { db, runs, actions } = makeDb();
+      // ① FAILED 保存値
+      await expect(
+        runWithAgentLifecycle({ ...params, task: `v65-save-${i}` }, async () => {
+          throw new Error(input);
+        }, db),
+      ).rejects.toThrow(/agent lifecycle job failed/);
+      expect(runs[0]!.status).toBe('FAILED');
+      for (const sec of [SENTINEL, INNER]) {
+        expect(runs[0]!.error, `保存値に残存: ${JSON.stringify(runs[0]!.error)}`).not.toContain(sec);
+        // ② Action 要約
+        for (const a of actions as { data: { summary: string } }[]) {
+          expect(a.data.summary, `Action要約に残存: ${a.data.summary}`).not.toContain(sec);
+        }
+      }
+      // ③ 再throw 値
+      try {
+        await runWithAgentLifecycle({ ...params, task: `v65-rethrow-${i}` }, async () => {
+          throw new Error(input);
+        }, db);
+        expect.unreachable('should throw');
+      } catch (e) {
+        for (const sec of [SENTINEL, INNER]) {
+          expect(String(e), `再throwに残存: ${String(e)}`).not.toContain(sec);
+        }
+      }
+      i += 1;
+    }
+    expect(inputs.length).toBeGreaterThanOrEqual(48);
+  });
+
   it('二重 Run 防止: 新鮮な RUNNING が既存なら実行せず skip する', async () => {
     const { db } = makeDb({
       preexisting: [

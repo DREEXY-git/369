@@ -28,15 +28,23 @@ Human Boundary と Trust Center が全体を包む。人間を労働から解放
 
 各 workstream には固有名を付ける: `P3-GROWTH` / `P3-Q2C` / `P35-CHANNELS` / `P4-WORKFORCE` 等。「Phase 3」単独で報告しない。
 
-## 3. 証拠段階（Evidence Stage）
+## 3. 証拠段階（Evidence Stage・v6.2 厳密化）
 
-各 Epic/Function を主観の完成率でなく、この段階で表す（分母を併記）。
+各 Epic/Function を主観の完成率でなく、この段階で表す（分母を併記）。**schema/model の存在だけで `PRODUCTION_VERIFIED` にしない**（Codex P2 指摘）。Draft/CI/main/Preview/Production を混同しない。
 
-`REQUIREMENT_ONLY` → `SCHEMA_ONLY` → `IMPLEMENTED_ON_DRAFT` → `TESTED_LOCAL` → `CI_GREEN` → `PREVIEW_VERIFIED` → `CODEX_REVIEWED` → `MAIN_MERGED` → `PRODUCTION_VERIFIED`
+| 段階 | 意味 |
+|---|---|
+| `PRODUCTION_VERIFIED` | main 統合済み＋Production で Function 単位の実証あり（本番として別記録） |
+| `CI_VERIFIED` | 固定 SHA の CI で受入条件を検証（Preview/main/本番は未証明） |
+| `DRAFT_IMPLEMENTED` | Draft branch に実装あり（未 CI 検証 or 未 main） |
+| `SCHEMA_ONLY` | schema/model のみ（画面・実装・証拠なし） |
+| `IMPLEMENTATION_UNVERIFIED` | 実装または証拠を独立確認していない |
+| `EVIDENCE_GAP` | 実装主張に必要な証拠が不足（完了へ格上げしない） |
+| `DEFERRED` | 実装予定だが後続 Wave |
+| `ROADMAP_ONLY` | 将来目標として台帳化済み（要求はあるが実装 Evidence 行なし） |
+| `NOT_PLANNED` | **人間が明示的に「実装しない」と決めた場合だけ** |
 
-- `CI_GREEN` は Preview/main/本番を証明しない。
-- Vercel Preview は本番ではない（`PRODUCTION_VERIFIED` は main 由来の本番配信で別記録された場合のみ）。
-- `EVIDENCE_GAP` は完了へ格上げしない（例: BullMQ 実 queue 証拠）。
+注: `CI_VERIFIED` の Function-ID 実証は `FUNCTION_IMPLEMENTATION_EVIDENCE_V1.md`（Codex 正本）を参照し、未記載 ID は `IMPLEMENTATION_UNVERIFIED`。カテゴリ一部の証拠を全体完成にしない。Vercel Preview は本番ではない。
 
 ## 4. 基準ロードマップ（workstream × 証拠段階）
 
@@ -46,7 +54,7 @@ Human Boundary と Trust Center が全体を包む。人間を労働から解放
 | Quality | CI 4段・E2E・静的安全ゲート | X | `PRODUCTION_VERIFIED`（Phase X 完了・恒久資産） | — | E2E カバレッジ拡張 |
 | P2-BRAIN | Company Brain・Playbook・Case Study・Consent | 2 | `PRODUCTION_VERIFIED`（Phase 2-A/B/C 完了） | — | Customer Pain / 公開活用（別承認） |
 | P3-GROWTH | Growth Control Tower・成果台帳・承認導線 | 3 | `CI_GREEN`（PR#12/#14・Draft・HOLD） | 人間 GO＋ATOMIC_LEDGER | Preview 目視 |
-| P3-Q2C | 見積・契約・請求・入金・会計入口・督促下書き | 3 | 会計 schema=`PRODUCTION_VERIFIED`／AI 高度化=`REQUIREMENT_ONLY`〜`SCHEMA_ONLY` | 高リスク・実請求/実送金は不可 | CASH-001 read-only+draft の Gate |
+| P3-Q2C | 見積・契約・請求・入金・会計入口・督促下書き | 3 | 会計 schema=`SCHEMA_ONLY`／請求UI=`IMPLEMENTATION_UNVERIFIED`／AI 高度化=`REQUIREMENT_ONLY` | 高リスク・実請求/実送金は不可 | CASH-001 read-only+draft の Gate |
 | P35-CHANNELS | 広告(C19)・SEO(C21)・紹介(C22) | 3.5 | C19/C21=`CI_GREEN`(Draft)／C22=`REQUIREMENT_ONLY`(Gate) | 人間承認 bridge・外部封印 | 1チャネルの人間承認接続 |
 | P4-WORKFORCE | AI社員・Control Plane・3D Office・Outcome | 4 | `CI_GREEN`（PR#14・recovery 最優先）／Preview 未監査 | Exit Gate（§5）・人間 GO | Preview 目視＋Codex Track B |
 | P5-MEETING-INTEL | 高度会議知能・知識変換 | 5 | 基本会議=Foundation／高度化=`REQUIREMENT_ONLY` | 設計 Gate | Meeting Decision DB 設計 |
@@ -92,28 +100,28 @@ Human Boundary と Trust Center が全体を包む。人間を労働から解放
 
 ## 7. Salesforce 相当 競合機能台帳（§14）
 
-「Salesforce と同じ」と断言しない。capability 単位の**方式**を付ける: `NATIVE`（自前実装）/`ASSISTIVE`（AI 下書き・可視化）/`CONNECTOR`（外部接続・封印/future）/`NOT_PLANNED`/`HUMAN_ONLY`。
+「Salesforce と同じ」と断言しない。capability 単位の**方式**を付ける: `NATIVE`（自前実装）/`ASSISTIVE`（AI 下書き・可視化）/`CONNECTOR`（外部接続・封印/future）/`DEFERRED`（後続 Wave 実装予定）/`HUMAN_ONLY`。競合のコード・UI・文章・商標はコピーせず、公開仕様と業務要件から独自実装する。**証拠段階は Function-ID 単位**（module 単位の Phase 1 本番 GO は §4 Foundation 行を参照。Function-ID 実証は Codex Evidence 正本の未記載＝`IMPLEMENTATION_UNVERIFIED`）。「同等」「超えた」は受入証拠が揃うまで宣言しない。
 
 | Capability | 現行実装 | 方式 | 証拠段階 | 主な Gap / 次の縦切り |
 |---|---|---|---|---|
-| Account / Customer | `Customer` model・/customers | NATIVE | `PRODUCTION_VERIFIED` | 閲覧境界は完了 |
-| Contact | `Contact` model | NATIVE | `PRODUCTION_VERIFIED` | — |
-| Lead | LeadMap AI・`Lead` | NATIVE | `PRODUCTION_VERIFIED` | 抽出は Demo/公式 API のみ |
-| Opportunity / Deal | `Deal`・/deals | NATIVE | `PRODUCTION_VERIFIED` | — |
-| Pipeline / Kanban | /deals/kanban・`DealStageHistory` | NATIVE | `PRODUCTION_VERIFIED` | — |
-| Activity / Task / Meeting / Calendar | `CustomerInteraction`・meeting・horenso | NATIVE(部分) | `PRODUCTION_VERIFIED`(基本) | Calendar 連携=CONNECTOR future(INT) |
+| Account / Customer | `Customer` model・/customers | NATIVE | `IMPLEMENTATION_UNVERIFIED` | 閲覧境界は完了 |
+| Contact | `Contact` model | NATIVE | `IMPLEMENTATION_UNVERIFIED` | — |
+| Lead | LeadMap AI・`Lead` | NATIVE | `IMPLEMENTATION_UNVERIFIED` | 抽出は Demo/公式 API のみ |
+| Opportunity / Deal | `Deal`・/deals | NATIVE | `IMPLEMENTATION_UNVERIFIED` | — |
+| Pipeline / Kanban | /deals/kanban・`DealStageHistory` | NATIVE | `IMPLEMENTATION_UNVERIFIED` | — |
+| Activity / Task / Meeting / Calendar | `CustomerInteraction`・meeting・horenso | NATIVE(部分) | `IMPLEMENTATION_UNVERIFIED`(基本) | Calendar 連携=CONNECTOR future(INT) |
 | Campaign / Attribution / Growth | `MarketingCampaign`＋Growth Ledger＋C19 Ads | ASSISTIVE | `CI_GREEN`(Draft) | 実広告 API=CONNECTOR 封印 |
-| Quote / Contract / Order | `Quote`/`QuoteLineItem`・見積 | NATIVE(quote)/部分(contract) | `PRODUCTION_VERIFIED`(quote) | 契約=DOC-001 future |
-| Forecast / Territory / Lead Scoring | CASH-002 予測(設計)・—・— | ASSISTIVE/NOT_PLANNED | `REQUIREMENT_ONLY` | Lead Scoring=NOT_PLANNED |
-| Customer Service / Case / SLA | `CustomerComplaint` | NATIVE(部分) | `SCHEMA_ONLY` | SLA=NOT_PLANNED |
+| Quote / Contract / Order | `Quote`/`QuoteLineItem`・見積 | NATIVE(quote)/部分(contract) | `IMPLEMENTATION_UNVERIFIED`(quote) | 契約=DOC-001 future |
+| Forecast / Territory / Lead Scoring | CASH-002 予測(設計)・—・— | ASSISTIVE/DEFERRED | `REQUIREMENT_ONLY` | Lead Scoring=DEFERRED |
+| Customer Service / Case / SLA | `CustomerComplaint` | NATIVE(部分) | `SCHEMA_ONLY` | SLA=DEFERRED |
 | Omnichannel Communication | Email/DM 基盤(OutreachDraft) | ASSISTIVE | `CI_GREEN` | 実送信=封印(EXTERNAL_SEND) |
-| Reports / Dashboard / Analytics | 各ダッシュボード・管制塔 | NATIVE | `PRODUCTION_VERIFIED` | Business Twin=P6 |
-| Workflow / Approval / Automation | `ApprovalRequest`／FLOW(将来) | NATIVE(承認)/future(flow) | `PRODUCTION_VERIFIED`(承認) | Workflow Fabric=P4 以降 |
-| RBAC / Field Security / Audit / Consent | rbac.ts・labels.ts・writeAudit・ConsentRecord | NATIVE | `PRODUCTION_VERIFIED` | Field Security=部分 |
-| Import / Export / Dedup / Data Quality | export(部分) | NATIVE(部分)/NOT_PLANNED | `SCHEMA_ONLY` | Dedup=NOT_PLANNED |
+| Reports / Dashboard / Analytics | 各ダッシュボード・管制塔 | NATIVE | `IMPLEMENTATION_UNVERIFIED` | Business Twin=P6 |
+| Workflow / Approval / Automation | `ApprovalRequest`／FLOW(将来) | NATIVE(承認)/future(flow) | `IMPLEMENTATION_UNVERIFIED`(承認) | Workflow Fabric=P4 以降 |
+| RBAC / Field Security / Audit / Consent | rbac.ts・labels.ts・writeAudit・ConsentRecord | NATIVE | `IMPLEMENTATION_UNVERIFIED` | Field Security=部分 |
+| Import / Export / Dedup / Data Quality | export(部分) | NATIVE(部分)/DEFERRED | `SCHEMA_ONLY` | Dedup=DEFERRED |
 | Custom Object / Metadata / API | — | future | `REQUIREMENT_ONLY` | API-001 Gate |
 | App Marketplace / Integration | MARKET(P7)・INT(future) | CONNECTOR future | `REQUIREMENT_ONLY` | 分類のみ |
-| Mobile / Offline | レスポンシブ UI | NATIVE(部分)/NOT_PLANNED | `PRODUCTION_VERIFIED`(responsive) | Offline=NOT_PLANNED |
+| Mobile / Offline | レスポンシブ UI | NATIVE(部分)/DEFERRED | `IMPLEMENTATION_UNVERIFIED`(responsive) | Offline=DEFERRED |
 | AI Sales Assistant / Copilot | AIOS-003＋SALES-002 | ASSISTIVE | `REQUIREMENT_ONLY`〜draft | 商品推奨の縦切り |
 
 ## 8. マネーフォワード / freee 相当 競合機能台帳（§15）
@@ -122,26 +130,60 @@ Human Boundary と Trust Center が全体を包む。人間を労働から解放
 
 | Capability | 現行実装 | 方式 | 証拠段階 | 主な Gap / 境界 |
 |---|---|---|---|---|
-| Chart of Accounts | `Account` model | NATIVE | `PRODUCTION_VERIFIED`(schema) | — |
-| General Ledger / Journal Entry | `JournalEntry`/`JournalEntryLine` | NATIVE | `PRODUCTION_VERIFIED`(schema) | 仕訳確定は人間 |
-| AR / Invoice / Collection | `Invoice`＋dunning＋CASH-001 | NATIVE(請求)/ASSISTIVE(督促) | `PRODUCTION_VERIFIED`(invoice)/`REQUIREMENT_ONLY`(督促AI) | 実送信=封印 |
+| Chart of Accounts | `Account` model | NATIVE | `IMPLEMENTATION_UNVERIFIED`(schema) | — |
+| General Ledger / Journal Entry | `JournalEntry`/`JournalEntryLine` | NATIVE | `IMPLEMENTATION_UNVERIFIED`(schema) | 仕訳確定は人間 |
+| AR / Invoice / Collection | `Invoice`＋dunning＋CASH-001 | NATIVE(請求)/ASSISTIVE(督促) | `IMPLEMENTATION_UNVERIFIED`(invoice)/`REQUIREMENT_ONLY`(督促AI) | 実送信=封印 |
 | AP / Bills / Payment Request | `InvoiceCandidate`/`Expense` | NATIVE(部分)/HUMAN_ONLY(支払) | `SCHEMA_ONLY` | 実支払=HUMAN_ONLY |
-| Expense / Receipt / OCR | `Expense` model | NATIVE/NOT_PLANNED(OCR) | `PRODUCTION_VERIFIED`(expense) | OCR=DOC future |
+| Expense / Receipt / OCR | `Expense` model | NATIVE/DEFERRED(OCR) | `IMPLEMENTATION_UNVERIFIED`(expense) | OCR=DOC future |
 | Bank / Card Feed | INT-002 | CONNECTOR future | `REQUIREMENT_ONLY` | 資金移動非踏込 |
 | Reconciliation | `JournalCandidate` | ASSISTIVE | `SCHEMA_ONLY` | 確定は人間 |
 | Cash Flow / Forecast / Budget | /finance/cashflow＋CASH-002 | ASSISTIVE | `CI_GREEN`(read-only)/`REQUIREMENT_ONLY`(予測) | 断定表示禁止(信頼度併記) |
 | Closing / Financial Statements | finance 集計 | NATIVE(部分) | `SCHEMA_ONLY` | 決算確定=HUMAN_ONLY |
-| Fixed Asset / Depreciation | — | NOT_PLANNED | `REQUIREMENT_ONLY` | — |
-| Tax / 電子帳簿 / インボイス制度 | — | HUMAN_ONLY/NOT_PLANNED | `REQUIREMENT_ONLY` | 税務断定しない |
+| Fixed Asset / Depreciation | — | DEFERRED | `REQUIREMENT_ONLY` | — |
+| Tax / 電子帳簿 / インボイス制度 | — | HUMAN_ONLY/DEFERRED | `REQUIREMENT_ONLY` | 税務断定しない |
 | Payroll / Attendance / HR | HR モジュール | NATIVE(部分)/HUMAN_ONLY(給与) | `SCHEMA_ONLY` | 給与/評価確定=HUMAN_ONLY |
-| Approval / Segregation of Duties | `ApprovalRequest`・RBAC | NATIVE | `PRODUCTION_VERIFIED` | — |
-| Audit Trail / External Accountant | writeAudit/writeDataAccess | NATIVE/NOT_PLANNED(会計士連携) | `PRODUCTION_VERIFIED`(audit) | 会計士連携=future |
+| Approval / Segregation of Duties | `ApprovalRequest`・RBAC | NATIVE | `IMPLEMENTATION_UNVERIFIED` | — |
+| Audit Trail / External Accountant | writeAudit/writeDataAccess | NATIVE/DEFERRED(会計士連携) | `IMPLEMENTATION_UNVERIFIED`(audit) | 会計士連携=future |
 | API / Connector / Import Export | — | future | `REQUIREMENT_ONLY` | API-001/INT Gate |
 | Anomaly / Dunning Draft / Prediction | anomaly.ts＋CASH-001/002 | ASSISTIVE | `SCHEMA_ONLY`〜draft | 実送信/断定=禁止 |
 
 **総括**: 369 は会計ソフトを「置き換え済み」とは言わない。会計 schema は自前で持ちつつ、**AI は未回収検知・督促下書き・入金予測まで**。実際の会計処理・送金は既存会計ソフト＋人間承認へ委ねる（CONNECTOR は future Gate）。
 
-## 9. 完全機能台帳との接続（§16）
+## 9. 段階的完全実装 方針とロードマップ Wave（v6.2・人間方針）
+
+正式方針（人間決定・2026-07-12）:
+1. **まず安全で一貫した MVP をリリース**する（Release Gate）。
+2. リリース後、**全機能の完全実装を段階的**に目指す。
+3. 最初の拡張は各業務カテゴリで **AI を活用した DX と Marketing**。
+4. Salesforce/MoneyForward/freee 等の主要 capability も**将来実装対象から削除しない**（`NOT_PLANNED` を廃し `DEFERRED`/`ROADMAP_ONLY` へ）。
+5. 競合のコード・UI・文章・商標をコピーせず、公開仕様と業務要件から独自実装する。
+6. 「同等」「超えた」は受入証拠が揃うまで宣言しない。
+
+### Wave 定義
+
+| Wave | スコープ | 主対象 |
+|---|---|---|
+| Release Gate | v6.2 復旧・安全性・機能復元・AI社員連動 | High 0・NAV 67・8名 parity・build 識別 |
+| Wave 1 | 各カテゴリの **AI DX＋Marketing** | 下記共通縦切りで全カテゴリ |
+| Wave 2 | CRM/SFA/Service の主要 Salesforce 系 | Lead Scoring/Routing/Dedup/SLA/Forecast/Workflow/Service・Case/Knowledge/Analytics/Integration/Offline |
+| Wave 3 | 会計・財務・請求・経費の主要 MoneyForward/freee 系 | OCR/銀行・カード連携/仕訳/総勘定元帳/債権債務/経費/請求/入金消込/固定資産・減価償却/税務/電子帳簿/インボイス制度/外部会計士連携 |
+| Wave 4 | 人事・労務・給与・電子帳簿・税務・固定資産 | 従業員台帳/勤怠/給与/年末調整/社会保険/労務手続/評価/採用/電子契約・証憑保管 |
+| Wave 5 | 外部連携・Marketplace・Enterprise・Global | INT/MARKET/TRUST-003/多言語 |
+
+**Wave 1 の各カテゴリ共通縦切り**: `read-only分析 → AI下書き → 人間承認 → 統制された実行 → 成果台帳`。
+外部送信・実LLM・課金・実支払・法務/税務/労務の断定は、**個別 Gate まで封印を維持**。
+
+### 上記方針による `NOT_PLANNED` → `DEFERRED`/`ROADMAP_ONLY` の格上げ（target wave/依存/受入条件付き）
+
+| 機能群 | 旧 | 新 | target wave | 依存 | 受入条件（証拠段階） | 責任領域 |
+|---|---|---|---|---|---|---|
+| Salesforce系（Lead Scoring/Routing/Dedup/SLA/Forecast/Workflow/Service・Case/Knowledge/Offline/Analytics/Integration） | NOT_PLANNED | `DEFERRED` | Wave 2 | CRM Foundation・API-001 | 各 capability に Function ID＋`CI_VERIFIED` 以上・独自実装 | Claude 実装／Codex Evidence |
+| MoneyForward/freee系（OCR/銀行・カード連携/仕訳/総勘定元帳/債権債務/経費/請求/入金消込/固定資産・減価償却/税務/電子帳簿/インボイス制度/外部会計士連携） | NOT_PLANNED | `DEFERRED`（実送金/税務断定は `HUMAN_ONLY` 維持） | Wave 3 | 会計 schema・INT-002・DOC-001 | read-only→下書き→人間承認までの縦切り・実送金なし | Claude 実装／人間承認 |
+| 人事労務系（従業員台帳/勤怠/給与/年末調整/社会保険/労務手続/評価/採用/電子契約・証憑保管） | NOT_PLANNED | `DEFERRED`（給与確定/評価確定/採否は `HUMAN_ONLY`） | Wave 4 | HR schema・電子契約 CONNECTOR | 補助・要約・下書きまで・確定は人間 | Claude 実装／人間承認 |
+
+正式 Function ID がない機能は創作せず `UNMAPPED_CANDIDATE` として Codex へ `CODEX_EVIDENCE_UPDATE_REQUEST` で通知する。
+
+## 10. 完全機能台帳との接続（§16）
 
 - 既存 Stable ID を優先参照。新 ID を安易に作らない。対応 ID 不在は `UNMAPPED_CANDIDATE`。
 - Draft / main / Production の Evidence を分離（本書の証拠段階列がそれ）。

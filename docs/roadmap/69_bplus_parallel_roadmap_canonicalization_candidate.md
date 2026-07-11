@@ -17,6 +17,18 @@
 - 統合手順（原典入手後）: ① `docs/function-master/` へ原典を配置 → ② raw/normalized SHA-256 を上記期待値と照合 → ③ 生成器 `--check` を通す → ④ GitHub 正本と Obsidian 鏡像（両 vault）を同期 → ⑤ 本書と CURRENT_STATE の PENDING を解除。
 - 帰結: **Phase 3 の「正式完了」宣言と PR #3 の main 統合は HOLD**（PENDING 解除まで）。ただし安全な設計・read-only 実装・AI 下書き・3D 可視化の前進は継続する（人間 Gate 決定 §0 のとおり）。
 
+### §0 追補（2026-07-11・v5.8: PR #7 統合による状態更新）
+
+- Codex PR #7（head `a859d71`）を feature へ統合。`docs/function-master/`（正本 MD/JSON・SOURCE_MANIFEST・
+  Evidence Ledger・生成器）＋Obsidian 鏡像（`369-vault/知識/完全機能台帳/`）が本リポジトリに存在するようになった。
+- 照合結果（Claude 独立検証）: manifest の raw/normalized SHA-256 は上記期待値と**完全一致**。
+  件数も JSON からの再集計で一致（50 カテゴリ・原子機能 2,553・Stable ID 7,485 = 末端 7,413＋カテゴリ 50＋候補群 22・
+  ID 一意・C49 のみ SOURCE_DETAIL_MISSING）。secret 0・broken wiki link 0。
+- ただし**原典（pasted-text.txt）は取得不能**のため生成器 `--check`（手順③）は未実行。
+  → 状態を `ATOMIC_LEDGER_SYNC = GITHUB_CANONICAL_SYNCED / SOURCE_RECHECK_WAITING` に更新する。
+  「独立再生成済み」とは記録しない。手順③（原典による --check）と人間 GO が完了するまで、
+  **Phase 3 の正式完了宣言と PR #3 の main 統合は引き続き HOLD**。
+
 ## 1. Phase 3 クローズ（名称: AI Growth Engine v0）
 
 - **完了範囲**: Control Tower v0（CT-0〜5）／Growth Event Ledger 可視化／Email・DM 基盤（OutreachDraft→承認→送信ログ・Suppression）／承認導線（ApprovalRequest deep link）／Consent・Privacy（C38）／財務・PII 閲覧境界（v5.4 WIP1〜6・PII 29 経路台帳・0 Critical/0 High）。

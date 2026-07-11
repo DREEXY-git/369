@@ -34,8 +34,23 @@ export async function createInvoiceAction(formData: FormData) {
     customerId = c?.id ?? null;
   }
   if (dealId) {
-    const d = await prisma.deal.findFirst({ where: { id: dealId, tenantId: user.tenantId }, select: { id: true } });
-    dealId = d?.id ?? null;
+    // v5.8 Medium-3 修正: dealId 直 POST の顧客 label 迂回を遮断（quotes/actions.ts と同方針・監査可能な拒否）。
+    const d = await prisma.deal.findFirst({
+      where: { id: dealId, tenantId: user.tenantId, customer: { label: { in: visibleCustomerLabels(user.roles) } } },
+      select: { id: true },
+    });
+    if (!d) {
+      await writeAudit({
+        tenantId: user.tenantId,
+        actorId: user.userId,
+        action: 'invoice_create_denied_deal_link',
+        entityType: 'Deal',
+        entityId: dealId,
+        summary: '閲覧可能範囲外の案件 ID の紐付けを拒否（テナント外または閲覧不可ラベル顧客）',
+      });
+      redirect('/invoices/new?error=deal');
+    }
+    dealId = d.id;
   }
   const taxRate = Number(formData.get('taxRate') ?? 10) || 10;
   const dueRaw = String(formData.get('dueDate') ?? '');

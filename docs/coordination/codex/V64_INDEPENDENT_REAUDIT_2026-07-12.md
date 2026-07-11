@@ -108,10 +108,11 @@ Remaining Evidence gaps:
 - Eight-agent parity compares `key`, full name, and state. Portrait is only checked for SVG presence, and profile is checked only for card visibility/name. Appearance, personality, skills, traits, common mistakes, and evaluation note are not value-compared across list/detail/office.
 - The profile-element screenshots are not clean full-profile proof: the desktop image contains a large blank band/topbar intrusion, and the mobile image starts mid-portrait and does not provide a clean complete profile view. The normal desktop/mobile page images remain useful supporting evidence, not eight-person parity proof.
 - The mobile 2D office table is readable but over-wraps narrow headers and status text vertically; this is nonblocking visual debt.
+- `AiOffice` initializes `selectedId` from `initialAgentId` only on first mount. Client-side navigation or browser back/forward between two `/ai-office?agent=<id>` URLs can preserve the old selected employee while the URL points to the new employee. A prop-change synchronization test is missing.
 
 ## 10. Review-thread disposition
 
-At the final review there are `13` threads: `3` resolved and `10` unresolved.
+At the final review there are `14` threads: `3` resolved and `11` unresolved.
 
 Resolved with exact-head evidence:
 
@@ -124,6 +125,7 @@ Unresolved:
 - all scanner-security threads, because the generalized P1 remains
 - AI employee portrait/profile parity
 - new exact-line threads for the generalized scanner input, nested tenant isolation, data minimization, parity evidence, and mobile NAV evidence
+- the later automated P2 thread for synchronizing selected employee state when the deep-link query parameter changes
 
 The formal Codex review is `4678563117`. Top-level handoff comments are `4948296590`, `4948307559`, `4948320178`, and `4948323738`.
 
@@ -133,7 +135,7 @@ Severity within the reviewed scope:
 
 - Critical: `0` observed
 - High/P1: `2` release blockers (scanner fail-closed bypass; nested tenant child isolation)
-- P2: data minimization/access logging, portrait/profile parity evidence, mobile NAV acceptance evidence
+- P2: data minimization/access logging, portrait/profile parity evidence, mobile NAV acceptance evidence, and deep-link selection synchronization
 - Residual gaps: BullMQ real queue and Human Preview
 
 `PHASE_READINESS_MATRIX_V3.md` was not created because the PASS conditions were not met. Phase evidence is not promoted, PR #14 remains Draft/HOLD, and `HUMAN_PREVIEW_PENDING` is not equivalent to Production verification.
@@ -142,6 +144,6 @@ Next non-overlapping WIPs for Claude are:
 
 1. replace the quote-depth closer heuristic with a genuinely fail-closed strategy and run the generated depth matrix through all four error paths;
 2. close nested tenant isolation, minimal-select, and DataAccessLog boundaries with an ephemeral child-fixture test;
-3. complete portrait/profile fingerprints, mobile 67-link/overlay assertions, and clean full-profile artifacts.
+3. complete portrait/profile fingerprints, mobile 67-link/overlay assertions, clean full-profile artifacts, and deep-link parameter synchronization.
 
 `PHASE_READINESS_MATRIX_V3.md` must not be created unless Critical, High/P1, and release-blocking P2 are zero; all required threads are independently closed; exact-head CI and visual evidence pass; and Evidence is not promoted beyond proof.

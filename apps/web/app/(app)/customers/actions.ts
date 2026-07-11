@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
 import { emitDomainEvent, dispatchDomainEvent } from '@/lib/events';
+import { canAccessLabel } from '@hokko/shared';
 import '@/lib/event-handlers'; // ハンドラ登録（副作用）
 
 export async function createCustomerAction(formData: FormData) {
@@ -59,6 +60,8 @@ export async function updateCustomerAction(formData: FormData) {
 
   const existing = await prisma.customer.findFirst({ where: { id, tenantId: user.tenantId } });
   if (!existing) redirect('/customers');
+  // WIP1（roadmap61）: 閲覧不可 label の顧客は編集も拒否する（編集は閲覧を内包する・label 許可表は既存定義のまま）。
+  if (!canAccessLabel(user.roles, existing.label as any)) redirect('/customers?denied=1');
 
   const name = String(formData.get('name') ?? '').trim() || existing.name;
   const satisfaction = formData.get('satisfaction') ? Number(formData.get('satisfaction')) : null;

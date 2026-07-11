@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { assertCanViewConfidential, PolicyDenied } from '@/lib/security/policy';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Stat, EmptyState } from '@/components/ui';
 import { LabelBadge, DEAL_STAGE_LABEL } from '@/components/badges';
+import { AccessDenied } from '@/components/access-denied';
 import { formatJpy, formatDate } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
@@ -14,6 +15,46 @@ export const dynamic = 'force-dynamic';
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
+  // WIP1（roadmap61）: customer:read をデータ取得前に適用し、判定前に PII を取得しない二段階取得にする。
+  if (!hasPermission(user, 'customer', 'read')) {
+    return (
+      <AccessDenied
+        title="顧客詳細"
+        reason="顧客情報の閲覧には顧客情報の閲覧権限（customer:read）が必要です"
+        breadcrumb={[{ label: '顧客', href: '/customers' }]}
+      />
+    );
+  }
+  // 第一段: 最小 access envelope（id/label/ownerId のみ・氏名等の PII は取得しない）。
+  const envelope = await prisma.customer.findFirst({
+    where: { id, tenantId: user.tenantId },
+    select: { id: true, label: true, ownerId: true },
+  });
+  if (!envelope) notFound();
+  // ABAC ポリシー判定 ＋ PolicyDecisionLog ＋ 機密参照ログ。拒否時は顧客名・PII を一切表示しない。
+  try {
+    await assertCanViewConfidential(user, {
+      dataType: 'customer',
+      label: envelope.label as any,
+      entityType: 'Customer',
+      entityId: envelope.id,
+      ownerId: envelope.ownerId,
+      purpose: '顧客詳細の閲覧',
+    });
+  } catch (e) {
+    if (e instanceof PolicyDenied) {
+      return (
+        <AccessDenied
+          title="顧客詳細"
+          reason={`この顧客情報の閲覧は許可されていません（理由: ${e.decision.reason}）`}
+          needsReason={Boolean(e.decision.requiredSensitiveAccessReason)}
+          breadcrumb={[{ label: '顧客', href: '/customers' }]}
+        />
+      );
+    }
+    throw e;
+  }
+  // 第二段: 判定成功後に本体と関連データを取得する。
   const customer = await prisma.customer.findFirst({
     where: { id, tenantId: user.tenantId },
     include: {
@@ -25,30 +66,6 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     },
   });
   if (!customer) notFound();
-  // ABAC ポリシー判定 ＋ PolicyDecisionLog ＋ 機密参照ログ。拒否時は権限なし表示。
-  try {
-    await assertCanViewConfidential(user, {
-      dataType: 'customer',
-      label: customer.label as any,
-      entityType: 'Customer',
-      entityId: customer.id,
-      ownerId: customer.ownerId,
-      purpose: '顧客詳細の閲覧',
-    });
-  } catch (e) {
-    if (e instanceof PolicyDenied) {
-      return (
-        <div>
-          <PageHeader title={customer.name} breadcrumb={[{ label: '顧客', href: '/customers' }]} />
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            この顧客情報の閲覧は許可されていません（理由: {e.decision.reason}）。
-            {e.decision.requiredSensitiveAccessReason ? '機密アクセス理由の登録が必要です。' : ''}
-          </div>
-        </div>
-      );
-    }
-    throw e;
-  }
 
   const insight = customer.insights[0];
 

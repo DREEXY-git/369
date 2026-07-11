@@ -79,3 +79,24 @@ export async function summarizeGrowthEvents(tenantId: string, sinceDays = 30) {
     })),
   );
 }
+
+/**
+ * 金額列（revenueImpact/costSaving/amount）を DB クエリ段階から一切取得しない件数・時間集計
+ * （財務閲覧権限のない閲覧者向け・WIP-3/roadmap64）。
+ * 返り値の金額系合計は常に 0（呼び出し側で表示しないこと）。timeSavingMinutes は金額ではないため含む。
+ */
+export async function summarizeGrowthEventCounts(tenantId: string, sinceDays = 30) {
+  const since = new Date(Date.now() - sinceDays * 86_400_000);
+  const events = await prisma.growthEvent.findMany({
+    where: { tenantId, occurredAt: { gte: since } },
+    select: { type: true, timeSavingMinutes: true },
+  });
+  return summarizeGrowth(
+    events.map((e) => ({
+      type: e.type,
+      revenueImpact: 0,
+      costSaving: 0,
+      timeSavingMinutes: e.timeSavingMinutes ?? 0,
+    })),
+  );
+}

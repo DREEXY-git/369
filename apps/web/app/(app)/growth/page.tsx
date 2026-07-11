@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { Megaphone, Sparkles, Cpu, TrendingUp, Clock, Wallet, CheckSquare } from 'lucide-react';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
-import { summarizeGrowthEvents } from '@/lib/growth';
+import { summarizeGrowthEvents, summarizeGrowthEventCounts } from '@/lib/growth';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Stat, Badge, Button, EmptyState } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { BarList, Donut } from '@/components/charts';
 import { formatJpy, formatDateTime } from '@hokko/shared';
 
@@ -18,26 +19,68 @@ const CAT_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#a855f7', '#94a
 
 export default async function GrowthDashboardPage() {
   const user = await requireUser();
+  // WIP-3（roadmap64）: ページ基礎権限を明示（経営ダッシュボード = dashboard:read）。
+  if (!hasPermission(user, 'dashboard', 'read')) {
+    return (
+      <AccessDenied
+        title="Growth OS — 成長ダッシュボード"
+        reason="成長ダッシュボードの閲覧にはダッシュボードの閲覧権限（dashboard:read）が必要です"
+        breadcrumb={[{ label: 'Growth OS', href: '/growth' }]}
+      />
+    );
+  }
   const t = user.tenantId;
+  // WIP-3: 金額（売上インパクト・コスト削減・DX 推定金額・イベント別金額）は finance:read 保持者のみ
+  // 取得・表示する。非財務閲覧者は金額列を DB クエリ段階から取得しない（counts 変種）。
+  const canViewFinance = hasPermission(user, 'finance', 'read');
   const [summary, campaigns, assets, pendingAssets, opportunities, suggestions, aiOutputs, recent] = await Promise.all([
-    summarizeGrowthEvents(t, 30),
+    canViewFinance ? summarizeGrowthEvents(t, 30) : summarizeGrowthEventCounts(t, 30),
     prisma.marketingCampaign.count({ where: { tenantId: t } }),
     prisma.contentAsset.count({ where: { tenantId: t, generatedByAi: true } }),
     prisma.contentAsset.count({ where: { tenantId: t, approvalStatus: 'pending' } }),
-    prisma.dXOpportunity.findMany({ where: { tenantId: t } }),
+    // DX 機会: 非財務閲覧者には金額列（estimatedCostSaving/estimatedRevenueImpact）を取得しない。
+    canViewFinance
+      ? prisma.dXOpportunity.findMany({
+          where: { tenantId: t },
+          select: { estimatedTimeSavingMinutes: true, estimatedCostSaving: true, estimatedRevenueImpact: true },
+        })
+      : prisma.dXOpportunity.findMany({
+          where: { tenantId: t },
+          select: { estimatedTimeSavingMinutes: true },
+        }),
     prisma.marketingSuggestion.count({ where: { tenantId: t } }),
     prisma.aIOutput.count({ where: { tenantId: t } }),
-    prisma.growthEvent.findMany({ where: { tenantId: t }, orderBy: { occurredAt: 'desc' }, take: 12 }),
+    // 直近イベント: 非財務閲覧者には finance カテゴリの行と金額列を取得しない（title 経由の情報露出も遮断）。
+    prisma.growthEvent.findMany({
+      where: { tenantId: t, ...(canViewFinance ? {} : { category: { not: 'finance' } }) },
+      orderBy: { occurredAt: 'desc' },
+      take: 12,
+      select: canViewFinance
+        ? { id: true, category: true, title: true, occurredAt: true, revenueImpact: true }
+        : { id: true, category: true, title: true, occurredAt: true },
+    }),
   ]);
 
   const oppTime = opportunities.reduce((s, o) => s + o.estimatedTimeSavingMinutes, 0);
-  const oppCost = opportunities.reduce((s, o) => s + toNumber(o.estimatedCostSaving), 0);
-  const oppRev = opportunities.reduce((s, o) => s + toNumber(o.estimatedRevenueImpact), 0);
+  const oppCost = canViewFinance
+    ? opportunities.reduce((s, o) => s + toNumber((o as { estimatedCostSaving?: unknown }).estimatedCostSaving), 0)
+    : 0;
+  const oppRev = canViewFinance
+    ? opportunities.reduce((s, o) => s + toNumber((o as { estimatedRevenueImpact?: unknown }).estimatedRevenueImpact), 0)
+    : 0;
 
-  const catSegments = Object.entries(summary.byCategory)
+  // 非財務閲覧者にはカテゴリ集計からも finance を除外する（件数の算術復元・存在シグナルの遮断・WIP2 と同方針）。
+  const shownByCategory = Object.entries(summary.byCategory).filter(([k]) => canViewFinance || k !== 'finance');
+  const shownTotal = canViewFinance
+    ? summary.total
+    : summary.total - (summary.byCategory['finance'] ?? 0);
+  const catSegments = shownByCategory
     .map(([k, v], i) => ({ label: CAT_LABEL[k] ?? k, value: v, color: CAT_COLORS[i % CAT_COLORS.length]! }))
     .sort((a, b) => b.value - a.value);
-  const totalSavingMoney = summary.totalCostSaving + Math.round((summary.totalTimeSavingMinutes / 60) * 3000);
+  // 工数×固定単価の円換算は金額表示に該当するため、財務閲覧権限者にのみ表示する（逆算防止・WIP-3）。
+  const totalSavingMoney = canViewFinance
+    ? summary.totalCostSaving + Math.round((summary.totalTimeSavingMinutes / 60) * 3000)
+    : 0;
 
   return (
     <div className="animate-fade-in">
@@ -48,15 +91,24 @@ export default async function GrowthDashboardPage() {
       />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="成長イベント(30日)" value={summary.total} tone="purple" icon={<TrendingUp />} sub={`売上関連 ${summary.revenueRelated} 件`} />
-        <Stat label="売上インパクト" value={formatJpy(summary.totalRevenueImpact)} tone="emerald" icon={<Wallet />} sub="記録ベース" />
-        <Stat label="削減コスト換算" value={formatJpy(totalSavingMoney)} tone="blue" icon={<Clock />} sub={`工数 ${summary.totalTimeSavingMinutes}分 含む`} />
+        <Stat label="成長イベント(30日)" value={shownTotal} tone="purple" icon={<TrendingUp />} sub={canViewFinance ? `売上関連 ${summary.revenueRelated} 件` : '削減工数の記録を含む'} />
+        {canViewFinance ? (
+          <>
+            <Stat label="売上インパクト" value={formatJpy(summary.totalRevenueImpact)} tone="emerald" icon={<Wallet />} sub="記録ベース" />
+            <Stat label="削減コスト換算" value={formatJpy(totalSavingMoney)} tone="blue" icon={<Clock />} sub={`工数 ${summary.totalTimeSavingMinutes}分 含む`} />
+          </>
+        ) : (
+          <>
+            <Stat label="削減工数(30日)" value={`${summary.totalTimeSavingMinutes}分`} tone="blue" icon={<Clock />} sub="自己申告値を含む集計" />
+            <Stat label="金額集計" value="権限者のみ" tone="slate" icon={<Wallet />} sub="財務閲覧権限で表示" />
+          </>
+        )}
         <Stat label="AI生成資産" value={assets} tone="sky" icon={<Sparkles />} sub={`AI出力 ${aiOutputs} 件`} />
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="キャンペーン" value={campaigns} icon={<Megaphone />} />
-        <Stat label="DX改善機会" value={opportunities.length} icon={<Cpu />} sub={`推定 ${formatJpy(oppCost + oppRev)}/月`} />
+        <Stat label="DX改善機会" value={opportunities.length} icon={<Cpu />} sub={canViewFinance ? `推定 ${formatJpy(oppCost + oppRev)}/月` : `推定工数削減 ${oppTime}分/月`} />
         <Stat label="AI提案" value={suggestions} />
         <Stat label="承認待ち資産" value={pendingAssets} tone={pendingAssets ? 'amber' : 'slate'} icon={<CheckSquare />} />
       </div>
@@ -65,20 +117,27 @@ export default async function GrowthDashboardPage() {
         <Card>
           <CardHeader><CardTitle>カテゴリ別の成長イベント</CardTitle></CardHeader>
           <CardContent>
-            {catSegments.length === 0 ? <EmptyState title="イベントがありません" hint="マーケ施策やDX改善で蓄積されます。" /> : <Donut segments={catSegments} centerLabel={summary.total} centerSub="件" />}
+            {catSegments.length === 0 ? <EmptyState title="イベントがありません" hint="マーケ施策やDX改善で蓄積されます。" /> : <Donut segments={catSegments} centerLabel={shownTotal} centerSub="件" />}
           </CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle>DX改善機会の推定効果(月)</CardTitle></CardHeader>
           <CardContent>
-            <BarList
-              data={[
-                { label: 'コスト削減', value: oppCost },
-                { label: '売上インパクト', value: oppRev },
-                { label: '工数削減(円換算)', value: Math.round((oppTime / 60) * 3000) },
-              ]}
-              valueFormat={(v) => formatJpy(v)}
-            />
+            {canViewFinance ? (
+              <BarList
+                data={[
+                  { label: 'コスト削減', value: oppCost },
+                  { label: '売上インパクト', value: oppRev },
+                  { label: '工数削減(円換算)', value: Math.round((oppTime / 60) * 3000) },
+                ]}
+                valueFormat={(v) => formatJpy(v)}
+              />
+            ) : (
+              <div className="space-y-2 text-sm">
+                <div>推定工数削減: <span className="font-bold tabular-nums">{oppTime}</span> 分/月</div>
+                <p className="text-xs text-muted-foreground">金額の集計は財務閲覧権限のある人にのみ表示されます。</p>
+              </div>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -105,7 +164,9 @@ export default async function GrowthDashboardPage() {
                   <span className="truncate">{e.title}</span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                  {e.revenueImpact ? <span className="text-emerald-600">{formatJpy(toNumber(e.revenueImpact))}</span> : null}
+                  {canViewFinance && 'revenueImpact' in e && e.revenueImpact ? (
+                    <span className="text-emerald-600">{formatJpy(toNumber(e.revenueImpact))}</span>
+                  ) : null}
                   {formatDateTime(e.occurredAt)}
                 </span>
               </div>

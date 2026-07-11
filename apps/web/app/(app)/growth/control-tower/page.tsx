@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Radar, ArrowRight, Sparkles } from 'lucide-react';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { getControlTowerData } from '@/lib/domains/growth/control-tower';
-import { summarizeGrowthEvents } from '@/lib/growth';
+import { summarizeGrowthEvents, summarizeGrowthEventCounts } from '@/lib/growth';
 import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Stat } from '@/components/ui';
@@ -74,10 +74,12 @@ export default async function GrowthControlTowerPage({
   ]);
   // WIP2（roadmap62）: Growth Event Ledger の read-only 集計。既存 summarizeGrowthEvents のみを使い、
   // イベントの新規発火・状態変更はしない。select は type/金額/時間の4列のみ（PII・payload 非取得）。
-  const [growth7, growth30] = await Promise.all([
-    summarizeGrowthEvents(user.tenantId, 7),
-    summarizeGrowthEvents(user.tenantId, 30),
-  ]);
+  // WIP-3（roadmap64）: 非財務閲覧者は金額列を DB クエリ段階から取得しない（counts 変種・時間のみ取得）。
+  const [growth7, growth30] = await Promise.all(
+    canViewFinance
+      ? [summarizeGrowthEvents(user.tenantId, 7), summarizeGrowthEvents(user.tenantId, 30)]
+      : [summarizeGrowthEventCounts(user.tenantId, 7), summarizeGrowthEventCounts(user.tenantId, 30)],
+  );
   // 非財務閲覧者には finance カテゴリを件数集計から完全に除外する（roadmap62 §8: 伏せ字表示だと
   // total −他カテゴリ和で件数が算術復元でき、バッジの存在自体が finance イベントの発生を開示するため）。
   const financeCount7 = growth7.byCategory['finance'] ?? 0;

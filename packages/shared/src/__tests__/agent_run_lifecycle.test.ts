@@ -58,4 +58,44 @@ describe('maskRunError（PII/Secrets マスク・長さ制限）', () => {
     expect(maskRunError(null)).toContain('unknown');
     expect(maskRunError('plain')).toBe('plain');
   });
+  // v5.8 High-1 否定テスト: 秘密値が一切残らないことを検証する（Codex 指摘の再発防止）。
+  it('Authorization: Bearer の token 本体が残らない', () => {
+    const m = maskRunError(new Error('request failed. Authorization: Bearer sk-live-SECRETVALUE9 was rejected'));
+    expect(m).not.toContain('sk-live-SECRETVALUE9');
+    expect(m).not.toContain('SECRETVALUE9');
+  });
+  it('裸の Bearer / Basic スキーム値が残らない', () => {
+    const m = maskRunError(new Error('sent bearer AbC.def-123~tok and Basic QWxhZGRpbjpPcGVuU2VzYW1l'));
+    expect(m).not.toContain('AbC.def-123~tok');
+    expect(m).not.toContain('QWxhZGRpbjpPcGVuU2VzYW1l');
+  });
+  it('JWT（3 セグメント）が残らない', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzZWNyZXQtdXNlciJ9.sflKxwRJSMeKKF2QT4fwpMeJf36POk6yJVadQssw5c';
+    const m = maskRunError(new Error(`invalid token ${jwt} supplied`));
+    expect(m).not.toContain('eyJzdWIi');
+    expect(m).not.toContain('sflKxwRJSMeKKF2QT4fwpMeJf36POk6yJVadQssw5c');
+    expect(m).toContain('[masked-jwt]');
+  });
+  it('Cookie / Set-Cookie ヘッダの値が残らない', () => {
+    const m = maskRunError(new Error('upstream said set-cookie: session=deadbeefcafe123; Path=/; HttpOnly and Cookie: sid=topsecretsid'));
+    expect(m).not.toContain('deadbeefcafe123');
+    expect(m).not.toContain('topsecretsid');
+  });
+  it('quoted JSON の秘密値（ダブル/シングル引用）が残らない', () => {
+    const m = maskRunError(new Error('payload {"apiKey":"AKSUPERSECRET01","password":"p@ss word!"} and {\'secret\': \'quoted-one\'}'));
+    expect(m).not.toContain('AKSUPERSECRET01');
+    expect(m).not.toContain('p@ss word!');
+    expect(m).not.toContain('quoted-one');
+  });
+  it('改行で分割された値も残らず、保存文字列は 1 行になる', () => {
+    const m = maskRunError(new Error('auth failed token=\nline-secret-value rest'));
+    expect(m).not.toContain('line-secret-value');
+    expect(m).not.toContain('\n');
+  });
+  it('代表的な鍵の生値（AKIA/ghp/xoxb）が残らない', () => {
+    const m = maskRunError(new Error('leaked AKIA0123456789AB and ghp_abcdefghij0123456789 and xoxb-1234567890-abc'));
+    expect(m).not.toContain('AKIA0123456789AB');
+    expect(m).not.toContain('ghp_abcdefghij0123456789');
+    expect(m).not.toContain('xoxb-1234567890-abc');
+  });
 });

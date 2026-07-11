@@ -122,8 +122,54 @@ test('モバイルでは操作可能な簡略表示に切り替わる', async ({
   await expect(page.getByTestId('ai-office-detail').getByText('稼働状態（実測・証拠由来）')).toBeVisible();
   await expect(page.getByTestId('ai-office-detail').getByTestId('ai-portrait')).toBeVisible();
   await page.screenshot({ path: 'test-results/ai-office-mobile.png', fullPage: false });
-  // v5.8 §6: モバイルでも選択後のプロフィール全体を証拠として残す（要素単位キャプチャ）。
-  await page.getByTestId('ai-office-detail').screenshot({ path: 'test-results/ai-office-mobile-profile.png' });
+  // v5.9 M9 修正: モバイルの要素キャプチャは stitching 中に上部ヘッダーが重なるため、
+  // 撮影中のみヘッダーを不可視化して「人物ヘッダー/ポートレートが欠けない」完全なプロフィール証拠を残す
+  // （実 UI は scroll-mt-20 で選択スクロール時の重なりを緩和・テストは撮影後に元へ戻す）。
+  const detailEl = page.getByTestId('ai-office-detail');
+  await detailEl.scrollIntoViewIfNeeded();
+  await page.evaluate(() => document.querySelector('header')?.style.setProperty('visibility', 'hidden'));
+  await detailEl.screenshot({ path: 'test-results/ai-office-mobile-profile.png' });
+  await page.evaluate(() => document.querySelector('header')?.style.removeProperty('visibility'));
+  // 撮影対象にポートレートと人物名が含まれていることを DOM でも担保
+  await expect(detailEl.getByTestId('ai-portrait')).toBeVisible();
+  await expect(detailEl.getByTestId('ai-office-profile-name')).not.toBeEmpty();
+});
+
+test('3D ネームプレートをクリックすると AI 社員が選択される（raycaster 回帰・v5.9 M11）', async ({ page }) => {
+  await login(page, 'ceo@ikezaki.local');
+  await page.goto('/ai-office');
+  const canvas = page.getByTestId('ai-office-canvas');
+  await expect(canvas).toBeVisible();
+  // 描画完了（テストフック設置）を待つ。
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const c = document.querySelector('canvas[data-testid="ai-office-canvas"]') as HTMLCanvasElement & {
+          __nameplateProbe?: (i: number) => { ndcX: number; ndcY: number; agentId: string } | null;
+        };
+        return typeof c?.__nameplateProbe === 'function';
+      }),
+    )
+    .toBe(true);
+  // 2 番目の社員（初期自動選択とは別）のネームプレート位置を取得し、
+  // raycaster がその位置で「誰を」選ぶかを先に確定してから、実クリックで検証する
+  // （プレート同士の重なりがあっても決定論的）。
+  const probe = await page.evaluate(() => {
+    const c = document.querySelector('canvas[data-testid="ai-office-canvas"]') as HTMLCanvasElement & {
+      __nameplateProbe?: (i: number) => { ndcX: number; ndcY: number; agentId: string } | null;
+      __pickAt?: (x: number, y: number) => string | null;
+    };
+    const p = c.__nameplateProbe!(1);
+    if (!p) return null;
+    return { ...p, picked: c.__pickAt!(p.ndcX, p.ndcY) };
+  });
+  expect(probe).not.toBeNull();
+  // ネームプレートが raycaster の当たり判定に含まれている（M11 の本体検証）。
+  expect(probe!.picked).not.toBeNull();
+  // 実クリック（NDC→ピクセル変換）で同じ社員が選択される。
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.click(box.x + ((probe!.ndcX + 1) / 2) * box.width, box.y + ((1 - probe!.ndcY) / 2) * box.height);
+  await expect(page.getByTestId('ai-office-detail')).toHaveAttribute('data-agent-id', probe!.picked!);
 });
 
 test('担当者も閲覧できる（dashboard:read の回帰・PII/プロンプト本文は表示されない）', async ({ page }) => {

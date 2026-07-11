@@ -274,7 +274,9 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
       group.userData = { agentId: a.id, state: a.state };
       scene.add(group);
       meshes.set(a.id, group);
-      clickable.push(...built.clickable);
+      // v5.9 M11 修正: ネームプレート（大きな当たり判定）もクリック選択の対象にする。
+      // nameLabel は group の直接の子なので hit.object.parent = group の前提を保つ。
+      clickable.push(...built.clickable, nameLabel);
 
       if (a.state === 'waiting_approval') {
         const points = [new THREE.Vector3(px, 1.4, pz), new THREE.Vector3(APPROVAL_DESK.x, 1.2, APPROVAL_DESK.z)];
@@ -301,6 +303,29 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
       if (hit?.userData?.agentId) setSelectedId(hit.userData.agentId as string);
     };
     renderer.domElement.addEventListener('click', onClick);
+
+    // v5.9 M11 回帰テスト用の読み取り専用フック（e2e からの照準と検証にのみ使用・状態変更なし）。
+    // __nameplateProbe(i): i 番目の AI 社員のネームプレート位置（NDC）と agentId を返す。
+    // __pickAt(x, y): その NDC で raycaster が選ぶ agentId を返す（実クリックはテスト側が別途発火する）。
+    type TestHooks = HTMLCanvasElement & {
+      __nameplateProbe?: (index: number) => { ndcX: number; ndcY: number; agentId: string } | null;
+      __pickAt?: (ndcX: number, ndcY: number) => string | null;
+    };
+    (renderer.domElement as TestHooks).__nameplateProbe = (index: number) => {
+      const entry = Array.from(meshes.entries())[index];
+      if (!entry) return null;
+      const [agentId, g] = entry;
+      const v = new THREE.Vector3(g.position.x, g.position.y + 2.75, g.position.z).project(camera);
+      return { ndcX: v.x, ndcY: v.y, agentId };
+    };
+    (renderer.domElement as TestHooks).__pickAt = (ndcX: number, ndcY: number) => {
+      pointer.x = ndcX;
+      pointer.y = ndcY;
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(clickable, false);
+      const hit = hits[0]?.object.parent as THREE.Group | undefined;
+      return (hit?.userData?.agentId as string | undefined) ?? null;
+    };
 
     // WebGL context lost（GPU リセット・タブ復帰等）: 描画ループを止めて 2D フォールバックへ切替（roadmap74 §9）。
     // preventDefault は restore を許可するための WebGL 仕様上の作法だが、restore を待たずフォールバックで固定する
@@ -468,7 +493,7 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
         </div>
 
         {/* 詳細パネル（固定領域・選択で本文のみ入れ替え＝レイアウト不変）。 */}
-        <div className="min-h-[320px] rounded-md border p-4" data-testid="ai-office-detail">
+        <div className="min-h-[320px] scroll-mt-20 rounded-md border p-4" data-testid="ai-office-detail" data-agent-id={selected?.id ?? ''}>
           {selected ? (
             <div className="space-y-3 text-sm">
               {(() => {

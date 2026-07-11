@@ -13,3 +13,15 @@
 - Audit 170 の制約解消: 「スクリーンショットは artifacts アップロード未設定のため取得物として
   残らない」→ 本 WIP の CI artifact 追加（v5.6 §9 で明示許可された唯一の workflow 変更）で解消。
 - 検証結果・レビュー・CI は追補に記録。
+
+## 追補（レビュー反映と CI・2026-07-11）
+
+- 実装＋レビュー反映 commit `442d408`（stale currentTask 整合・startedAt 不明時の理由文・
+  webglFailed effect deps。詳細は roadmap74 §4 が正）。
+- ローカル電池: unit 299/0・tsc 0・lint 0（警告 0）・safety 0。
+- CI: run 29149576645（#190・stage1/stage3_e2e とも success）・head `442d408`・
+  `100 passed (1.5m)` / 0 failed をログ本文で確認（期待 100 = 97+3 と一致）。
+- スクリーンショット artifact: `e2e-screenshots-29149576645`（2 files・272,719 bytes・retention 3日）
+  https://github.com/DREEXY-git/369/actions/runs/29149576645/artifacts/8247804691
+  → Audit 170 の制約（取得物なし）を解消。DEMO データのみ・実顧客 PII なし。
+- Stream B2 はこれでクローズ。C04 全体の完成宣言ではない。

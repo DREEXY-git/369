@@ -43,9 +43,17 @@
 
 ## 4. Gate 判定
 
-- [ ] ローカル電池 green（unit/tsc/lint/safety）
-- [ ] 敵対的レビュー→反映
-- [ ] CI green をログ本文で確認（97＋nav 3件 = 100 期待）
-- [ ] PR #5 本文更新
+- [x] ローカル電池 green（unit 299/0・tsc 0・lint 0〔警告 0〕・safety 0）
+- [x] 敵対的レビュー→反映（stale RUNNING の currentTask 整合・startedAt 不明時の理由文・
+  webglFailed を effect deps に含めて RAF 停止/dispose を保証・既存 e2e への影響を全 spec で机上確認 =
+  sales 系は全て直接 goto のため非破壊）
+- [x] CI green をログ本文で確認: run 29149576645（#190・stage1/stage3_e2e とも success）・
+  head 442d408・`100 passed (1.5m)` / 0 failed（期待 100 = 97+3 と一致・nav_permissions 3件を CI 上で検証）
+- [x] スクリーンショット artifact 取得を確認: `e2e-screenshots-29149576645`（2 files = ai-office
+  desktop/mobile PNG・272,719 bytes・retention 3日・URL
+  https://github.com/DREEXY-git/369/actions/runs/29149576645/artifacts/8247804691 ）
+  → audit170 の「artifacts アップロード未設定」制約を解消
+- [x] PR #5 本文更新
 
-（チェックは audit173 追補で確定させる）
+→ **Stream B2（Agent Control Plane v0）クローズ**（C04 の完成宣言ではない。lifecycle 記録 v0＋
+producer 1本＋§9 ハードニングの証拠に限る）

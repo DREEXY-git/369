@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { assertCanViewConfidential, PolicyDenied } from '@/lib/security/policy';
-import { canSeeCustomerLabel } from '@/lib/security/customer-visibility';
+import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
 import { toNumber } from '@/lib/utils';
 import { PrintButton } from '@/components/print-button';
 import { AccessDenied } from '@/components/access-denied';
@@ -41,16 +41,20 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
   }
   if (!envelope) notFound();
   const [invoice, tenant] = await Promise.all([
-    // 顧客は宛先表示の name と可視判定の label のみ取得（連絡先等 PII の over-fetch 防止）。
-    prisma.invoice.findFirst({ where: { id, tenantId: user.tenantId }, include: { lineItems: true, customer: { select: { name: true, label: true } } } }),
+    prisma.invoice.findFirst({ where: { id, tenantId: user.tenantId }, include: { lineItems: true } }),
     prisma.tenant.findUnique({ where: { id: user.tenantId } }),
   ]);
   if (!invoice) notFound();
-  // 宛先も CRM の閲覧境界（WIP1）に従う（quote 側と対称・不可視は「宛先未設定」と区別不能でオラクルにならない）。
-  const customerName =
-    invoice.customer && hasPermission(user, 'customer', 'read') && canSeeCustomerLabel(user.roles, invoice.customer.label)
-      ? invoice.customer.name
-      : null;
+  // v5.8 Medium-4 修正: 宛先も取得段階から遮断（権限なし= select しない・権限あり= label 条件付き
+  // 別クエリ。不可視は「宛先未設定」と区別不能でオラクルにならない・quote 側と対称）。
+  let customerName: string | null = null;
+  if (invoice.customerId && hasPermission(user, 'customer', 'read')) {
+    const c = await prisma.customer.findFirst({
+      where: { id: invoice.customerId, tenantId: user.tenantId, label: { in: visibleCustomerLabels(user.roles) } },
+      select: { name: true },
+    });
+    customerName = c?.name ?? null;
+  }
 
   return (
     <div className="min-h-screen bg-white text-slate-900">

@@ -57,14 +57,37 @@ export const STALE_RUNNING_MS = 2 * 60 * 60 * 1000;
 /**
  * エラーメッセージの保存用マスク。PII/Secrets/接続文字列らしきものを落とし、長さを制限する。
  * prompt 全文・payload 本文は呼び出し側がそもそも渡さないこと（ここは最後の防波堤）。
+ * v5.8 High-1 修正: Bearer/Basic スキーム値・JWT・Cookie ヘッダ・quoted JSON 値・改行分割値まで
+ * 完全にマスクする（従来は `Authorization: Bearer <token>` の token 本体が残った）。
  */
 export function maskRunError(err: unknown, maxLen = 200): string {
   const raw = err instanceof Error ? err.message : String(err ?? 'unknown error');
   let s = raw
-    .replace(/(postgres(ql)?|redis|https?):\/\/\S+/gi, '[masked-url]')
+    // 接続文字列・URL（クエリ・埋め込み認証情報ごと落とす）
+    .replace(/(postgres(ql)?|redis|https?|mongodb(\+srv)?|amqps?|mysql):\/\/\S+/gi, '[masked-url]')
+    // Authorization / Cookie 系ヘッダは行末まで丸ごと（スキーム名や属性も値の一部として扱う）
+    .replace(/\b(proxy-authorization|authorization|set-cookie|cookie)\b\s*[:=][^\n\r]*/gi, '$1=[masked]')
+    // スキーム付きトークン（ヘッダ形式でない裸の出現もマスク）
+    .replace(/\bbearer\s+[A-Za-z0-9._~+/=-]+/gi, 'bearer [masked]')
+    .replace(/\bbasic\s+[A-Za-z0-9+/=]{8,}/gi, 'basic [masked]')
+    // JWT（base64url 3 セグメント）
+    .replace(/\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{2,}/g, '[masked-jwt]')
+    // key=value / key: value / quoted JSON（"apiKey":"…"・'…'・非引用値。\s* が改行を跨ぐため
+    // `token=\n<値>` のような改行分割値も値側がマスクされる）
+    .replace(
+      /\b(api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|token|secret|password|passwd|pwd|credential|session[_-]?id|private[_-]?key)\b(["']?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;&)}\]]+)/gi,
+      '$1$2[masked]',
+    )
+    // 代表的な鍵の生値パターン（キー名なしで単体出現しても落とす）
+    .replace(/\b(sk|rk|pk)-[A-Za-z0-9-]{8,}/g, '[masked-key]')
+    .replace(/\bAKIA[A-Z0-9]{10,}/g, '[masked-key]')
+    .replace(/\bgh[pousr]_[A-Za-z0-9]{16,}/g, '[masked-key]')
+    .replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}/g, '[masked-key]')
+    // メール・長い数値
     .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[masked-email]')
-    .replace(/(api[_-]?key|token|secret|password|authorization)\s*[:=]\s*\S+/gi, '$1=[masked]')
-    .replace(/\b\d{7,}\b/g, '[masked-number]');
+    .replace(/\b\d{7,}\b/g, '[masked-number]')
+    // 保存は 1 行に正規化（改行に隠れた値の逃げ道を残さない）
+    .replace(/[\r\n]+/g, ' ');
   if (s.length > maxLen) s = `${s.slice(0, maxLen)}…`;
   return s;
 }

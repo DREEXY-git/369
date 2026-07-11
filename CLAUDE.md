@@ -2,6 +2,17 @@
 
 このファイルは Claude Code が次回作業時に参照する開発ガイドです。
 
+## Codexからの自動引き継ぎ（必須）
+
+- `.claude/settings.json` のHookが、セッション開始・再開・compact後と各ユーザープロンプト送信時に、GitHub上のopenな `codex/**` PRをread-onlyで確認する。
+- Hookから `[CODEX_HANDOFF_PENDING]` が渡された場合、新規実装より先に対象PRの本文・差分・checks・最新コメントを確認し、現在のClaude Streamと重複しない取り込み順を決める。
+- 受領したPRには `CLAUDE_ACK`、取り込み完了時には `CLAUDE_INTEGRATED` をPR Conversationへ記録する。commit SHA、対象Stream、未解決Gateを含める。
+- Codex成果の正本はGitHubのcommit・Draft PR・PR Conversationとし、チャット本文だけを正本にしない。
+- HookがGitHubへ接続できなかった場合は「通知なし」ではなく「確認不能」と扱い、`gh pr list --state open --search 'head:codex/'`で再確認する。
+- Codex PRを未確認のまま同じファイルを編集しない。main merge、本番、DB、Secrets、外部送信、実LLM、課金は従来どおり別の人間承認が必要。
+
+詳細手順: `docs/coordination/CODEX_CLAUDE_HANDOFF_PROTOCOL.md`
+
 ## プロダクト概要
 中小企業向けの統合AI経営OS（経営/営業/CRM/会計/財務/人事/在庫/会議/ナレッジ/AI社員）。
 中核に **LeadMap AI**（地図×AIの新規開拓OS：リード抽出→AI分析→個別営業メール→承認→送信→追客→商談化）。

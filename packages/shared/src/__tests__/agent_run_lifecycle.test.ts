@@ -250,3 +250,60 @@ describe('isStaleActiveRun（pre/post 共通・表形式網羅）', () => {
     });
   }
 });
+
+// v6.3 P1 修正: quoted 値の内部 delimiter / 改行で打ち切らず、対応する閉じ引用符まで消費する。
+// sentinel（元秘密・prefix/suffix）が出力へ一文字列として残らないことを直接 assert（[masked] の有無では判定しない）。
+describe('maskRunError v6.3（escaped-quoted 値の内部 delimiter・改行の完全封鎖）', () => {
+  const noLeak = (input: string, ...secrets: string[]) => {
+    const out = maskRunError(input, 500);
+    for (const s of secrets) expect(out, `leaked in: ${JSON.stringify(out)}`).not.toContain(s);
+    return out;
+  };
+  it('P1-1: escaped quoted 値の内部 comma で suffix が残らない', () => {
+    noLeak(String.raw`err {\"password\":\"abc,COMMASECRET\"}`, 'COMMASECRET');
+  });
+  it('P1-1: semicolon / brace / bracket も残らない', () => {
+    noLeak(String.raw`{\"token\":\"a;SEMICOLONSECRET\"}`, 'SEMICOLONSECRET');
+    noLeak(String.raw`{\"secret\":\"a}BRACESECRET\"}`, 'BRACESECRET');
+    noLeak(String.raw`{\"password\":\"a]BRACKETSECRET\"}`, 'BRACKETSECRET');
+  });
+  it('P1-1: raw quoted 値の内部 comma / brace も残らない', () => {
+    noLeak('{"password":"abc,COMMASECRET2"}', 'COMMASECRET2');
+    noLeak('{"password":"a}BRACESECRET2"}', 'BRACESECRET2');
+  });
+  it('P1-2: quoted 値の改行 2 行目が残らない（LF）', () => {
+    noLeak('{"password":"abc\nNEWLINESECRET"}', 'NEWLINESECRET');
+  });
+  it('P1-2: escaped quoted 値の改行も残らない', () => {
+    noLeak('{\\"password\\":\\"abc\nNEWLINESECRET2\\"}', 'NEWLINESECRET2');
+  });
+  it('P1-2: CRLF / 複数改行 / 改行後 suffix も残らない', () => {
+    noLeak('{"password":"abc\r\nCRLFSECRET"}', 'CRLFSECRET');
+    noLeak('{"password":"a\n\nMULTISECRET"}', 'MULTISECRET');
+    noLeak('{"token":"x\nSUFFSECRET,other"}', 'SUFFSECRET');
+  });
+  it('nested escaped JSON の comma も残らない', () => {
+    noLeak(String.raw`{\"o\":{\"password\":\"a,NESTEDSECRET\"}}`, 'NESTEDSECRET');
+  });
+  it('unclosed quoted 値は fail-closed（末尾まで masked）', () => {
+    noLeak('{"password":"abcUNCLOSEDSECRET', 'UNCLOSEDSECRET');
+  });
+  it('破損した連続 escaped quote（\\"a\\"b\\"...）でも suffix が残らない', () => {
+    noLeak(String.raw`{\"password\":\"a\"b\"MULTIQSECRET\"}`, 'MULTIQSECRET');
+  });
+  it('escaped backslash + 閉じ引用符を正しく処理', () => {
+    noLeak('{"password":"abc\\\\","x":1} SAFEWORD', 'abc');
+  });
+  it('100KB 級入力が bounded に終了（catastrophic backtracking なし）', () => {
+    const big = `{"password":"${'x'.repeat(100000)}HUGESECRET"}`;
+    const out = maskRunError(big, 200);
+    expect(out).not.toContain('HUGESECRET');
+    expect(out.length).toBeLessThanOrEqual(201);
+    expect(out).not.toContain('\n');
+  });
+  it('quoted 値の後の benign 文脈は過剰マスクしない', () => {
+    const out = maskRunError('config password: "sec-01" and then connected to host ok', 500);
+    expect(out).toContain('connected to host ok');
+    expect(out).not.toContain('sec-01');
+  });
+});

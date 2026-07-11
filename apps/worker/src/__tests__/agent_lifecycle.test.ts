@@ -101,6 +101,37 @@ describe('runWithAgentLifecycle（v5.8 hardening）', () => {
     }
   });
 
+  it('v6.3 P1: escaped-quoted / 改行入り秘密も、保存エラーと再throwの両方でマスクされる', async () => {
+    const { db, runs } = makeDb();
+    await expect(
+      runWithAgentLifecycle(
+        params,
+        async () => {
+          // P1-1（comma）と P1-2（newline）を含む秘密。保存値・再throw値のどちらにも残ってはならない。
+          throw new Error('upstream {"password":"abc,COMMASECRET63"} and {"token":"x\nNEWLINESECRET63"}');
+        },
+        db,
+      ),
+    ).rejects.toThrow(/agent lifecycle job failed/);
+    expect(runs[0]!.status).toBe('FAILED');
+    for (const sec of ['COMMASECRET63', 'NEWLINESECRET63']) {
+      expect(runs[0]!.error).not.toContain(sec);
+    }
+    try {
+      await runWithAgentLifecycle(
+        { ...params, task: '別タスク63' },
+        async () => {
+          throw new Error('{"password":"abc,COMMASECRET63"}\n{"token":"x\nNEWLINESECRET63"}');
+        },
+        db,
+      );
+      expect.unreachable('should throw');
+    } catch (e) {
+      expect(String(e)).not.toContain('COMMASECRET63');
+      expect(String(e)).not.toContain('NEWLINESECRET63');
+    }
+  });
+
   it('二重 Run 防止: 新鮮な RUNNING が既存なら実行せず skip する', async () => {
     const { db } = makeDb({
       preexisting: [

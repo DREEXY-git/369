@@ -104,8 +104,6 @@ const KEY_SEP_RE = new RegExp(
   'gi',
 );
 
-const VALUE_DELIMS = new Set([',', ';', '&', ')', '}', ']']);
-
 function backslashParityEven(s: string, i: number): boolean {
   let n = 0;
   let j = i - 1;
@@ -125,22 +123,22 @@ function scanValueEnd(s: string, start: number, headerKey: boolean): number {
   const quotedish = first === '"' || first === "'";
 
   if (quotedish) {
-    // top-level delimiter（inString でない位置）まで消費。even-backslash の引用符だけが inString をトグルする。
-    let inString = false;
-    let q = '';
-    for (let k = start; k < s.length; k++) {
-      const c = s[k]!;
-      if (c === '\n') return k;
-      if (inString) {
-        if (c === q && backslashParityEven(s, k)) inString = false;
-      } else if ((c === '"' || c === "'") && backslashParityEven(s, k)) {
-        inString = true;
-        q = c;
-      } else if (VALUE_DELIMS.has(c)) {
-        return k;
+    // v6.3 P1 修正: 開始引用符（raw `"` / escaped `\"`）を文字列の開きとして扱い、**同じ escape レベルの
+    // 対応する閉じ引用符まで**消費する。内部の delimiter（, ; : = } ] 等）や改行では**終了しない**
+    // （P1-1: comma で打ち切って suffix 残存／P1-2: newline で打ち切って 2 行目残存 を封鎖）。
+    // escape レベル = 開始引用符の直前 backslash 個数の偶奇（0/偶=raw、1/奇=escaped）。閉じ引用符は
+    // 同じ偶奇の backslash 個数を持つものだけ。見つからなければ fail-closed で入力末尾までマスク。
+    const q = s[p]!; // 開始引用符文字（" または '）
+    const openEven = (p - start) % 2 === 0; // 先頭 backslash 個数の偶奇（p-start = leading backslash 数）
+    // 有効な閉じ引用符 = 同じ escape レベル（backslash 偶奇一致）で、かつ直後が「空白・構造区切り・末尾」であるもの。
+    // 直後が文字/数字なら（例: 破損した `\"a\"b\"` の内部 `\"`）閉じとみなさず読み飛ばし、over-mask で fail-closed。
+    const closerFollows = (idx: number): boolean => idx >= s.length || /[\s,;:&)}\]]/.test(s[idx]!);
+    for (let k = p + 1; k < s.length; k++) {
+      if (s[k] === q && backslashParityEven(s, k) === openEven && closerFollows(k + 1)) {
+        return k + 1; // 対応する閉じ引用符まで（内部の delimiter・改行・エスケープ引用符は読み飛ばす）
       }
     }
-    return s.length;
+    return s.length; // unclosed/破損: 安全側で末尾まで
   }
 
   if (headerKey) {

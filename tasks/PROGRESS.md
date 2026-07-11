@@ -1719,3 +1719,9 @@
 - 検証（全 green）: db:generate / dunning unit 20 / integration 15ファイル97（p1_10/p1_15 含む）/ typecheck / lint / unit 23ファイル211 / build（BUILD_ID 生成）。
 - 詳細: `docs/audit/03_security_audit.md`「Phase 1-16 ローカル是正」。
 - 範囲外（判断要）: `createInvoiceAction`/`issueInvoiceAction` の STAFF 遮断可否。
+
+## 2026-07-11: オートパイロット v5.4（WIP-3〜7・Phase 3 クローズ準備）完了
+
+- WIP-3〜6 の境界クローズ4連（/growth 財務・Quote/Invoice/Print・Topbar/dashboard 承認シグナル・PII 29経路機械監査）を、各 WIP とも「設計 Gate → 実装 → 敵対的レビュー（計8エージェント）→ 修正 → CI green ログ本文確認 → push」で完遂。CI: #161 88/0 → #162 91/0 → #163 93/0 → #164（WIP-6・audit167 追補）。
+- 主要判断: 見積の原価・粗利 = quote:read 配下（値引き承認ルールを含む STAFF 業務フロー）／DX 推定金額 = marketing ドメインデータ／請求の宛先にも可視ラベルガード（quote 側と対称に改訂）／承認シグナルの入口条件 = approval:approve（/approvals ページゲートと一致）／顧客名の可視判定は lib/security/customer-visibility.ts に一本化（golden-path 系は fail-closed 既定）。
+- Phase 3 完了は宣言せず、判定表（達成 C18/C20/C27/C38・未達 C19/C21/C22）と案A/案B を roadmap68 §2 で人間 Phase Gate に提示。Phase 4 最初の3 WIP 案 = roadmap68 §3。HOLD = roadmap67 §3。

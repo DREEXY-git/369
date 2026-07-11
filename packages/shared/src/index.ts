@@ -27,5 +27,6 @@ export * from './case-study';
 export * from './case-study-consent';
 export * from './customer-pain-access';
 export * from './ai-workforce';
+export * from './agent-run-lifecycle';
 // 注: './webhook' は node:crypto を使うため barrel に含めない（client汚染防止）。
 //     サーバ/ワーカーは '@hokko/shared/webhook' から直接 import する。

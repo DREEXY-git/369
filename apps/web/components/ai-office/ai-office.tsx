@@ -17,7 +17,7 @@ import {
   AI_WORKFORCE_STATE_COLOR,
   type AiWorkforceState,
 } from '@hokko/shared';
-import type { AiWorkforceReadModel, AiWorkforceAgentView } from '@/lib/domains/ai-workforce/read-model';
+import type { AiWorkforceReadModel } from '@/lib/domains/ai-workforce/read-model';
 
 const STATE_ICON: Record<AiWorkforceState, string> = {
   idle: '💤',
@@ -80,7 +80,9 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
 
   // Three.js シーン構築（計測前・狭幅では構築しない）。
   useEffect(() => {
-    if (!measured || isNarrow) return;
+    // webglFailed を deps に含める: context lost で fallback へ切替えた際に cleanup（RAF停止・dispose）を
+    // 確実に走らせるため（含めないと描画ループが lost context へ回り続ける）。
+    if (!measured || isNarrow || webglFailed) return;
     const mount = mountRef.current;
     if (!mount) return;
 
@@ -212,6 +214,15 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
     };
     renderer.domElement.addEventListener('click', onClick);
 
+    // WebGL context lost（GPU リセット・タブ復帰等）: 描画ループを止めて 2D フォールバックへ切替（roadmap74 §9）。
+    // preventDefault は restore を許可するための WebGL 仕様上の作法だが、restore を待たずフォールバックで固定する
+    // （復帰タイミング依存の白画面より、常に読める 2D 一覧を優先）。
+    const onContextLost = (ev: Event) => {
+      ev.preventDefault();
+      setWebglFailed(true);
+    };
+    renderer.domElement.addEventListener('webglcontextlost', onContextLost);
+
     // アニメーション: working は小さく上下動（レイアウトは不変・メッシュのみ動く）。
     let raf = 0;
     const clock = new THREE.Clock();
@@ -238,6 +249,7 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', onResize);
       renderer.domElement.removeEventListener('click', onClick);
+      renderer.domElement.removeEventListener('webglcontextlost', onContextLost);
       controls.dispose();
       renderer.dispose();
       mount.removeChild(renderer.domElement);
@@ -256,7 +268,7 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
       });
     };
     // model はサーバ描画ごとに固定。フィルタは可視切替 effect で別処理。
-  }, [model, isNarrow, measured]);
+  }, [model, isNarrow, measured, webglFailed]);
 
   // フィルタは再構築せずメッシュの可視のみ切替（レイアウト・カメラを動かさない）。
   useEffect(() => {
@@ -306,7 +318,7 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
             </div>
           ) : webglFailed ? (
             <div className="rounded-md border bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              3D 表示を初期化できませんでした（WebGL 不可）。下の 2D 一覧をご利用ください。
+              3D 表示を利用できません（WebGL の初期化失敗またはコンテキスト喪失）。下の 2D 一覧をご利用ください。
             </div>
           ) : (
             <div ref={mountRef} className="h-[480px] w-full overflow-hidden rounded-md border bg-slate-900" data-testid="ai-office-3d" />

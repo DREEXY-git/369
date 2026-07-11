@@ -34,6 +34,38 @@ describe('deriveAgentState（証拠からの状態導出・捏造しない）', 
   });
 });
 
+describe('deriveAgentState の stale 閾値（RUNNING を働いていると断定しない・roadmap74 §9）', () => {
+  const now = new Date('2026-07-11T12:00:00Z');
+  it('新鮮な RUNNING（閾値内）＋ now → working', () => {
+    const d = deriveAgentState(
+      { ...base, latestRun: { status: 'RUNNING', startedAt: new Date('2026-07-11T11:30:00Z'), finishedAt: null, task: 'a' } },
+      now,
+    );
+    expect(d.state).toBe('working');
+  });
+  it('RUNNING が 2 時間超（stale）＋ now → unknown（クラッシュ残骸を作業中に見せない）', () => {
+    const d = deriveAgentState(
+      { ...base, latestRun: { status: 'RUNNING', startedAt: new Date('2026-07-11T09:00:00Z'), finishedAt: null, task: 'a' } },
+      now,
+    );
+    expect(d.state).toBe('unknown');
+    expect(d.reason).toContain('stale');
+  });
+  it('RUNNING で startedAt 不明＋ now → unknown（実行中の証拠として扱わない）', () => {
+    const d = deriveAgentState(
+      { ...base, latestRun: { status: 'RUNNING', startedAt: null, finishedAt: null, task: 'a' } },
+      now,
+    );
+    expect(d.state).toBe('unknown');
+  });
+  it('now 省略時は従来どおり working（後方互換・時刻非依存）', () => {
+    expect(
+      deriveAgentState({ ...base, latestRun: { status: 'RUNNING', startedAt: new Date('2026-07-11T00:00:00Z'), finishedAt: null, task: 'a' } })
+        .state,
+    ).toBe('working');
+  });
+});
+
 describe('freshnessLabel', () => {
   const now = new Date('2026-07-11T12:00:00Z');
   it('記録なし・分・時間・日', () => {

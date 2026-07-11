@@ -87,12 +87,16 @@ export async function getAiWorkforceReadModel(tenantId: string, now: Date = new 
     const run = latestRunByAgent.get(a.id) ?? null;
     const pending = pendingByAgent.get(a.id) ?? 0;
     const rejected = rejectedByAgent.get(a.id) ?? 0;
-    const derived = deriveAgentState({
-      agentStatus: a.status,
-      latestRun: run ? { status: run.status, startedAt: run.startedAt, finishedAt: run.finishedAt, task: run.task } : null,
-      pendingApprovalGates: pending,
-      rejectedApprovalGates: rejected,
-    });
+    // now を渡し、RUNNING が stale 閾値超過なら「作業中」と断定しない（roadmap74 §9）。
+    const derived = deriveAgentState(
+      {
+        agentStatus: a.status,
+        latestRun: run ? { status: run.status, startedAt: run.startedAt, finishedAt: run.finishedAt, task: run.task } : null,
+        pendingApprovalGates: pending,
+        rejectedApprovalGates: rejected,
+      },
+      now,
+    );
     const lastActivityAt = run ? (run.finishedAt ?? run.startedAt) : null;
     const next =
       derived.state === 'waiting_approval'
@@ -112,7 +116,8 @@ export async function getAiWorkforceReadModel(tenantId: string, now: Date = new 
       state: derived.state,
       stateReason: derived.reason,
       blockedReason: derived.blockedReason,
-      currentTask: run && (run.status === 'RUNNING' || run.status === 'QUEUED') ? run.task : null,
+      // stale な RUNNING（derived が unknown）に「現在タスク」を出すと実行中に見えるため、導出状態と揃える。
+      currentTask: derived.state === 'working' || derived.state === 'planning' ? (run?.task ?? null) : null,
       lastActivityLabel: freshnessLabel(lastActivityAt, now),
       pendingApprovals: pending,
       runCount: runCountByAgent.get(a.id) ?? 0,

@@ -2,6 +2,7 @@
 // AI 社員の状態は「証拠」（AIAgentRun / AIApprovalGate / AIAgent.status / 最終活動時刻）から導出する。
 // 証拠がなければ unknown（no telemetry）とし、働いているように捏造しない。
 // 本モジュールは表示用の導出のみを行い、実行・承認・削除・外部送信の能力を持たない。
+import { STALE_RUNNING_MS } from './agent-run-lifecycle';
 
 export const AI_WORKFORCE_STATES = [
   'idle',
@@ -64,10 +65,13 @@ export interface DerivedAgentState {
 }
 
 /**
- * 証拠から AI 社員の状態を導出する（決定論・現在時刻に依存しない）。
+ * 証拠から AI 社員の状態を導出する（決定論・now は呼び出し側が明示的に渡す）。
  * 優先順位: offline > waiting_approval > working > planning > blocked > error > idle > unknown。
+ * now を渡した場合、RUNNING が STALE_RUNNING_MS を超えて finishedAt を持たないときは
+ * 「実行中」と断定せず unknown（stale）にする（クラッシュ残骸を働いているように見せない・roadmap74 §9）。
+ * now 省略時は従来どおり時刻非依存（後方互換）。
  */
-export function deriveAgentState(e: AgentStateEvidence): DerivedAgentState {
+export function deriveAgentState(e: AgentStateEvidence, now?: Date): DerivedAgentState {
   if (e.agentStatus !== 'active') {
     return { state: 'offline', reason: `エージェント状態が ${e.agentStatus}（active ではない）`, blockedReason: null };
   }
@@ -83,8 +87,23 @@ export function deriveAgentState(e: AgentStateEvidence): DerivedAgentState {
     return { state: 'unknown', reason: '実行記録なし（no telemetry）', blockedReason: null };
   }
   switch (e.latestRun.status) {
-    case 'RUNNING':
+    case 'RUNNING': {
+      if (now) {
+        const age = e.latestRun.startedAt
+          ? now.getTime() - e.latestRun.startedAt.getTime()
+          : Number.POSITIVE_INFINITY;
+        if (age > STALE_RUNNING_MS) {
+          return {
+            state: 'unknown',
+            reason: e.latestRun.startedAt
+              ? `RUNNING のまま ${Math.floor(age / 3600000)}時間以上終了記録なし（実行中と断定できない・stale）`
+              : 'RUNNING だが開始時刻の記録がない（実行中と断定できない・stale）',
+            blockedReason: null,
+          };
+        }
+      }
       return { state: 'working', reason: `実行中: ${e.latestRun.task}`, blockedReason: null };
+    }
     case 'QUEUED':
       return { state: 'planning', reason: `キュー待ち: ${e.latestRun.task}`, blockedReason: null };
     case 'FAILED':

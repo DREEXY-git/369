@@ -714,17 +714,22 @@ export interface SeoBriefInput {
 }
 
 export function fakeSeoBrief(input: SeoBriefInput): SeoBriefResult {
-  const kw = input.keyword.trim() || 'テーマ未設定';
-  const audRaw = input.audience.trim() || '見込み顧客';
+  // v5.8 Medium-5: 生成側でも長さを防波堤として制限する（action 側の入力上限と二重防御。
+  // 実 LLM 化時は Zod スキーマの max がさらに強制する）。
+  const clamp = (v: string, n: number) => (v.length > n ? `${v.slice(0, n)}…` : v);
+  const kwRaw = input.keyword.trim() || 'テーマ未設定';
+  const kw = clamp(kwRaw, 80);
+  const audRaw = clamp(input.audience.trim() || '見込み顧客', 80);
   const aud = detectForbiddenClaims(audRaw).length ? '見込み顧客' : audRaw;
   const claims = detectForbiddenClaims(`${input.keyword}\n${input.audience}\n${input.theme}`);
   // 誇大表現（No.1・業界初・満足度数値等）は入力に含まれていても生成コピーへ持ち込まない。
   // 表示用のキーワード/テーマは安全な代替に差し替え、原文の扱いは nextHumanChecks に回す。
   const displayKw = detectForbiddenClaims(kw).length ? '対象サービス（表現の根拠確認が必要）' : kw;
-  const rawTheme = input.theme.trim();
+  const rawTheme = clamp(input.theme.trim(), 120);
   const displayTheme = !rawTheme || detectForbiddenClaims(rawTheme).length ? displayKw : rawTheme;
-  const dup = input.existingTitles.some((t) => t.includes(kw));
+  const dup = input.existingTitles.some((t) => t.includes(kwRaw) || (kwRaw.length > 80 && t.includes(kw.slice(0, 80))));
   const gaps: string[] = [];
+  if (kwRaw.length > 80) gaps.push('キーワードが長すぎるため 80 文字で切り詰めて扱いました。原文の意図確認が必要です。');
   if (!input.audience.trim()) gaps.push('想定読者が未指定です。');
   if (input.existingTitles.length === 0) gaps.push('既存記事の記録がなく、内部リンク候補を提案できません。');
 

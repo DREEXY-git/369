@@ -253,12 +253,23 @@ export async function generateSeoBriefDraftAction(formData: FormData) {
   const tool = checkToolPermission('user', 'generate');
   if (!tool.allowed) redirect('/marketing/content?error=tool');
 
+  // v5.8 Medium-5 修正: 自由入力に上限を課す（巨大入力による AIOutput/DataAccessLog/描画の肥大化防止）。
+  // 超過は黙って切り詰めず、エラーとして返す（入力の意図しない改変をしない）。
+  const SEO_INPUT_MAX = { keyword: 120, audience: 200, theme: 300 } as const;
   const keyword = String(formData.get('keyword') ?? '').trim();
   if (!keyword) redirect('/marketing/content?error=keyword');
+  const audience = String(formData.get('audience') ?? '').trim();
+  const theme = String(formData.get('theme') ?? '').trim();
+  if (keyword.length > SEO_INPUT_MAX.keyword || audience.length > SEO_INPUT_MAX.audience || theme.length > SEO_INPUT_MAX.theme) {
+    redirect('/marketing/content?error=too_long');
+  }
   // 既存記事タイトルのみ渡す（顧客 PII・CUSTOMER_CONFIDENTIAL は取得も送出もしない）。
+  // v5.8 Low 修正: orderBy を固定して重複診断の入力集合を決定論化（100件超でも集合が不定にならない）。
+  // タイトル自体も1件あたり上限で切る（AI入力の肥大化防止・表示は別途 DB 値が正）。
   const existing = await prisma.contentAsset.findMany({
     where: { tenantId: user.tenantId, type: { in: ['article', 'lp'] } },
     select: { title: true },
+    orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
     take: 100,
   });
   const result = await generateSeoBriefDraft({
@@ -266,9 +277,9 @@ export async function generateSeoBriefDraftAction(formData: FormData) {
     userId: user.userId,
     input: {
       keyword,
-      audience: String(formData.get('audience') ?? '').trim(),
-      theme: String(formData.get('theme') ?? '').trim(),
-      existingTitles: existing.map((e) => e.title),
+      audience,
+      theme,
+      existingTitles: existing.map((e) => e.title.slice(0, 200)),
     },
   });
   if (result.blocked) redirect('/marketing/content?blocked=1');

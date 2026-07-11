@@ -132,18 +132,20 @@ export const AdsImprovementSchema = z.object({
 export type AdsImprovementResult = z.infer<typeof AdsImprovementSchema>;
 
 /** C21 SEO ブリーフ下書き（Phase 3.5・下書きのみ。外部検索・順位取得・公開・CMS 投稿は封印中）。 */
+// v5.8 Medium-5 修正: 各フィールドに上限を課す（巨大 AIOutput の保存・描画肥大化を構造で防ぐ。
+// 実 LLM 化時も Zod 検証で強制される）。
 export const SeoBriefSchema = z.object({
-  title: z.string(),
-  keyword: z.string(),
+  title: z.string().max(160),
+  keyword: z.string().max(160),
   /** 検索意図の推定（情報収集/比較検討/購入行動 など）。 */
-  searchIntent: z.string(),
+  searchIntent: z.string().max(400),
   /** 記事構成（見出し案）。 */
-  outline: z.array(z.string()).min(3),
-  metaTitle: z.string(),
-  metaDescription: z.string(),
-  rationale: z.array(z.string()).default([]),
-  dataGaps: z.array(z.string()).default([]),
-  nextHumanChecks: z.array(z.string()).min(1),
+  outline: z.array(z.string().max(200)).min(3).max(12),
+  metaTitle: z.string().max(120),
+  metaDescription: z.string().max(300),
+  rationale: z.array(z.string().max(500)).max(10).default([]),
+  dataGaps: z.array(z.string().max(300)).max(10).default([]),
+  nextHumanChecks: z.array(z.string().max(400)).min(1).max(10),
   confidence: z.number().min(0).max(1),
 });
 export type SeoBriefResult = z.infer<typeof SeoBriefSchema>;

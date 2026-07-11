@@ -39,8 +39,13 @@
 
 ## 4. Gate 判定
 
-- [ ] ローカル電池 green（unit/tsc/lint/build/safety）
-- [ ] CI green をログ本文で確認（103 期待）＋スクリーンショット artifact で 3D 見た目を確認
-- [ ] Draft PR 作成
+- [x] ローカル電池 green（unit 309/0・tsc 0・lint 0・build 0〔/ai-office 155kB〕・safety 0）
+- [x] CI green をログ本文で確認: run 29151401460（#204・stage1/stage3_e2e とも success）・head 52d00d8・
+  `103 passed (1.5m)` / 0 failed（プロフィール表示・実測/設定分離・canvas 非 blank・コンソールエラー 0 を CI 上で検証）
+- [x] スクリーンショット artifact 取得: `e2e-screenshots-29151401460`（2 files・299,591 bytes・retention 3日・
+  https://github.com/DREEXY-git/369/actions/runs/29151401460/artifacts/8248281285 ）。
+  ※ artifact zip の blob URL は本サンドボックスの proxy で取得不可（既知の制約・人間はブラウザから閲覧可）。
+  見た目の実証はローカルの実レンダリング目視（SVG 8名＋WebGL 3D 8体・§3）＋CI ピクセル検査で担保
+- [x] Draft PR #9 作成（merge しない・統合順は #3→#4→#5→#6→#9 想定）
 
-（チェックは audit175 追補で確定させる）
+→ **Stream D（キャラクター作り込み v1）クローズ**

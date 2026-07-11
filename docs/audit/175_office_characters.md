@@ -10,3 +10,13 @@
 - 規律: プロフィールは「キャラクター設定」、稼働状態・実行回数は「実測（証拠由来）」として UI 上で明示分離
   （証拠なき成果を語らない原則と両立）。
 - 検証結果・CI は追補に記録。
+
+## 追補（CI・2026-07-11）
+
+- 実装 commit `52d00d8`。ローカル電池 green（unit 309/0・tsc 0・lint 0・build 0・safety 0）。
+- 視覚検証: SVG ポートレート 8名＋3D アバター 8体をローカル実レンダリング（chromium/WebGL）で目視確認。
+  修正2件（髪キャップが目を覆う→後方オフセット＋眉上バンド前髪・瞳が頭部球に埋まる→表面より前へ）。
+- CI: run 29151401460（#204・stage1/stage3_e2e とも success）・`103 passed (1.5m)` / 0 failed をログ本文で確認。
+- artifact: e2e-screenshots-29151401460（desktop/mobile PNG・retention 3日）。blob URL は sandbox proxy で
+  取得不可のため、CI 上の見た目確認はピクセル検査（背景乖離>200・色数>12・コンソールエラー0）で代替。
+- Draft PR #9（merge しない）。

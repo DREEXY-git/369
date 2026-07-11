@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { canTransitionRun, isTerminalRunStatus, shouldCreateRun, maskRunError, STALE_RUNNING_MS } from '../agent-run-lifecycle';
+import {
+  canTransitionRun,
+  isTerminalRunStatus,
+  shouldCreateRun,
+  maskRunError,
+  isStaleActiveRun,
+  STALE_RUNNING_MS,
+} from '../agent-run-lifecycle';
 
 describe('canTransitionRun（許可表・terminal 保護）', () => {
   it('正常系: QUEUED→RUNNING→SUCCEEDED / RUNNING→NEEDS_APPROVAL→RUNNING', () => {
@@ -172,4 +179,74 @@ describe('maskRunError v6.1（escaped quote・改行直後値・裸 session）',
     const m = maskRunError(new Error('worker session started at step 3'));
     expect(m).toContain('session started');
   });
+});
+
+// v6.2 High 修正: bounded scanner。値内部の escaped quote で秘密 suffix が残らないことを、
+// [masked] の有無ではなく「元秘密・prefix・suffix・sentinel が一文字列として残らない」で直接 assert する。
+describe('maskRunError v6.2（bounded scanner・escaped quote 完全封鎖）', () => {
+  const noLeak = (input: string, ...secrets: string[]) => {
+    const out = maskRunError(input, 500);
+    for (const sec of secrets) expect(out, `leaked in: ${JSON.stringify(out)}`).not.toContain(sec);
+    return out;
+  };
+  it('受入例: 値内部 escaped quote の suffix が残らない', () => {
+    noLeak('{"password":"abc\\"SECRET_TOKEN"}', 'SECRET_TOKEN');
+  });
+  it('outer quote だけが escaped（escaped key + value）', () => {
+    noLeak('err {\\"password\\":\\"OUTERSECRET1\\"}', 'OUTERSECRET1');
+  });
+  it('escaped backslash then close', () => {
+    noLeak('{"secret":"path\\\\"} trailing', 'path');
+  });
+  it('複数の escaped quote', () => {
+    noLeak('{"password":"a\\"b\\"c\\"MULTISECRET3"}', 'MULTISECRET3');
+  });
+  it('nested object / array 内の password・token', () => {
+    noLeak('{"outer":{"password":"NESTEDSECRET4"},"list":[{"token":"ARRSECRET5"}]}', 'NESTEDSECRET4', 'ARRSECRET5');
+  });
+  it('quote 後に秘密 suffix が続く入力', () => {
+    noLeak('log "password":"abc"SUFFIXSECRET6 end', 'SUFFIXSECRET6');
+  });
+  it('single quote 値', () => {
+    noLeak("{'password':'SQUOTE15val'}", 'SQUOTE15val');
+  });
+  it('複数 header（authorization / cookie）が両方残らない', () => {
+    noLeak('authorization: Bearer HDR9\ncookie: sid=HDR10', 'HDR9', 'HDR10');
+  });
+  it('巨大入力でも一行・maxLen（catastrophic backtracking なし）', () => {
+    const big = `{"password":"${'x'.repeat(5000)}SECRETBIG"}`;
+    const out = maskRunError(big, 200);
+    expect(out).not.toContain('SECRETBIG');
+    expect(out.length).toBeLessThanOrEqual(201);
+    expect(out).not.toContain('\n');
+  });
+  it('benign 文（日本語・英語）を過剰マスクしない', () => {
+    const out = maskRunError('worker session started: 接続に失敗 ECONNREFUSED at step 3', 500);
+    expect(out).toContain('ECONNREFUSED');
+    expect(out).toContain('session started');
+    expect(out).toContain('接続に失敗');
+  });
+});
+
+// v6.2 WIP-2: stale 判定の単一正本 isStaleActiveRun（RUNNING/QUEUED × fresh/stale/null・terminal 除外）。
+describe('isStaleActiveRun（pre/post 共通・表形式網羅）', () => {
+  const now = new Date('2026-07-12T00:00:00Z');
+  const fresh = new Date(now.getTime() - 60_000);
+  const old = new Date(now.getTime() - (STALE_RUNNING_MS + 60_000));
+  const table: [string, 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'NEEDS_APPROVAL', Date | null, boolean][] = [
+    ['RUNNING fresh → 非stale', 'RUNNING', fresh, false],
+    ['RUNNING stale → stale', 'RUNNING', old, true],
+    ['RUNNING null → stale（安全側）', 'RUNNING', null, true],
+    ['QUEUED fresh → 非stale', 'QUEUED', fresh, false],
+    ['QUEUED stale → stale', 'QUEUED', old, true],
+    ['QUEUED null → stale（安全側）', 'QUEUED', null, true],
+    ['SUCCEEDED → 非active', 'SUCCEEDED', old, false],
+    ['FAILED → 非active', 'FAILED', old, false],
+    ['NEEDS_APPROVAL → 非active（crash 概念外）', 'NEEDS_APPROVAL', null, false],
+  ];
+  for (const [name, status, startedAt, expected] of table) {
+    it(name, () => {
+      expect(isStaleActiveRun({ status, startedAt }, now)).toBe(expected);
+    });
+  }
 });

@@ -27,9 +27,12 @@ export function isTerminalRunStatus(s: RunLifecycleStatus): boolean {
 
 /**
  * 新しい run を作ってよいか（二重実行・クラッシュ後の暴走防止）。
- * - 同一 agent×task に「新鮮な」RUNNING/QUEUED/NEEDS_APPROVAL があれば作らない（重複実行）。
- * - RUNNING が staleThresholdMs より古い場合はクラッシュ残骸とみなし、新規作成を許可する
- *   （古い run は巻き戻さず、そのまま履歴として残す）。
+ * - NEEDS_APPROVAL があれば作らない（人間の判断が先）。
+ * - 「新鮮な（非 stale）」RUNNING/QUEUED があれば作らない（重複実行）。
+ * - stale（クラッシュ残骸・startedAt 古い or null）は無視して新規作成を許可（残骸は巻き戻さない）。
+ *
+ * v6.2: staleness 判定は共有 `isStaleActiveRun` に一本化し、worker の作成後 rival 判定と**完全に同じ規則**にする
+ * （RUNNING/QUEUED を同じ扱い・null=stale・同一 threshold・呼び出し側が渡す now を時刻基準にする）。
  */
 export function shouldCreateRun(
   existing: { status: RunLifecycleStatus; startedAt: Date | null }[],
@@ -40,12 +43,10 @@ export function shouldCreateRun(
     if (r.status === 'NEEDS_APPROVAL') {
       return { create: false, reason: '同一タスクが承認待ちです（人間の判断が先）' };
     }
-    if (r.status === 'RUNNING' || r.status === 'QUEUED') {
-      const age = r.startedAt ? now.getTime() - r.startedAt.getTime() : Number.POSITIVE_INFINITY;
-      if (age <= staleThresholdMs) {
-        return { create: false, reason: '同一タスクが実行中です（重複実行を防止）' };
-      }
-      // stale RUNNING は残骸として無視（履歴は改竄しない）。
+  }
+  for (const r of existing) {
+    if ((r.status === 'RUNNING' || r.status === 'QUEUED') && !isStaleActiveRun(r, now, staleThresholdMs)) {
+      return { create: false, reason: '同一タスクが実行中です（重複実行を防止）' };
     }
   }
   return { create: true, reason: 'ok' };
@@ -55,81 +56,151 @@ export function shouldCreateRun(
 export const STALE_RUNNING_MS = 2 * 60 * 60 * 1000;
 
 /**
- * stale（クラッシュ残骸）判定。RUNNING かつ startedAt が staleThresholdMs より古いものだけを stale とする。
- * v6.1 修正: `shouldCreateRun`（作成前）と worker の作成後 rival 判定で staleness の扱いを一致させるための
- * 共有ヘルパ。startedAt 不明（null）は「実行中と断定できない」だけで crash 残骸とも断定しないため stale 扱いにしない
- * （保守的＝新鮮な rival として扱い、二重実行側を降ろす方に倒す）。QUEUED/NEEDS_APPROVAL は crash 残骸概念の外。
+ * stale（クラッシュ残骸）判定の単一正本（v6.2）。作成前 gate（`shouldCreateRun`）と worker の作成後 rival 判定が
+ * **同一 helper・同一 threshold・同一時刻基準**で判定するための共有関数。
+ *
+ * 規則（RUNNING と QUEUED を対象・NEEDS_APPROVAL/terminal は対象外）:
+ * - `startedAt` が threshold より古い → stale（クラッシュ残骸）。
+ * - `startedAt == null` → **安全側で stale とみなす**（実行中/新鮮と断定できないレコードで新規 run を恒久ブロック
+ *   しないため。pre/post で逆判定にしない＝両方 stale 扱い）。
+ * - fresh（threshold 内の startedAt）→ stale ではない＝二重実行防止の対象。
  */
+export function isStaleActiveRun(
+  run: { status: RunLifecycleStatus; startedAt: Date | null },
+  now: Date,
+  staleThresholdMs: number = STALE_RUNNING_MS,
+): boolean {
+  if (run.status !== 'RUNNING' && run.status !== 'QUEUED') return false;
+  if (!run.startedAt) return true;
+  return now.getTime() - run.startedAt.getTime() > staleThresholdMs;
+}
+
+/** @deprecated v6.2: `isStaleActiveRun` へ統一（RUNNING/QUEUED・null=stale）。後方互換のため残置。 */
 export function isStaleRunningRun(
   run: { status: RunLifecycleStatus; startedAt: Date | null },
   now: Date,
   staleThresholdMs: number = STALE_RUNNING_MS,
 ): boolean {
-  if (run.status !== 'RUNNING') return false;
-  if (!run.startedAt) return false;
-  return now.getTime() - run.startedAt.getTime() > staleThresholdMs;
+  return isStaleActiveRun(run, now, staleThresholdMs);
 }
 
-/**
- * エラーメッセージの保存用マスク。PII/Secrets/接続文字列らしきものを落とし、長さを制限する。
- * prompt 全文・payload 本文は呼び出し側がそもそも渡さないこと（ここは最後の防波堤）。
- *
- * v5.9 High-1 全面修復（Codex 再現3経路を含む）: 正規表現の継ぎ足しではなく
- * 「①正規化（CRLF 統一・折返しヘッダの unfold）→②キー種別ごとの全面 redact →③1行化」の順で処理する。
- * quoted JSON キー（"authorization" / "cookie" 等）・折返し Cookie・tab/mixed case も対象。
- */
-// v6.1 追補: 裸の `session`（session_id/sid 以外）も対象へ。`session=<secret>` が
-// キー一覧漏れで残っていた Codex 再現ケースを塞ぐ（`\bsession\b\s*[:=]` は "session started"
-// のような散文には掛からない＝過剰マスクにならない）。
+// ── エラーメッセージ用の秘密マスク（v6.2: bounded scanner） ──────────────────────────
+// 保存/監査/再throw に秘密（Authorization/Cookie/Bearer/JWT/API key/session/password/token/接続文字列）を
+// 一文字も残さないための最終防波堤。prompt 全文・payload 本文は呼び出し側が渡さない前提。
+//
+// v6.2 全面再設計（High 修正）: JSON 全体への単純な `\"`/`\'` global unescape を**廃止**。
+// これは値内部の escaped quote（`{"password":"abc\"SECRET"}`）で終端を壊し秘密 suffix を残すため。
+// 代わりに quote/escape 状態を理解する bounded scanner で「機密キー→値」を消費する（catastrophic
+// backtracking を起こす巨大 regex を使わない・線形走査）。
 const MASK_SENSITIVE_KEYS =
   'proxy-authorization|authorization|set-cookie|cookie|api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|token|secret|password|passwd|pwd|credential|session[_-]?id|session|private[_-]?key|sid';
 
+// ヘッダ形式（値がスキーム＋空白を含む＝行末まで消す）キー。正規化キー（小文字・-/_除去）で判定。
+const HEADER_KEYS = new Set(['proxyauthorization', 'authorization', 'setcookie', 'cookie']);
+
+// key（前後の引用符・エスケープ引用符を許容）＋区切り `:`/`=` を捕捉。値開始位置は match 終端。
+const KEY_SEP_RE = new RegExp(
+  '(?:\\\\*["\']?)\\b(' + MASK_SENSITIVE_KEYS + ')\\b(?:\\\\*["\']?)\\s*[:=]\\s*',
+  'gi',
+);
+
+const VALUE_DELIMS = new Set([',', ';', '&', ')', '}', ']']);
+
+function backslashParityEven(s: string, i: number): boolean {
+  let n = 0;
+  let j = i - 1;
+  while (j >= 0 && s[j] === '\\') {
+    n++;
+    j--;
+  }
+  return n % 2 === 0;
+}
+
+// 値領域の終端 index を返す（quote/escape 状態を理解して消費する）。
+function scanValueEnd(s: string, start: number, headerKey: boolean): number {
+  // 先頭の backslash を数えて、実体の先頭文字が引用符かどうか（= quotedish）を判定。
+  let p = start;
+  while (p < s.length && s[p] === '\\') p++;
+  const first = s[p];
+  const quotedish = first === '"' || first === "'";
+
+  if (quotedish) {
+    // top-level delimiter（inString でない位置）まで消費。even-backslash の引用符だけが inString をトグルする。
+    let inString = false;
+    let q = '';
+    for (let k = start; k < s.length; k++) {
+      const c = s[k]!;
+      if (c === '\n') return k;
+      if (inString) {
+        if (c === q && backslashParityEven(s, k)) inString = false;
+      } else if ((c === '"' || c === "'") && backslashParityEven(s, k)) {
+        inString = true;
+        q = c;
+      } else if (VALUE_DELIMS.has(c)) {
+        return k;
+      }
+    }
+    return s.length;
+  }
+
+  if (headerKey) {
+    // ヘッダ値はスキーム＋空白（`Bearer xxx`・`a=b; c=d`）を含むので行末まで。
+    let k = start;
+    while (k < s.length && s[k] !== '\n') k++;
+    return k;
+  }
+
+  // 非引用符のデータ値: 空白 or 区切りまで。
+  let k = start;
+  while (k < s.length && !/[\s,;&)}\]]/.test(s[k]!)) k++;
+  return k;
+}
+
+function maskSensitiveKeyValues(s: string): string {
+  let out = '';
+  let last = 0;
+  KEY_SEP_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = KEY_SEP_RE.exec(s)) !== null) {
+    const valStart = m.index + m[0].length;
+    if (valStart >= s.length) break;
+    const keyNorm = m[1]!.toLowerCase().replace(/[_-]/g, '');
+    const isHeader = HEADER_KEYS.has(keyNorm);
+    const valEnd = scanValueEnd(s, valStart, isHeader);
+    out += s.slice(last, valStart) + '[masked]';
+    last = Math.max(valEnd, valStart + 1);
+    KEY_SEP_RE.lastIndex = last;
+  }
+  out += s.slice(last);
+  return out;
+}
+
 export function maskRunError(err: unknown, maxLen = 200): string {
-  const raw = err instanceof Error ? err.message : String(err ?? 'unknown error');
-  // ① 正規化（後段の redact が確実に掛かる形へ整える）:
-  //    (a) CRLF/CR を LF に統一。
-  //    (b) エスケープされた引用符 \" \' を素の引用符へ戻す（二重 stringify された JSON で
-  //        `{\"password\":\"...\"}` のようにキー正規表現が外れる Codex 再現ケースを塞ぐ）。
-  //    (c) 折返しヘッダ（改行＋空白/タブ継続）を 1 空白へ unfold（`Cookie:\n sid=...`）。
-  //    (d) 値が `:`/`=` の直後で改行して次行頭から始まる形（`Cookie:\nsession=...` の空白なし版・
-  //        `Authorization:\nSECRET` の裸トークン版）を、区切りをまたいで 1 空白へ join。
-  //        `:`/`=` 境界に限定するため、ヘッダ redact の行末境界（[^\n]*）は他所で維持される。
+  const rawFull = err instanceof Error ? err.message : String(err ?? 'unknown error');
+  // 走査コストを線形上限に収める（保存は maxLen だが、走査対象も安全に切る）。
+  const raw = rawFull.length > 8000 ? rawFull.slice(0, 8000) : rawFull;
+  // ① 正規化（unescape はしない・quote 境界を壊さない）:
+  //    CRLF→LF・折返しヘッダ unfold・`:`/`=` 直後改行の join。
   let s = raw
     .replace(/\r\n?/g, '\n')
-    .replace(/\\(["'])/g, '$1')
     .replace(/\n[ \t]+/g, ' ')
     .replace(/([:=])[ \t]*\n+[ \t]*/g, '$1 ');
 
+  // ② URL（埋め込み認証情報 user:pass@ ごと）。
+  s = s.replace(/(postgres(ql)?|redis|https?|mongodb(\+srv)?|amqps?|mysql|ftp):\/\/\S+/gi, '[masked-url]');
+  // ③ 機密キー→値（quote/escape 状態を理解する bounded scanner・escaped quote を安全に処理）。
+  s = maskSensitiveKeyValues(s);
+  // ④ キー名なしで裸出現する秘密（防御多重化・いずれも線形 regex）。
   s = s
-    // ② -1) URL（クエリ・埋め込み認証情報 user:pass@ ごと落とす）
-    .replace(/(postgres(ql)?|redis|https?|mongodb(\+srv)?|amqps?|mysql|ftp):\/\/\S+/gi, '[masked-url]')
-    // ② -2) quoted JSON キー: "key" / 'key' の値（quoted・非 quoted とも）を丸ごと redact。
-    //        authorization / cookie を含む全キーが対象（Codex 再現 1・2 の遮断点）。
-    .replace(
-      new RegExp('(["\'])(' + MASK_SENSITIVE_KEYS + ')\\1\\s*[:=]\\s*("[^"]*"|\'[^\']*\'|[^\\s,;}\\]]+)', 'gi'),
-      '$1$2$1:[masked]',
-    )
-    // ② -3) ヘッダ形式（非 quoted）: Authorization / Cookie 系は行末まで丸ごと redact
-    //        （unfold 済みなので折返し値も同一行に居る＝Codex 再現 3 の遮断点。tab・mixed case は \s と i フラグで吸収）。
-    .replace(/\b(proxy-authorization|authorization|set-cookie|cookie)\b\s*[:=][^\n]*/gi, '$1=[masked]')
-    // ② -4) 汎用 key=value / key: value（非 quoted キー）
-    .replace(
-      new RegExp('\\b(' + MASK_SENSITIVE_KEYS + ')\\b(\\s*[:=]\\s*)("[^"]*"|\'[^\']*\'|[^\\s,;&)}\\]]+)', 'gi'),
-      '$1$2[masked]',
-    )
-    // ② -5) スキーム付きトークン（キー名なしの裸出現）: Bearer / Basic / ApiKey <値>
     .replace(/\b(bearer|basic|apikey|api[_-]key)\s+[A-Za-z0-9._~+/=-]{6,}/gi, '$1 [masked]')
-    // ② -6) JWT（base64url 3 セグメント）
     .replace(/\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{2,}/g, '[masked-jwt]')
-    // ② -7) 代表的な鍵の生値（sk-/rk-/pk-/AKIA/ghp_/xox*）
     .replace(/\b(sk|rk|pk)-[A-Za-z0-9-]{8,}/g, '[masked-key]')
     .replace(/\bAKIA[A-Z0-9]{10,}/g, '[masked-key]')
     .replace(/\bgh[pousr]_[A-Za-z0-9]{16,}/g, '[masked-key]')
     .replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}/g, '[masked-key]')
-    // ② -8) メール・長い数値
     .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[masked-email]')
     .replace(/\b\d{7,}\b/g, '[masked-number]')
-    // ③ 保存は 1 行に正規化（改行に隠れた値の逃げ道を残さない）
+    // ⑤ 保存は 1 行（改行に値を逃がさない）。
     .replace(/[\n]+/g, ' ');
   if (s.length > maxLen) s = `${s.slice(0, maxLen)}…`;
   return s;

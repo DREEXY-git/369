@@ -4,7 +4,7 @@ import { Sidebar } from '@/components/shell/sidebar';
 import { Topbar } from '@/components/shell/topbar';
 import { NAV } from '@/components/shell/nav';
 import { filterAllowedHrefs } from '@/lib/nav-permissions';
-import { getBuildInfo } from '@/lib/build-info';
+import { getBuildInfo, canViewBuildInfo } from '@/lib/build-info';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,10 +29,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     (resource, action) => hasPermission(user, resource, action),
   );
 
-  // ビルド識別バッジ（v6.1）: OWNER/ADMIN（admin:read）にだけ Production/Preview と short SHA を見せる。
-  // 「今どの配信を見ているか」を判断できるようにするためで、非機密メタのみ（Secrets は含めない）。
-  const canSeeBuild = hasPermission(user, 'admin', 'read');
-  const buildInfo = canSeeBuild ? getBuildInfo() : null;
+  // ビルド識別バッジ（v6.2 修正）: OWNER / ADMIN の **role key 本体**にだけ限定する。
+  // `admin:read` は EXECUTIVE / READ_ONLY も保持するため権限判定では広すぎる（Codex P2 指摘）。
+  // 他 role には buildInfo 自体をサーバーから渡さない（CSS で隠すのではなく未送出）。
+  const buildInfo = canViewBuildInfo(user.roles) ? getBuildInfo() : null;
 
   return (
     <div className="flex h-screen overflow-hidden">

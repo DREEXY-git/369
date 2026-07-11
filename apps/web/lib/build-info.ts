@@ -21,6 +21,12 @@ const ENV_LABEL: Record<string, string> = {
   local: 'Local',
 };
 
+// build 識別バッジを見せてよい role（v6.2）: OWNER / ADMIN の role key 本体のみ。
+// permission（admin:read）は EXECUTIVE/READ_ONLY も持つため使わない。
+export function canViewBuildInfo(roles: readonly string[]): boolean {
+  return roles.includes('OWNER') || roles.includes('ADMIN');
+}
+
 export function getBuildInfo(): BuildInfo {
   const env = process.env.VERCEL_ENV ?? 'local';
   const fullSha = process.env.VERCEL_GIT_COMMIT_SHA ?? '';

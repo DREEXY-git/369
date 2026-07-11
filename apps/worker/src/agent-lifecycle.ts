@@ -19,7 +19,7 @@ import { prisma } from '@hokko/db';
 import {
   RUN_TRANSITIONS,
   shouldCreateRun,
-  isStaleRunningRun,
+  isStaleActiveRun,
   maskRunError,
   type RunLifecycleStatus,
 } from '@hokko/shared';
@@ -97,10 +97,10 @@ export async function runWithAgentLifecycle<T>(
   const rivalNow = new Date();
   const earlier = rivals.filter((r) => {
     if (!mine || r.id === run.id) return false;
-    // v6.1 修正: stale（クラッシュ残骸）RUNNING は競合に含めない。作成前 gate（shouldCreateRun）が
-    // stale を無視して作成を許可したのに、作成後 rival 判定が同じ stale を「先行 active」と見なして
-    // 自分を降ろすと、クラッシュ残骸が新規 run を恒久的に潰し続ける（誰も実行できなくなる）ため。
-    if (isStaleRunningRun({ status: r.status as RunLifecycleStatus, startedAt: r.startedAt }, rivalNow)) return false;
+    // v6.2 修正: stale（クラッシュ残骸・RUNNING/QUEUED・startedAt 古い or null）は競合に含めない。
+    // 作成前 gate（shouldCreateRun）と**同一の isStaleActiveRun**で判定し、pre/post の stale 規則を一致させる
+    // （残骸が新規 run を恒久的に潰す二重実行誤判定を防ぐ。時刻基準 rivalNow も pre と揃える）。
+    if (isStaleActiveRun({ status: r.status as RunLifecycleStatus, startedAt: r.startedAt }, rivalNow)) return false;
     const a = r.startedAt ? r.startedAt.getTime() : 0;
     const b = mine.startedAt ? mine.startedAt.getTime() : 0;
     return a < b || (a === b && r.id < run.id);

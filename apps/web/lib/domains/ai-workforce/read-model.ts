@@ -19,6 +19,8 @@ export interface AiWorkforceAgentView {
   state: AiWorkforceState;
   stateReason: string;
   blockedReason: string | null;
+  /** unknown のうち stale RUNNING 由来のみ true（Inbox の項目分類に使う・表示は stateReason が正）。 */
+  stale: boolean;
   currentTask: string | null;
   lastActivityLabel: string;
   pendingApprovals: number;
@@ -104,7 +106,9 @@ export async function getAiWorkforceReadModel(tenantId: string, now: Date = new 
         : derived.state === 'error' || derived.state === 'blocked'
           ? '活動ログ（/ai-agents）で失敗内容を確認してください'
           : derived.state === 'unknown'
-            ? 'テレメトリなし。稼働させる場合はジョブ/タスクの割当が必要です'
+            ? derived.stale
+              ? '実行記録を確認してください（RUNNING のまま終了記録がなく、実行中と断定できません）'
+              : 'テレメトリなし。稼働させる場合はジョブ/タスクの割当が必要です'
             : '対応不要（自動運転は承認境界内のみ）';
     return {
       id: a.id,
@@ -116,6 +120,7 @@ export async function getAiWorkforceReadModel(tenantId: string, now: Date = new 
       state: derived.state,
       stateReason: derived.reason,
       blockedReason: derived.blockedReason,
+      stale: derived.stale ?? false,
       // stale な RUNNING（derived が unknown）に「現在タスク」を出すと実行中に見えるため、導出状態と揃える。
       currentTask: derived.state === 'working' || derived.state === 'planning' ? (run?.task ?? null) : null,
       lastActivityLabel: freshnessLabel(lastActivityAt, now),

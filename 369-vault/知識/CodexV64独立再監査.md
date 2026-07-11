@@ -32,10 +32,11 @@
 3. **PII最小取得と参照ログ**: 画面で不要なrun input/output/errorまで取得し、memory/actionを表示する経路にDataAccessLogがない。
 4. **人物parity証拠**: 8名のkey/fullName/stateは比較したが、portrait/profile全値は3画面で比較していない。
 5. **mobile NAV証拠**: 全高・deep link・Escapeは確認したが、描画67件とoverlay閉鎖のE2Eがない。
-6. BullMQ実queueとHuman Previewは引き続き`EVIDENCE_GAP`/pending。
+6. **3D deep-link同期**: `/ai-office?agent=<id>`をclient-sideで別IDへ切り替えた時、初回stateが残ってURLと表示人物がずれるP2がある。
+7. BullMQ実queueとHuman Previewは引き続き`EVIDENCE_GAP`/pending。
 
 ## 最終判定
 
-Criticalは確認範囲で0だが、High/P1が2件残るためPASSではない。元8threadのうち3件だけを解決し、新しい固定行reviewを含め未解決は10件。Matrix V3は作らず、PR #14、main、ProductionをHOLDする。
+Criticalは確認範囲で0だが、High/P1が2件残るためPASSではない。元8threadのうち3件だけを解決し、後着のdeep-link P2を含め未解決は11件。Matrix V3は作らず、PR #14、main、ProductionをHOLDする。
 
-次はClaudeが(1)一般化depth matrixの全4経路、(2)child tenant/minimal select/DataAccessLog、(3)profile fingerprintとmobile NAV証拠を修正する。Codexは次の固定SHAで再監査する。main、Production、DB、Secrets、外部送信、実LLM、課金には触れない。
+次はClaudeが(1)一般化depth matrixの全4経路、(2)child tenant/minimal select/DataAccessLog、(3)profile fingerprint・mobile NAV証拠・deep-link同期を修正する。Codexは次の固定SHAで再監査する。main、Production、DB、Secrets、外部送信、実LLM、課金には触れない。

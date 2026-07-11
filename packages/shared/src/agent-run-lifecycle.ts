@@ -57,37 +57,52 @@ export const STALE_RUNNING_MS = 2 * 60 * 60 * 1000;
 /**
  * エラーメッセージの保存用マスク。PII/Secrets/接続文字列らしきものを落とし、長さを制限する。
  * prompt 全文・payload 本文は呼び出し側がそもそも渡さないこと（ここは最後の防波堤）。
- * v5.8 High-1 修正: Bearer/Basic スキーム値・JWT・Cookie ヘッダ・quoted JSON 値・改行分割値まで
- * 完全にマスクする（従来は `Authorization: Bearer <token>` の token 本体が残った）。
+ *
+ * v5.9 High-1 全面修復（Codex 再現3経路を含む）: 正規表現の継ぎ足しではなく
+ * 「①正規化（CRLF 統一・折返しヘッダの unfold）→②キー種別ごとの全面 redact →③1行化」の順で処理する。
+ * quoted JSON キー（"authorization" / "cookie" 等）・折返し Cookie・tab/mixed case も対象。
  */
+const MASK_SENSITIVE_KEYS =
+  'proxy-authorization|authorization|set-cookie|cookie|api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|token|secret|password|passwd|pwd|credential|session[_-]?id|private[_-]?key|sid';
+
 export function maskRunError(err: unknown, maxLen = 200): string {
   const raw = err instanceof Error ? err.message : String(err ?? 'unknown error');
-  let s = raw
-    // 接続文字列・URL（クエリ・埋め込み認証情報ごと落とす）
-    .replace(/(postgres(ql)?|redis|https?|mongodb(\+srv)?|amqps?|mysql):\/\/\S+/gi, '[masked-url]')
-    // Authorization / Cookie 系ヘッダは行末まで丸ごと（スキーム名や属性も値の一部として扱う）
-    .replace(/\b(proxy-authorization|authorization|set-cookie|cookie)\b\s*[:=][^\n\r]*/gi, '$1=[masked]')
-    // スキーム付きトークン（ヘッダ形式でない裸の出現もマスク）
-    .replace(/\bbearer\s+[A-Za-z0-9._~+/=-]+/gi, 'bearer [masked]')
-    .replace(/\bbasic\s+[A-Za-z0-9+/=]{8,}/gi, 'basic [masked]')
-    // JWT（base64url 3 セグメント）
-    .replace(/\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{2,}/g, '[masked-jwt]')
-    // key=value / key: value / quoted JSON（"apiKey":"…"・'…'・非引用値。\s* が改行を跨ぐため
-    // `token=\n<値>` のような改行分割値も値側がマスクされる）
+  // ① 正規化: CRLF/CR を LF に統一し、折返しヘッダ（改行＋空白/タブ継続）を 1 空白へ unfold。
+  //    これで `Cookie:\n sid=...` のような複数行値も単一行のヘッダとして後段の redact に掛かる。
+  let s = raw.replace(/\r\n?/g, '\n').replace(/\n[ \t]+/g, ' ');
+
+  s = s
+    // ② -1) URL（クエリ・埋め込み認証情報 user:pass@ ごと落とす）
+    .replace(/(postgres(ql)?|redis|https?|mongodb(\+srv)?|amqps?|mysql|ftp):\/\/\S+/gi, '[masked-url]')
+    // ② -2) quoted JSON キー: "key" / 'key' の値（quoted・非 quoted とも）を丸ごと redact。
+    //        authorization / cookie を含む全キーが対象（Codex 再現 1・2 の遮断点）。
     .replace(
-      /\b(api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|token|secret|password|passwd|pwd|credential|session[_-]?id|private[_-]?key)\b(["']?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;&)}\]]+)/gi,
+      new RegExp('(["\'])(' + MASK_SENSITIVE_KEYS + ')\\1\\s*[:=]\\s*("[^"]*"|\'[^\']*\'|[^\\s,;}\\]]+)', 'gi'),
+      '$1$2$1:[masked]',
+    )
+    // ② -3) ヘッダ形式（非 quoted）: Authorization / Cookie 系は行末まで丸ごと redact
+    //        （unfold 済みなので折返し値も同一行に居る＝Codex 再現 3 の遮断点。tab・mixed case は \s と i フラグで吸収）。
+    .replace(/\b(proxy-authorization|authorization|set-cookie|cookie)\b\s*[:=][^\n]*/gi, '$1=[masked]')
+    // ② -4) 汎用 key=value / key: value（非 quoted キー）
+    .replace(
+      new RegExp('\\b(' + MASK_SENSITIVE_KEYS + ')\\b(\\s*[:=]\\s*)("[^"]*"|\'[^\']*\'|[^\\s,;&)}\\]]+)', 'gi'),
       '$1$2[masked]',
     )
-    // 代表的な鍵の生値パターン（キー名なしで単体出現しても落とす）
+    // ② -5) スキーム付きトークン（キー名なしの裸出現）: Bearer / Basic / ApiKey <値>
+    .replace(/\b(bearer|basic|apikey|api[_-]key)\s+[A-Za-z0-9._~+/=-]{6,}/gi, '$1 [masked]')
+    // ② -6) JWT（base64url 3 セグメント）
+    .replace(/\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{2,}/g, '[masked-jwt]')
+    // ② -7) 代表的な鍵の生値（sk-/rk-/pk-/AKIA/ghp_/xox*）
     .replace(/\b(sk|rk|pk)-[A-Za-z0-9-]{8,}/g, '[masked-key]')
     .replace(/\bAKIA[A-Z0-9]{10,}/g, '[masked-key]')
     .replace(/\bgh[pousr]_[A-Za-z0-9]{16,}/g, '[masked-key]')
     .replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}/g, '[masked-key]')
-    // メール・長い数値
+    // ② -8) メール・長い数値
     .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[masked-email]')
     .replace(/\b\d{7,}\b/g, '[masked-number]')
-    // 保存は 1 行に正規化（改行に隠れた値の逃げ道を残さない）
-    .replace(/[\r\n]+/g, ' ');
+    // ③ 保存は 1 行に正規化（改行に隠れた値の逃げ道を残さない）
+    .replace(/[\n]+/g, ' ');
   if (s.length > maxLen) s = `${s.slice(0, maxLen)}…`;
   return s;
 }
+

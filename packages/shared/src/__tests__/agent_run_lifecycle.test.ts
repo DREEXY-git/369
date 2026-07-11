@@ -99,3 +99,51 @@ describe('maskRunError（PII/Secrets マスク・長さ制限）', () => {
     expect(m).not.toContain('xoxb-1234567890-abc');
   });
 });
+
+// v5.9 High-1 全面修復の否定テスト（Codex 独立再現 3 経路＋指令 §5 の必須ケース）。
+// 「秘密部分が一文字も残らない」ことを直接検証する。
+describe('maskRunError v5.9（quoted JSON・折返しヘッダ・スキーム網羅）', () => {
+  it('Codex再現1: quoted JSON Authorization（ApiKey スキーム）が残らない', () => {
+    const m = maskRunError(new Error('failed with {"authorization":"ApiKey AK-SUPER-SECRET-01"}'));
+    expect(m).not.toContain('AK-SUPER-SECRET-01');
+    expect(m).not.toContain('ApiKey AK');
+  });
+  it('Codex再現2: quoted JSON Cookie が残らない', () => {
+    const m = maskRunError(new Error('ctx {"cookie":"sid=SESSION-SECRET-99; theme=dark"}'));
+    expect(m).not.toContain('SESSION-SECRET-99');
+  });
+  it('Codex再現3: 折返し Cookie（改行＋空白継続）が残らない', () => {
+    const m = maskRunError(new Error('Cookie:\n sid=FOLDED-SECRET-42'));
+    expect(m).not.toContain('FOLDED-SECRET-42');
+  });
+  it('CRLF・タブ継続・mixed case の折返しヘッダも残らない', () => {
+    const m1 = maskRunError(new Error('CoOkIe:\r\n\tsid=CRLF-TAB-SECRET'));
+    expect(m1).not.toContain('CRLF-TAB-SECRET');
+    const m2 = maskRunError(new Error('AUTHORIZATION:\r\n  Bearer MIXED-CASE-SECRET'));
+    expect(m2).not.toContain('MIXED-CASE-SECRET');
+  });
+  it('Authorization Bearer / Basic / ApiKey スキームの値が残らない', () => {
+    const m = maskRunError(
+      new Error('a: Authorization: Bearer br-SECRET-1 b: Authorization: Basic QmFzaWNTZWNyZXQ= c: authorization: ApiKey ak-SECRET-3'),
+    );
+    for (const leak of ['br-SECRET-1', 'QmFzaWNTZWNyZXQ=', 'ak-SECRET-3']) expect(m).not.toContain(leak);
+  });
+  it('token/password/secret/apiKey の quoted JSON 値が残らない', () => {
+    const m = maskRunError(
+      new Error('{"token":"tk-LEAK1","password":"pw LEAK2","secret":\'sc-LEAK3\',"apiKey":"key-LEAK4"}'),
+    );
+    for (const leak of ['tk-LEAK1', 'pw LEAK2', 'sc-LEAK3', 'key-LEAK4']) expect(m).not.toContain(leak);
+  });
+  it('URL 埋め込み認証情報（user:pass@）が残らない', () => {
+    const m = maskRunError(new Error('connect https://alice:URLPASS99@db.example.com/x?apikey=QP-LEAK failed'));
+    expect(m).not.toContain('URLPASS99');
+    expect(m).not.toContain('QP-LEAK');
+    expect(m).not.toContain('alice:');
+  });
+  it('出力は常に 1 行・最大長制限（改行に値を逃がせない）', () => {
+    const m = maskRunError(new Error(`multi\nline\nCookie:\n sid=NL-SECRET\n${'z'.repeat(400)}`), 200);
+    expect(m).not.toContain('\n');
+    expect(m).not.toContain('NL-SECRET');
+    expect(m.length).toBeLessThanOrEqual(201);
+  });
+});

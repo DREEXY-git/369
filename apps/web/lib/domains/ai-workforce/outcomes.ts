@@ -5,7 +5,7 @@
 // - 財務金額: 呼び出し側が finance:read を確認した場合のみ含める（v0 は台帳未接続 = unavailable）。
 // 本モジュールは read-only。実行・承認・削除・外部送信は行わない。
 import { prisma } from '@/lib/db';
-import type { OutcomeEntry } from '@hokko/shared';
+import { countWaitingDecisions, type OutcomeEntry } from '@hokko/shared';
 
 export interface OutcomeLedgerReadModel {
   periodLabel: string;
@@ -23,14 +23,20 @@ export async function getOutcomeLedgerReadModel(
   const since = new Date(now.getTime() - PERIOD_DAYS * 24 * 60 * 60 * 1000);
   const periodLabel = `直近${PERIOD_DAYS}日`;
 
-  const [aiOutputEvents, runsTotal, runsSucceeded, runsFailed, runsNeedsApproval, gatesPending] = await Promise.all([
+  const [aiOutputEvents, runsTotal, runsSucceeded, runsFailed, needsApprovalRuns, pendingGates] = await Promise.all([
     prisma.usageEvent.count({ where: { tenantId, eventType: 'ai.output.generated', occurredAt: { gte: since } } }),
     prisma.aIAgentRun.count({ where: { tenantId, startedAt: { gte: since } } }),
     prisma.aIAgentRun.count({ where: { tenantId, startedAt: { gte: since }, status: 'SUCCEEDED' } }),
     prisma.aIAgentRun.count({ where: { tenantId, startedAt: { gte: since }, status: 'FAILED' } }),
-    prisma.aIAgentRun.count({ where: { tenantId, startedAt: { gte: since }, status: 'NEEDS_APPROVAL' } }),
-    prisma.aIApprovalGate.count({ where: { tenantId, status: 'PENDING' } }),
+    // v5.9 M7 修正: 件数ではなく id を取得し、gate の runId と集合和で「判断」単位に数える
+    // （NEEDS_APPROVAL run とその run の PENDING gate を 2 件に見せない）。
+    prisma.aIAgentRun.findMany({ where: { tenantId, status: 'NEEDS_APPROVAL' }, select: { id: true } }),
+    prisma.aIApprovalGate.findMany({ where: { tenantId, status: 'PENDING' }, select: { runId: true } }),
   ]);
+  const waitingDecisions = countWaitingDecisions(
+    needsApprovalRuns.map((r) => r.id),
+    pendingGates,
+  );
 
   const entries: OutcomeEntry[] = [
     {
@@ -69,12 +75,12 @@ export async function getOutcomeLedgerReadModel(
     {
       key: 'human_reviews_waiting',
       label: '人間の判断待ち（承認ゲート）',
-      value: runsNeedsApproval + gatesPending,
+      value: waitingDecisions,
       unit: '件',
       evidenceClass: 'measured',
-      evidenceSource: 'AIAgentRun（NEEDS_APPROVAL）＋AIApprovalGate（PENDING）',
-      periodLabel: `${periodLabel}（ゲートは現在値）`,
-      denominatorNote: 'AI は承認・却下しない（人間の判断のみが解消する）',
+      evidenceSource: 'AIAgentRun（NEEDS_APPROVAL）と AIApprovalGate（PENDING）の判断単位の集合和',
+      periodLabel: '現在値',
+      denominatorNote: '同一 run の gate は 1 判断として数える（二重計上しない）。AI は承認・却下しない',
       confidence: 0.9,
     },
     {

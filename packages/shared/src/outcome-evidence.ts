@@ -68,18 +68,40 @@ export function canDisplayVerifiedTimeSaving(input: {
 /**
  * 成果行をバケット別に合計する。self_reported / estimated / unverified を
  * measured に合算しない（それぞれの合計を分けて返す）。unavailable（value null）は合計に入れない。
+ * v5.9 M8 修正: **単位（unit）が異なる値を加算しない**。「区分 × 単位」ごとに分けて返す
+ * （件・時間・円を1つの数字へ潰す誤集計を型と実装で禁止する）。
  */
-export function sumByEvidenceClass(entries: OutcomeEntry[]): Record<OutcomeEvidenceClass, number> {
-  const out: Record<OutcomeEvidenceClass, number> = {
-    measured: 0,
-    self_reported: 0,
-    estimated: 0,
-    unverified: 0,
-    unavailable: 0,
+export function sumByEvidenceClass(entries: OutcomeEntry[]): Record<OutcomeEvidenceClass, Record<string, number>> {
+  const out: Record<OutcomeEvidenceClass, Record<string, number>> = {
+    measured: {},
+    self_reported: {},
+    estimated: {},
+    unverified: {},
+    unavailable: {},
   };
   for (const e of entries) {
     if (e.value == null) continue;
-    out[e.evidenceClass] += e.value;
+    const bucket = out[e.evidenceClass];
+    bucket[e.unit] = (bucket[e.unit] ?? 0) + e.value;
   }
   return out;
+}
+
+/**
+ * 「人間の判断待ち」件数（v5.9 M7 修正）。
+ * NEEDS_APPROVAL の run と PENDING の AIApprovalGate を**判断単位**で数える:
+ * 同一 run に紐づく gate は run と同じ1件（集合和）とし、1つの判断待ちを2件に見せない。
+ * run に紐づかない gate（runId null）だけを独立の判断として加える。
+ */
+export function countWaitingDecisions(
+  needsApprovalRunIds: string[],
+  pendingGates: { runId: string | null }[],
+): number {
+  const decisions = new Set(needsApprovalRunIds);
+  let orphanGates = 0;
+  for (const g of pendingGates) {
+    if (g.runId == null) orphanGates += 1;
+    else decisions.add(g.runId);
+  }
+  return decisions.size + orphanGates;
 }

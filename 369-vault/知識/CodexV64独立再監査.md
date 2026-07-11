@@ -6,7 +6,7 @@
 - 状態: `FINAL / CHANGES_REQUIRED`
 - Release Gate: `CHANGES_REQUIRED / HOLD`
 
-## 現在確認できたこと
+## 初期基準 `ba4a696` で確認したこと
 
 - escaped outer quote depth 1とinternal quote depth 3の境界で、comma、space、semicolon、LF、brace、bracketの6条件すべてに架空sentinelが残った。
 - 従来のescaped comma、raw LF、CRLF、nested、multiple key、unclosedはマスクされ、問題範囲はdepth 3境界へ限定できた。

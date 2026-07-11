@@ -33,7 +33,7 @@
 - [x] schema/seed/RBAC/labels 変更なし・封印 env 不変・外部送信/実行導線なし
 - [x] ローカル電池 green（unit 285/0・tsc 0・lint 0・build 0〔/ai-office 148kB〕・safety 0）
 - [x] 敵対的レビュー → 指摘反映（§5 追補）
-- [ ] Draft PR 作成・CI green（本ブランチは 97 = 93+4）をログ本文で確認
+- [x] Draft PR #5 作成・CI green をログ本文で確認: run 29147684584（#174）・head 2e45721・`97 passed (1.5m)` / 0 failed（ai_office 4件 = canvas 非 blank ピクセル検査・コンソールエラー0・操作・モバイル簡略表示を CI 上で検証）→ **Stream B v0 クローズ**
 
 ## 5. 追補（敵対的レビューの結果と反映・2026-07-11）
 

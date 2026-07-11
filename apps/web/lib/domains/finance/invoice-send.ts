@@ -42,7 +42,7 @@ export interface SendGateResult {
 export async function requestInvoiceExternalSend(actor: Actor, invoiceId: string): Promise<SendGateResult> {
   // AI は外部送信を起動できない（多重防御。actions は人間起動）。
   await assertAiToolAllowed({ tenantId: actor.tenantId, actorId: actor.userId, actorType: 'user', tool: 'external_send', entityType: 'Invoice', entityId: invoiceId });
-  const inv = await prisma.invoice.findFirst({ where: { id: invoiceId, tenantId: actor.tenantId }, include: { customer: true } });
+  const inv = await prisma.invoice.findFirst({ where: { id: invoiceId, tenantId: actor.tenantId }, include: { customer: { select: { email: true } } } });
   if (!inv) return { ok: false, reason: 'not-found' };
   if (!canSendInvoice(inv.status)) return { ok: false, reason: 'not-sendable' };
 
@@ -76,7 +76,7 @@ export async function requestInvoiceExternalSend(actor: Actor, invoiceId: string
 
 /** 承認済み Invoice を外部送信し SENT へ。EXTERNAL_SEND_ENABLED 時のみ実送信、それ以外は監査のみ。冪等。 */
 export async function executeInvoiceExternalSend(actor: Actor, invoiceId: string): Promise<{ ok: boolean; reason?: string }> {
-  const inv = await prisma.invoice.findFirst({ where: { id: invoiceId, tenantId: actor.tenantId }, include: { customer: true } });
+  const inv = await prisma.invoice.findFirst({ where: { id: invoiceId, tenantId: actor.tenantId }, include: { customer: { select: { email: true } } } });
   if (!inv) return { ok: false, reason: 'not-found' };
   if (!canSendInvoice(inv.status)) return { ok: false, reason: 'already-sent' };
 

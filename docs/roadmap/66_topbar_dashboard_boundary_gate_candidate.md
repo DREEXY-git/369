@@ -40,9 +40,10 @@
 - [x] 承認件数の取得段階遮断（条件は §6 で approve 単独に改訂）
 - [x] Topbar 入口・バッジの表示遮断（DM のバッジ維持）
 - [x] /dashboard に dashboard:read（AccessDenied は取得前）
-- [ ] ローカル電池 green
+- [x] ローカル電池 green（tsc 0 / lint 0 / unit 278/0 / safety 0）— 実装・レビュー反映の両時点
 - [x] 敵対的レビュー → 指摘反映（§6 追補）
-- [ ] CI 93/0 をログ本文で確認
+- [x] CI green をログ本文で確認: run 29139617815（#163）・head ea6e0b9・`93 passed (1.3m)` / 0 failed
+  （topbar_dashboard_boundary 2件 ✓・workflow ファイル未変更のため封印 env は #160 の確認と同一）→ **WIP-5 クローズ**
 
 ## 6. 追補（敵対的レビューの結果と反映・2026-07-11）
 

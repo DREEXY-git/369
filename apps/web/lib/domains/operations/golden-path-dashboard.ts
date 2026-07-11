@@ -13,16 +13,21 @@ import {
   isInvoiceSent,
   type ExecProjectFact,
   type ExecutiveDashboard,
+  type ConfidentialityLabel,
 } from '@hokko/shared';
 import { getCashflowBridgeData } from '@/lib/domains/finance/cashflow';
 
 /**
  * プランニングホッコー Golden Path の経営ダッシュボードデータを集約。
  * canViewFinance=false（STAFF 等）の場合、戻り値の金額・粗利・回収状況は lib 段階で null 化される。
+ * visibleCustomerLabels: 閲覧者が見てよい顧客ラベル集合（lib/security/customer-visibility.ts）。
+ * 集合外ラベルの顧客名は lib 段階で null 化する（WIP-6/roadmap67・高機密ラベル顧客名の遮断）。
+ * 省略時は fail-closed（全顧客名を伏せる）。
  */
 export async function getGoldenPathExecutiveDashboardData(
   tenantId: string,
   canViewFinance: boolean,
+  visibleCustomerLabels: readonly ConfidentialityLabel[] = [],
 ): Promise<ExecutiveDashboard> {
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -44,7 +49,11 @@ export async function getGoldenPathExecutiveDashboardData(
   // 2) 横断データをバッチ取得（すべて { in: eventIds } で一括）。
   const [customers, openHighRisks, logisticsRows, revenueFEs, candidates, pendingApprovals, cashflow] = await Promise.all([
     customerIds.length
-      ? prisma.customer.findMany({ where: { tenantId, id: { in: customerIds } }, select: { id: true, name: true } })
+      ? prisma.customer.findMany({
+          // 可視ラベルの顧客のみ取得（不可視ラベルは name を Map に載せない＝表示は null）。
+          where: { tenantId, id: { in: customerIds }, label: { in: [...visibleCustomerLabels] } },
+          select: { id: true, name: true },
+        })
       : Promise.resolve([] as { id: string; name: string }[]),
     prisma.eventRisk.findMany({
       where: { tenantId, eventId: { in: eventIds }, status: { not: 'resolved' }, severity: { in: ['high', 'critical'] } },

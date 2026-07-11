@@ -6,6 +6,7 @@ import { getGoldenPathExecutiveDashboardData } from '@/lib/domains/operations/go
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Stat, Badge, EmptyState } from '@/components/ui';
 import { AccessDenied } from '@/components/access-denied';
+import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
 import { GoldenPathKpiGrid, AttentionList } from '@/components/golden-path-kpi';
 import { SeverityBadge, DEAL_STAGE_LABEL } from '@/components/badges';
 import { formatJpy, formatDate, SEVERITY_TONE } from '@hokko/shared';
@@ -62,7 +63,12 @@ export default async function CeoDashboard() {
     prisma.cashflowForecastLine.findMany({ where: { tenantId: t }, orderBy: { balance: 'asc' }, take: 1 }),
     prisma.customerComplaint.count({ where: { tenantId: t, status: 'open' } }),
     prisma.dailyReport.findMany({ where: { tenantId: t }, orderBy: { createdAt: 'desc' }, take: 3 }),
-    getGoldenPathExecutiveDashboardData(t, canViewFinance),
+    // 顧客名は CRM の閲覧境界（WIP1）に従い、可視ラベル集合外は lib 段階で null 化（WIP-6）。
+    getGoldenPathExecutiveDashboardData(
+      t,
+      canViewFinance,
+      hasPermission(user, 'customer', 'read') ? visibleCustomerLabels(user.roles) : [],
+    ),
   ]);
 
   const pipeline = toNumber(dealAgg._sum.amount);

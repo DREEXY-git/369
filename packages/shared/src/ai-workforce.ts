@@ -62,6 +62,8 @@ export interface DerivedAgentState {
   reason: string;
   /** blocked のときのみ: ブロック理由。 */
   blockedReason: string | null;
+  /** unknown のうち「RUNNING のまま stale 閾値超過」の場合のみ true（実行記録なしの unknown と区別する）。 */
+  stale?: boolean;
 }
 
 /**
@@ -99,6 +101,7 @@ export function deriveAgentState(e: AgentStateEvidence, now?: Date): DerivedAgen
               ? `RUNNING のまま ${Math.floor(age / 3600000)}時間以上終了記録なし（実行中と断定できない・stale）`
               : 'RUNNING だが開始時刻の記録がない（実行中と断定できない・stale）',
             blockedReason: null,
+            stale: true,
           };
         }
       }

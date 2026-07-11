@@ -206,7 +206,7 @@ test.describe('cross-tenant 境界（実在する別 tenant のレコードで 4
 
     await page.goto(`/ai-agents/${targetAgentId}`);
     await expect(page.getByText('OWN_MEMORY_CONTENT_SECRET')).toBeVisible();
-    await expect(page.getByText('OWN_RUN_CONTENT_SECRET')).toBeVisible();
+    await expect(page.getByText('OWN_RUN_CONTENT_SECRET', { exact: true })).toBeVisible();
     await expect(page.getByText(/OWN_ACTION_CONTENT_SECRET/)).toBeVisible();
     for (const leak of ['CROSS_CHILD_MEMORY_SECRET', 'CROSS_CHILD_RUN_SECRET', 'CROSS_CHILD_ACTION_SECRET']) {
       await expect(page.getByText(new RegExp(leak))).toHaveCount(0);

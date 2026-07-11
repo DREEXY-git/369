@@ -31,6 +31,19 @@
 ## 3. Gate 判定
 
 - [x] 外部検索・順位取得・公開・CMS 投稿・PR 配信の経路なし（封印表示つき）
-- [ ] ローカル電池 green
-- [ ] 敵対的レビュー → 指摘反映
+- [x] ローカル電池 green（unit 297/0・tsc 0・lint 0・safety 0）
+- [x] 敵対的レビュー → 指摘反映（§4 追補）
 - [ ] CI green（99/0）をログ本文で確認
+
+## 4. 追補（敵対的レビューの結果と反映・2026-07-11）
+
+独立レビュー（b14a37e・封印/PII/サニタイズ全経路/Zod/E2E 99検算はすべて成立を確認・blocker なし）。反映:
+
+| # | 深刻度 | 指摘 | 反映 |
+|---|---|---|---|
+| 1 | Low | raw キーワード（誇大表現入り）がキーワード管理 Badge に無警告表示・rationale にも raw が残る | Badge に ⚠＋「表現の根拠確認が必要」を表示。rationale の raw は内部根拠として意図（nextHumanChecks が原文使用禁止を明示）＝記録 |
+| 2 | Low | 生成テンプレ自身が未根拠の主張（「まずは無料相談から」「地域情報」）を含む | 該当フレーズを中立表現に修正 |
+| 3 | Low | existingTitles（DB 由来）が注入検査の対象外 | fake 直呼びの現状は実害ゼロ。**実 LLM 化時の必須検査チャネル**として記録（Human Certification Gate の条件に追加） |
+| 4 | Low | ホームゲート回帰が否定形アサーションのみ | 見出しの肯定アサーションを追加。拒否側 e2e は該当ロールの seed ユーザー不在のため RBAC 机上＋unit 担保（記録） |
+| 5 | Info | seo_brief の監査ログ entity 参照が ads 版より不正確 | DataAccessLog を entityType='AIOutput'＋実 ID に修正・AIOutput.entityType は未設定に |
+| 6 | Info（記録） | 注入ブロック時 AuditLog なし（AISafetyLog には残る・ads と同型）／No.1 正規表現の安全側偽陽性／nav 無フィルタ（既存パターン・Stream B2 で対応）／body-thin の未トリム長 | — |

@@ -4,7 +4,7 @@ import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Input, Table, Th, Td, EmptyState } from '@/components/ui';
 import { AccessDenied } from '@/components/access-denied';
-import { formatDateTime, diagnoseSeoContent, findDuplicateTitles } from '@hokko/shared';
+import { formatDateTime, diagnoseSeoContent, findDuplicateTitles, detectForbiddenClaims } from '@hokko/shared';
 import { generateSeoBriefDraftAction } from '../actions';
 
 export const dynamic = 'force-dynamic';
@@ -139,7 +139,13 @@ export default async function ContentSeoPage({ searchParams }: { searchParams: P
               <EmptyState title="キーワードの記録がありません" hint="ブリーフを生成すると蓄積されます。" />
             ) : (
               <div className="flex flex-wrap gap-1.5">
-                {[...keywordSet].map((k) => <Badge key={k} tone="blue">{k}</Badge>)}
+                {[...keywordSet].map((k) =>
+                  detectForbiddenClaims(k).length > 0 ? (
+                    <Badge key={k} tone="amber">⚠ {k}（表現の根拠確認が必要）</Badge>
+                  ) : (
+                    <Badge key={k} tone="blue">{k}</Badge>
+                  ),
+                )}
               </div>
             )}
             <p className="mt-2 text-[11px] text-muted-foreground">検索ボリューム・順位は取得していません（外部検索は封印中）。</p>

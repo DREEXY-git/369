@@ -740,7 +740,7 @@ export function fakeSeoBrief(input: SeoBriefInput): SeoBriefResult {
   return SeoBriefSchema.parse({
     title: `【SEOブリーフ・下書き】${displayKw}`,
     keyword: kw,
-    searchIntent: `「${displayKw}」を検索する${aud}は、比較検討の前段で信頼できる地域情報と具体的な進め方を求めていると推定します。`,
+    searchIntent: `「${displayKw}」を検索する${aud}は、比較検討の前段で信頼できる情報と具体的な進め方を求めていると推定します。`,
     outline: [
       `# ${displayTheme} の基本と選び方`,
       `## ${aud}がまず確認すべきポイント`,
@@ -750,7 +750,7 @@ export function fakeSeoBrief(input: SeoBriefInput): SeoBriefResult {
       '## 相談・問い合わせの案内',
     ],
     metaTitle: `${displayKw}の進め方と選び方ガイド`,
-    metaDescription: `${displayKw}を検討する${aud}向けに、確認ポイント・手順・費用の考え方を整理しました。まずは無料相談から。`,
+    metaDescription: `${displayKw}を検討する${aud}向けに、確認ポイント・手順・費用の考え方を整理しました。`,
     rationale: [
       `キーワード「${kw}」と想定読者「${aud}」からの決定論テンプレート生成（FakeLLM）`,
       `既存記事 ${input.existingTitles.length} 件との重複チェック済み`,

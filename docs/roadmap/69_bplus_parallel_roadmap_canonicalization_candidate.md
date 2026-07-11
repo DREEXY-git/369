@@ -29,6 +29,17 @@
   「独立再生成済み」とは記録しない。手順③（原典による --check）と人間 GO が完了するまで、
   **Phase 3 の正式完了宣言と PR #3 の main 統合は引き続き HOLD**。
 
+### §0 追補2（2026-07-11・v5.9: PR #10 による SOURCE_RECHECK 検証記録）
+
+- Codex PR #10（head `8e98cef`・feature へ統合済み merge `f45ad2f`）の
+  `docs/function-master/V58_INDEPENDENT_REREVIEW_2026-07-11.md` に、**Codex 環境で期待 raw SHA-256 と
+  一致する原典を用いた生成器 `--check` の成功**（50 カテゴリ・原子機能 2,553・Stable ID 7,485・
+  C49 のみ SOURCE_DETAIL_MISSING）が記録された。手順③は Codex 側で実行済みとなった。
+- 状態を `ATOMIC_LEDGER_SYNC = GITHUB_CANONICAL_SYNCED / SOURCE_RECHECK_VERIFIED_BY_CODEX` に更新する。
+  Claude 環境では原典を保持しないため「Claude が独立再生成済み」とは記録しない（検証主体は Codex・証拠は PR #10）。
+- **この更新は Phase 3 の正式完了宣言・PR #3 の main 統合・人間 GO とは分離**する。
+  それらは引き続き HOLD（人間 Gate 待ち）。外部接続封印・表現規則（§1）も不変。
+
 ## 1. Phase 3 クローズ（名称: AI Growth Engine v0）
 
 - **完了範囲**: Control Tower v0（CT-0〜5）／Growth Event Ledger 可視化／Email・DM 基盤（OutreachDraft→承認→送信ログ・Suppression）／承認導線（ApprovalRequest deep link）／Consent・Privacy（C38）／財務・PII 閲覧境界（v5.4 WIP1〜6・PII 29 経路台帳・0 Critical/0 High）。

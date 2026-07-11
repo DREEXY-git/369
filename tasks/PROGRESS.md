@@ -50,6 +50,7 @@
 
 - Phase 1-50「Phase 1 完了記録・次Phase選定（docs-only）」: `docs/audit/25_phase1_completion_record.md` 新規＋doc15 §38＋`tasks/CURRENT_STATE.md` を Phase 1 完了・次Phase=Phase X へ刷新＋vault ノート＋本ファイル。**Phase 1 を正式完了として記録（判定根拠=doc24 GO・完了基準 commit=`e95f887`）**。次Phase は**人間判断で Phase X（短期品質フェーズ）**を選定（最初の候補=Phase X-01「本番スモーク / E2E / 検証基盤整理」・着手は別承認）。**Phase 8（実課金・Stripe・usage billing・credits・cap/alert）には進まない**。実装なし／emit 追加なし／emit 対象は8種類のまま／課金なし／決済なし／billable_candidate・never_billable runtime 使用なし／schema・migration・RBAC・package・lock 変更なし。詳細 `docs/audit/25_phase1_completion_record.md`。反映状態は git refs を正とする。
 
+- 残存欠陥クローズ・統合 v5.9 完了（2026-07-11）: Codex PR #10統合（SOURCE_RECHECK_VERIFIED_BY_CODEX・roadmap69§0追補2）・High-1 mask正規化先行設計で全面修復（否定テスト8）・High-2はEVIDENCE_GAP維持・M7二重計上/M8異unit合算/M11 nameplateクリック/M9 mobile artifact修正・claude/integration-v59（A+B+C+D統合・競合2件両側保持・PR #12 Draft feature向け）・全CI green（e2e: B 100/C 103/D 104）。詳細は tasks/CURRENT_STATE.md が正。
 - Claude×Codex 協調統合 v5.8 完了（2026-07-11）: Codex PR #7（完全機能台帳・SHA/件数照合済み・SOURCE_RECHECK_WAITING）/#8（引き継ぎHook）をfeatureへ統合・High2/Medium6修正・A→B→C→D伝播・全CI green。詳細は tasks/CURRENT_STATE.md と roadmap78 が正。
 - オートパイロット v5.6「三系統前進」完了（2026-07-11）: WIP-0 Evidence補正＋Stream A2（C21 SEO/Content v0・CI #188 99/0）＋Stream B2（Agent Control Plane v0・CI #190 100/0・screenshot artifact）＋Stream C1（Work Evidence Cockpit v0・PR #6 新規・CI #196 103/0）＋C22 Referral Gate設計（docs-only）。詳細は tasks/CURRENT_STATE.md と roadmap72-76/audit171-174 が正。
 

@@ -151,6 +151,7 @@
 - [[案Bプラス並行前進とPhase3.5_Phase4開始]] — 人間Gateが案B+を採択：Phase 3 は AI Growth Engine v0 としてクローズ準備・C19/C21/C22 は Phase 3.5 として正本化（捨てない）・Phase 4（AI社員OS/3Dオフィス）と並行前進・Phase 4 完了条件に Growth Channel 接続を必須化。Stream A=広告 read model＋AI下書き（PR #4・CI 96 green）、Stream B=AI社員の証拠由来状態を3Dオフィスで可視化（PR #5）。外部操作は封印のまま・台帳同期は PENDING 継続（roadmap69-71/audit168-170）。
 - [[知識/完全機能台帳/index|完全機能台帳 v1（生成鏡像）]] — Codex が原典から再生成した完全機能台帳の Obsidian 閲覧鏡像（50カテゴリ・原子機能2,553件・Stable ID 7,485件・正本は GitHub `docs/function-master/`・PR #7）。
 - [[Codex協調統合v58]] — Claude×Codex の協調開発が GitHub 正本で始動：完全機能台帳 v1（Stable ID 7,485）を検証して受領（原典未取得のため SOURCE_RECHECK_WAITING を正直に維持）・自動引き継ぎ Hook 統合・Codex 指摘の High 2件（秘密マスク漏れ・例外握り潰し）を否定テスト付きで修正・境界 Medium 6件対応・3Dオフィスのプロフィール可視化改善（roadmap69§0追補/78・PR #7/#8/#9）。
+- [[残存欠陥クローズと統合v59]] — v5.8 の残存欠陥を設計から修復：High-1 秘密マスクを正規化先行設計で全面書換（否定テスト8で証明）・High-2 は EVIDENCE_GAP を正直に維持・成果台帳の二重計上/異unit合算を廃止・3Dネームプレートのクリック選択と mobile 証拠画像の重なりを解消（CI 実機 e2e 104 green）・A+B+C+D を claude/integration-v59 へ統合（競合は全導線/全export保持で解消・PR #12 Draft・main 非対象）・台帳は SOURCE_RECHECK_VERIFIED_BY_CODEX へ（人間 GO は別 Gate・roadmap69§0追補2・PR #10/#12）。
 - [[三系統前進v56]] — v5.6 で三系統を同時前進：Evidence ID を EVID- 接頭辞に補正（正式 Function ID と混同しない）・C21 SEO/Content v0（未根拠クレームは AI が生成しない・注入で生成中止・CI 99 green）・Agent Control Plane v0（AI 実行の遷移許可表・巻き戻し禁止・stale を働いていると見せない・schema 変更なし・CI 100 green・スクリーンショット artifact 開始）・Work Evidence Cockpit v0（成果は証拠5区分のみ・削減時間は baseline なしでは「計測なし」・PR #6 新規・CI 103 green）・C22 Referral は Gate 設計のみ（roadmap72-76/audit171-174）。
 
 ## 🔗 コード側の正（source of truth）

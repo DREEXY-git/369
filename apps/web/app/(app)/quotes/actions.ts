@@ -32,8 +32,25 @@ export async function createQuoteAction(formData: FormData) {
     customerId = c?.id ?? null;
   }
   if (dealId) {
-    const d = await prisma.deal.findFirst({ where: { id: dealId, tenantId: user.tenantId }, select: { id: true } });
-    dealId = d?.id ?? null;
+    // v5.8 Medium-3 修正: dealId 直 POST で「閲覧不可ラベル顧客の案件」を紐付ける迂回を遮断する。
+    // Deal 自体の tenant 確認に加え、Deal→Customer の label 可視性も条件に含める（取得段階遮断）。
+    // 不可視 ID は黙って null 化せず、監査ログを残して拒否する（存在推測はできるが接続はできない）。
+    const d = await prisma.deal.findFirst({
+      where: { id: dealId, tenantId: user.tenantId, customer: { label: { in: visibleCustomerLabels(user.roles) } } },
+      select: { id: true },
+    });
+    if (!d) {
+      await writeAudit({
+        tenantId: user.tenantId,
+        actorId: user.userId,
+        action: 'quote_create_denied_deal_link',
+        entityType: 'Deal',
+        entityId: dealId,
+        summary: '閲覧可能範囲外の案件 ID の紐付けを拒否（テナント外または閲覧不可ラベル顧客）',
+      });
+      redirect('/quotes/new?error=deal');
+    }
+    dealId = d.id;
   }
   const discountRate = Math.max(0, Math.min(100, Number(formData.get('discountRate') ?? 0) || 0));
   const taxRate = Number(formData.get('taxRate') ?? 10) || 10;

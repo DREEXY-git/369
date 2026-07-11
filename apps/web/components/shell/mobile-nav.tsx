@@ -7,9 +7,15 @@ import { Menu, X } from 'lucide-react';
 import { NAV } from './nav';
 import { cn } from '@/lib/utils';
 
-export function MobileNav() {
+export function MobileNav({ allowedHrefs }: { allowedHrefs?: string[] }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  // 権限フィルタ（roadmap74 §9）: Sidebar と同一の許可 href 一覧でフィルタ（未指定時は全表示）。
+  const allowed = allowedHrefs ? new Set(allowedHrefs) : null;
+  const groups = NAV.map((g) => ({
+    ...g,
+    items: allowed ? g.items.filter((i) => allowed.has(i.href)) : g.items,
+  })).filter((g) => g.items.length > 0);
 
   // ルート遷移で閉じる
   useEffect(() => {
@@ -48,7 +54,10 @@ export function MobileNav() {
             aria-hidden
           />
           {/* ドロワー本体 */}
-          <div className="absolute left-0 top-0 flex h-full w-72 max-w-[82%] animate-fade-in flex-col bg-sidebar text-sidebar-foreground shadow-pop">
+          <div
+            className="absolute left-0 top-0 flex h-full w-72 max-w-[82%] animate-fade-in flex-col bg-sidebar text-sidebar-foreground shadow-pop"
+            data-testid="mobile-nav-drawer"
+          >
             <div className="flex h-16 items-center justify-between px-4">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-sm font-black tracking-tight text-white">
@@ -70,7 +79,7 @@ export function MobileNav() {
             </div>
 
             <nav className="scrollbar-dark flex-1 overflow-y-auto px-3 pb-6">
-              {NAV.map((group) => (
+              {groups.map((group) => (
                 <div key={group.title} className="mb-4">
                   <div className="px-2.5 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted">
                     {group.title}

@@ -1,8 +1,9 @@
 import { notFound } from 'next/navigation';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, EmptyState } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { formatDateTime } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
@@ -10,6 +11,15 @@ export const dynamic = 'force-dynamic';
 export default async function AiAgentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
+  // Stream B（roadmap71）: 一覧と同じページ基礎権限（dashboard:read）をデータ取得前に適用。
+  if (!hasPermission(user, 'dashboard', 'read')) {
+    return (
+      <AccessDenied
+        title="AI社員詳細"
+        reason="AI社員の閲覧にはダッシュボードの閲覧権限（dashboard:read）が必要です"
+      />
+    );
+  }
   const agent = await prisma.aIAgent.findFirst({
     where: { id, tenantId: user.tenantId },
     include: {

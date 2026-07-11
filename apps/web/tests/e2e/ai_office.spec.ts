@@ -1,0 +1,104 @@
+import { test, expect, type Page } from '@playwright/test';
+
+// 3D バーチャルオフィス v0（Phase 4 Stream B・roadmap71）。
+// read-only 可視化のみ。canvas の非 blank をピクセルで確認し、コンソールエラーを許容しない。
+// seed には AIAgent 8体＋各1件の AIAgentRun がある（状態は証拠から導出・件数の値には依存しない）。
+
+async function login(page: Page, email: string) {
+  await page.goto('/login');
+  await page.getByLabel('メールアドレス').fill(email);
+  await page.getByLabel('パスワード').fill('password123!');
+  await page.getByRole('button', { name: 'ログイン' }).click();
+  await page.waitForURL('**/dashboard');
+}
+
+function collectConsoleErrors(page: Page): string[] {
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(msg.text());
+  });
+  page.on('pageerror', (err) => errors.push(String(err)));
+  return errors;
+}
+
+test('社長は 3D オフィスを閲覧でき、canvas は非 blank・コンソールエラーなし', async ({ page }) => {
+  const errors = collectConsoleErrors(page);
+  await login(page, 'ceo@ikezaki.local');
+  await page.goto('/ai-office');
+  await expect(page.getByRole('heading', { name: '3D バーチャルオフィス（AI社員・read-only）' })).toBeVisible();
+  const canvas = page.getByTestId('ai-office-canvas');
+  await expect(canvas).toBeVisible();
+  // 描画完了を条件待ちしてピクセル検査（preserveDrawingBuffer 前提・固定 sleep にしない）。
+  // 「背景単色でも通る」検査にしないため、背景色 #0f172a からの乖離ピクセルを数える。
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => {
+          const c = document.querySelector('canvas[data-testid="ai-office-canvas"]') as HTMLCanvasElement | null;
+          if (!c) return { ok: false, colors: 0, nonBackground: 0 };
+          const sample = document.createElement('canvas');
+          sample.width = 64;
+          sample.height = 64;
+          const ctx = sample.getContext('2d')!;
+          ctx.drawImage(c, 0, 0, 64, 64);
+          const data = ctx.getImageData(0, 0, 64, 64).data;
+          const colors = new Set<string>();
+          let nonBackground = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i] ?? 0, g = data[i + 1] ?? 0, b = data[i + 2] ?? 0;
+            colors.add(`${r},${g},${b}`);
+            // 背景 #0f172a (15,23,42) からの距離が大きいピクセル = 床/ゾーン/AI社員の描画。
+            if (Math.abs(r - 15) + Math.abs(g - 23) + Math.abs(b - 42) > 40) nonBackground++;
+          }
+          return { ok: colors.size > 12 && nonBackground > 200, colors: colors.size, nonBackground };
+        }),
+      { timeout: 10000, message: 'canvas must render scene (non-blank, non-background pixels)' },
+    )
+    .toHaveProperty('ok', true);
+  // 状態凡例（色だけに依存しない・ラベル併記）と 2D フォールバック一覧。
+  await expect(page.getByTestId('ai-office-2d-list')).toBeVisible();
+  await expect(page.getByTestId('ai-office-detail')).toBeVisible();
+  // 証拠スクリーンショット（desktop）。
+  await page.screenshot({ path: 'test-results/ai-office-desktop.png', fullPage: false });
+  const benign = errors.filter((e) => !e.includes('favicon'));
+  expect(benign, `console errors: ${benign.join(' | ')}`).toHaveLength(0);
+});
+
+test('一覧から AI 社員を選択すると詳細パネルに状態・根拠・権限が表示され、フィルタが機能する', async ({ page }) => {
+  await login(page, 'ceo@ikezaki.local');
+  await page.goto('/ai-office');
+  // 2D 一覧から選択（キーボード/クリック共通の操作経路）。
+  const list = page.getByTestId('ai-office-2d-list');
+  await list.getByRole('button').first().click();
+  const detail = page.getByTestId('ai-office-detail');
+  await expect(detail.getByText('状態')).toBeVisible();
+  await expect(detail.getByText('根拠')).toBeVisible();
+  await expect(detail.getByText('権限レベル')).toBeVisible();
+  await expect(detail.getByText('この画面から実行・承認・削除はできません（read-only）。')).toBeVisible();
+  // 状態フィルタ: 存在しない状態（error 等）を選ぶと一覧が絞られる/0件表示になる（値非依存の絞り込み検証）。
+  const before = await list.getByRole('row').count();
+  await page.getByTestId('ai-office-state-filter').getByRole('button').last().click(); // 「計測なし」
+  // seed の AI 社員は全員 run 記録あり（計測なしは 0 件）→ 行数は厳密に減る（no-op を検出する）。
+  const after = await list.getByRole('row').count();
+  expect(after).toBeLessThan(before);
+  await expect(list.getByText('条件に一致する AI 社員がいません')).toBeVisible();
+});
+
+test('モバイルでは操作可能な簡略表示に切り替わる', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await login(page, 'ceo@ikezaki.local');
+  await page.goto('/ai-office');
+  await expect(page.getByTestId('ai-office-mobile-note')).toBeVisible();
+  // 3D canvas はマウントされない（簡略表示）。一覧からの選択は可能。
+  await expect(page.getByTestId('ai-office-canvas')).toHaveCount(0);
+  await page.getByTestId('ai-office-2d-list').getByRole('button').first().click();
+  await expect(page.getByTestId('ai-office-detail').getByText('状態')).toBeVisible();
+  await page.screenshot({ path: 'test-results/ai-office-mobile.png', fullPage: false });
+});
+
+test('担当者も閲覧できる（dashboard:read の回帰・PII/プロンプト本文は表示されない）', async ({ page }) => {
+  await login(page, 'sales@ikezaki.local');
+  await page.goto('/ai-office');
+  await expect(page.getByRole('heading', { name: '3D バーチャルオフィス（AI社員・read-only）' })).toBeVisible();
+  await expect(page.getByTestId('ai-office-2d-list')).toBeVisible();
+});

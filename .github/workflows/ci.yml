@@ -143,3 +143,15 @@ jobs:
             apps/web/test-results
           retention-days: 7
           if-no-files-found: ignore
+
+      # 証拠スクリーンショット（roadmap74 §9）: e2e が撮る 3D オフィス desktop/mobile の PNG を
+      # 成否に関わらず artifact 化する（失敗時は失敗診断画像も同梱される）。
+      # 対象は seed の DEMO データのみ（実顧客 PII なし）。名前は run ID 付き・短 retention。
+      - name: Upload E2E evidence screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots-${{ github.run_id }}
+          path: apps/web/test-results/**/*.png
+          retention-days: 3
+          if-no-files-found: ignore

@@ -11,19 +11,22 @@ export function Topbar({
   notifications,
   approvals,
   showApprovals = true,
+  allowedHrefs,
 }: {
   user: CurrentUser;
   notifications: number;
   approvals: number;
   /** 承認待ちの入口とバッジを表示するか（approval:read / approval:approve 保持者のみ・WIP-5）。 */
   showApprovals?: boolean;
+  /** ナビ権限フィルタ（roadmap74 §9）: モバイルドロワーへそのまま渡す。 */
+  allowedHrefs?: string[];
 }) {
   const role = primaryRole(user.roles);
   const initial = (user.name ?? '?').trim().slice(0, 1) || '?';
   return (
     <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-card/70">
       {/* モバイル: ハンバーガー＋ブランド */}
-      <MobileNav />
+      <MobileNav allowedHrefs={allowedHrefs} />
       <div className="flex items-center gap-2 md:hidden">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-xs font-black text-white">
           IK

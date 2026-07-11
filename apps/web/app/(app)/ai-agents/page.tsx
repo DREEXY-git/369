@@ -1,14 +1,25 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, EmptyState } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { formatDateTime } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AiAgentsPage() {
   const user = await requireUser();
+  // Stream B（roadmap71）: AI社員の稼働情報は経営運用の可視化。ページ基礎権限（dashboard:read）を
+  // データ取得前に適用（外部ロール・AI_ASSISTANT を遮断・/ai-office と同一規約）。
+  if (!hasPermission(user, 'dashboard', 'read')) {
+    return (
+      <AccessDenied
+        title="AI社員"
+        reason="AI社員の閲覧にはダッシュボードの閲覧権限（dashboard:read）が必要です"
+      />
+    );
+  }
   const [agents, runs] = await Promise.all([
     prisma.aIAgent.findMany({
       where: { tenantId: user.tenantId },

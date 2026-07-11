@@ -36,6 +36,7 @@ import {
   Cog,
   TrendingUp,
   BarChart3,
+  Building2,
   Cpu,
   Siren,
   Sparkles,
@@ -158,6 +159,7 @@ export const NAV: NavGroup[] = [
     title: 'AI・組織',
     items: [
       { label: 'AI社員', href: '/ai-agents', icon: Bot },
+      { label: '3Dバーチャルオフィス', href: '/ai-office', icon: Building2 },
       { label: 'コミュニケーション', href: '/communications/inbox', icon: Inbox },
       { label: '報連相', href: '/horenso', icon: MessagesSquare },
     ],

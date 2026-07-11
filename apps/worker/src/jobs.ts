@@ -1,4 +1,5 @@
 import { prisma, processOutboxBatch, recordUsageEventCore } from '@hokko/db';
+import { runWithAgentLifecycle } from './agent-lifecycle';
 import {
   generateMorningReport,
   analyzeReviews,
@@ -55,7 +56,15 @@ async function recordRun(tenantId: string, task: string, summary: string) {
 }
 
 export const JOB_HANDLERS: Record<JobName, Handler> = {
+  // Stream B2（roadmap74）: Agent Control Plane v0 の producer 接続はこの1本のみ。
+  // runWithAgentLifecycle が RUNNING→SUCCEEDED/FAILED（例外時・マスク済みエラー）を記録し、
+  // 二重 Run・terminal 巻き戻しを許可表で防止する。他ジョブは従来どおり recordRun（SUCCEEDED のみ）。
+  // v5.8 High-2: fn 失敗時は wrapper が FAILED 記録後にマスク済み例外を再 throw する。
+  // ここで catch しないこと（BullMQ が失敗を観測して retry / failed telemetry を成立させる）。
   MORNING_REPORT_JOB: async ({ tenantId }) => {
+    const lc = await runWithAgentLifecycle(
+      { tenantId, agentKey: 'chief_of_staff', task: 'AI朝礼レポート生成', summary: '朝礼レポートを生成しました' },
+      async () => {
     const dealSum = await prisma.deal.aggregate({ where: { tenantId, stage: { not: 'LOST' } }, _sum: { amount: true } });
     const report = await generateMorningReport({
       date: new Date().toISOString().slice(0, 10),
@@ -81,8 +90,11 @@ export const JOB_HANDLERS: Record<JobName, Handler> = {
       idempotencyKey: `usage:ai.output.generated:${aiOutput.id}`,
       metadata: { task: 'generateMorningReport', source: 'worker' },
     });
-    await recordRun(tenantId, 'AI朝礼レポート生成', '朝礼レポートを生成しました');
     return report;
+      },
+    );
+    if (lc.skipped) return { skipped: lc.skipped };
+    return lc.result;
   },
 
   ANOMALY_DETECTION_JOB: async ({ tenantId }) => {

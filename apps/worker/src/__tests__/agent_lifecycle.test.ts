@@ -135,6 +135,25 @@ describe('runWithAgentLifecycle（v5.8 hardening）', () => {
     expect(runs.find((r) => r.id === 'run-00-rival')!.status).toBe('RUNNING');
   });
 
+  it('v6.1: stale（クラッシュ残骸）RUNNING は競合に含めず、新規 run は成功する', async () => {
+    // 3 時間前に起動して finishedAt を持たない RUNNING は crash 残骸。作成前 gate は作成を許可し、
+    // 作成後 rival 判定でも「先行」と見なさない（さもなくば残骸が新規 run を恒久的に潰す）。
+    const stale = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const { db, runs } = makeDb({
+      preexisting: [
+        { id: 'run-stale', tenantId: 't1', agentId: 'agent-1', task: 'テストタスク', status: 'RUNNING', startedAt: stale, finishedAt: null, error: null },
+      ],
+    });
+    let executed = false;
+    const out = await runWithAgentLifecycle(params, async () => ((executed = true), { value: 42 }), db);
+    expect(executed).toBe(true);
+    expect(out.ok).toBe(true);
+    const mine = runs.find((r) => r.id !== 'run-stale');
+    expect(mine!.status).toBe('SUCCEEDED');
+    // 残骸はそのまま（履歴は巻き戻さない）
+    expect(runs.find((r) => r.id === 'run-stale')!.status).toBe('RUNNING');
+  });
+
   it('needsApproval は NEEDS_APPROVAL＋AIApprovalGate(PENDING) を作り、承認はしない', async () => {
     const { db, runs, gates } = makeDb();
     const out = await runWithAgentLifecycle(params, async () => ({ needsApproval: '外部送信を含むため人間の承認が必要' }), db);

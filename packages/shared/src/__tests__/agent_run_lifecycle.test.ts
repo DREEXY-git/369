@@ -147,3 +147,29 @@ describe('maskRunError v5.9（quoted JSON・折返しヘッダ・スキーム網
     expect(m.length).toBeLessThanOrEqual(201);
   });
 });
+
+// v6.1 追補: Codex 再監査で再現された残存 3 経路の否定テスト（red で再現 → 修正で green）。
+// ①エスケープ引用符付き JSON の非スキーム値 ②改行直後に空白なしで値が続くヘッダ ③裸の session キー。
+describe('maskRunError v6.1（escaped quote・改行直後値・裸 session）', () => {
+  it('Codex再現A: \\"password\\" / \\"token\\"（エスケープ引用符・スキーム無し値）が残らない', () => {
+    const m = maskRunError(new Error('log {\\"password\\":\\"P@ssEscaped9\\",\\"token\\":\\"TOKENESCAPED22\\"}'));
+    expect(m).not.toContain('P@ssEscaped9');
+    expect(m).not.toContain('TOKENESCAPED22');
+  });
+  it('Codex再現B-1: Cookie 改行直後（空白なし）+ session キーが残らない', () => {
+    const m = maskRunError(new Error('Cookie:\nsession=NOSPACESECRET7'));
+    expect(m).not.toContain('NOSPACESECRET7');
+  });
+  it('Codex再現B-2: Authorization 改行直後の裸トークンが残らない', () => {
+    const m = maskRunError(new Error('Authorization:\nRAWTOKEN123456 rejected'));
+    expect(m).not.toContain('RAWTOKEN123456');
+  });
+  it('Codex再現C: 裸の session=<値> が残らない', () => {
+    const m = maskRunError(new Error('session=BARESESSIONVAL123 expired'));
+    expect(m).not.toContain('BARESESSIONVAL123');
+  });
+  it('過剰マスクしない: 散文の "session started" は保持する', () => {
+    const m = maskRunError(new Error('worker session started at step 3'));
+    expect(m).toContain('session started');
+  });
+});

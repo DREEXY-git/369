@@ -14,6 +14,12 @@ export const NAV_PAGE_GATES: Record<string, readonly [resource: string, action: 
   '/growth/control-tower': ['dashboard', 'read'],
   '/growth/events': ['dashboard', 'read'],
   '/dx': ['marketing', 'read'],
+  // Marketing OS / 広告・チャネル分析 / SEO・コンテンツ: いずれもページ先頭で
+  // marketing:read を取得前に全面拒否（AccessDenied 返却）＝行き止まり導線化を防ぐため
+  // ナビゲートを marketing:read 保持者に限定する（v6.1・境界そのものは各ページ側が正）。
+  '/marketing': ['marketing', 'read'],
+  '/marketing/ads': ['marketing', 'read'],
+  '/marketing/content': ['marketing', 'read'],
   '/customers': ['customer', 'read'],
   '/deals': ['deal', 'read'],
   '/deals/kanban': ['deal', 'read'],

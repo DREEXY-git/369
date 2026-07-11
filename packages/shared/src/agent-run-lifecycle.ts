@@ -55,6 +55,22 @@ export function shouldCreateRun(
 export const STALE_RUNNING_MS = 2 * 60 * 60 * 1000;
 
 /**
+ * stale（クラッシュ残骸）判定。RUNNING かつ startedAt が staleThresholdMs より古いものだけを stale とする。
+ * v6.1 修正: `shouldCreateRun`（作成前）と worker の作成後 rival 判定で staleness の扱いを一致させるための
+ * 共有ヘルパ。startedAt 不明（null）は「実行中と断定できない」だけで crash 残骸とも断定しないため stale 扱いにしない
+ * （保守的＝新鮮な rival として扱い、二重実行側を降ろす方に倒す）。QUEUED/NEEDS_APPROVAL は crash 残骸概念の外。
+ */
+export function isStaleRunningRun(
+  run: { status: RunLifecycleStatus; startedAt: Date | null },
+  now: Date,
+  staleThresholdMs: number = STALE_RUNNING_MS,
+): boolean {
+  if (run.status !== 'RUNNING') return false;
+  if (!run.startedAt) return false;
+  return now.getTime() - run.startedAt.getTime() > staleThresholdMs;
+}
+
+/**
  * エラーメッセージの保存用マスク。PII/Secrets/接続文字列らしきものを落とし、長さを制限する。
  * prompt 全文・payload 本文は呼び出し側がそもそも渡さないこと（ここは最後の防波堤）。
  *
@@ -62,14 +78,27 @@ export const STALE_RUNNING_MS = 2 * 60 * 60 * 1000;
  * 「①正規化（CRLF 統一・折返しヘッダの unfold）→②キー種別ごとの全面 redact →③1行化」の順で処理する。
  * quoted JSON キー（"authorization" / "cookie" 等）・折返し Cookie・tab/mixed case も対象。
  */
+// v6.1 追補: 裸の `session`（session_id/sid 以外）も対象へ。`session=<secret>` が
+// キー一覧漏れで残っていた Codex 再現ケースを塞ぐ（`\bsession\b\s*[:=]` は "session started"
+// のような散文には掛からない＝過剰マスクにならない）。
 const MASK_SENSITIVE_KEYS =
-  'proxy-authorization|authorization|set-cookie|cookie|api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|token|secret|password|passwd|pwd|credential|session[_-]?id|private[_-]?key|sid';
+  'proxy-authorization|authorization|set-cookie|cookie|api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|token|secret|password|passwd|pwd|credential|session[_-]?id|session|private[_-]?key|sid';
 
 export function maskRunError(err: unknown, maxLen = 200): string {
   const raw = err instanceof Error ? err.message : String(err ?? 'unknown error');
-  // ① 正規化: CRLF/CR を LF に統一し、折返しヘッダ（改行＋空白/タブ継続）を 1 空白へ unfold。
-  //    これで `Cookie:\n sid=...` のような複数行値も単一行のヘッダとして後段の redact に掛かる。
-  let s = raw.replace(/\r\n?/g, '\n').replace(/\n[ \t]+/g, ' ');
+  // ① 正規化（後段の redact が確実に掛かる形へ整える）:
+  //    (a) CRLF/CR を LF に統一。
+  //    (b) エスケープされた引用符 \" \' を素の引用符へ戻す（二重 stringify された JSON で
+  //        `{\"password\":\"...\"}` のようにキー正規表現が外れる Codex 再現ケースを塞ぐ）。
+  //    (c) 折返しヘッダ（改行＋空白/タブ継続）を 1 空白へ unfold（`Cookie:\n sid=...`）。
+  //    (d) 値が `:`/`=` の直後で改行して次行頭から始まる形（`Cookie:\nsession=...` の空白なし版・
+  //        `Authorization:\nSECRET` の裸トークン版）を、区切りをまたいで 1 空白へ join。
+  //        `:`/`=` 境界に限定するため、ヘッダ redact の行末境界（[^\n]*）は他所で維持される。
+  let s = raw
+    .replace(/\r\n?/g, '\n')
+    .replace(/\\(["'])/g, '$1')
+    .replace(/\n[ \t]+/g, ' ')
+    .replace(/([:=])[ \t]*\n+[ \t]*/g, '$1 ');
 
   s = s
     // ② -1) URL（クエリ・埋め込み認証情報 user:pass@ ごと落とす）

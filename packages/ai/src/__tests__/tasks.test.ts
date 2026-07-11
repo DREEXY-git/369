@@ -147,3 +147,31 @@ describe('fakeAdsImprovement（C19 Ads 改善案・Phase 3.5）', () => {
     expect(a.recommendations.join(' ')).toContain('記録');
   });
 });
+
+describe('fakeSeoBrief（C21 SEOブリーフ・Phase 3.5）', () => {
+  const base = { keyword: 'イベント集客 札幌', audience: '中小企業の広報担当', theme: '', existingTitles: ['既存記事A'] };
+  it('決定論で、検索意図・構成・メタ案・根拠・人間確認を含む（Zod 検証済み）', async () => {
+    const { fakeSeoBrief } = await import('../tasks');
+    const a = fakeSeoBrief(base);
+    const b = fakeSeoBrief(base);
+    expect(a).toEqual(b);
+    expect(a.searchIntent).toContain('イベント集客 札幌');
+    expect(a.outline.length).toBeGreaterThanOrEqual(3);
+    expect(a.metaTitle).toContain('イベント集客 札幌');
+    expect(a.nextHumanChecks.join(' ')).toContain('公開');
+  });
+  it('No.1・業界初・満足度数値を要求されても本文に含めず、人間確認に回す', async () => {
+    const { fakeSeoBrief } = await import('../tasks');
+    const { detectForbiddenClaims } = await import('@hokko/shared');
+    const a = fakeSeoBrief({ ...base, theme: '業界初のNo.1サービスで満足度98%を訴求したい' });
+    const rendered = [a.title, a.searchIntent, a.metaTitle, a.metaDescription, ...a.outline].join('\n');
+    expect(detectForbiddenClaims(rendered)).toEqual([]);
+    expect(a.nextHumanChecks.join(' ')).toContain('根拠');
+  });
+  it('長文・重複キーワード・想定読者なしでデータ不足と重複確認を明示する', async () => {
+    const { fakeSeoBrief } = await import('../tasks');
+    const a = fakeSeoBrief({ keyword: 'あ'.repeat(500), audience: '', theme: '', existingTitles: ['あ'.repeat(500) + 'の記事'] });
+    expect(a.dataGaps.length).toBeGreaterThan(0);
+    expect(a.nextHumanChecks.join(' ')).toContain('重複');
+  });
+});

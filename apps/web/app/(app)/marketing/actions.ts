@@ -9,6 +9,7 @@ import { generateMarketingAsset, type MarketingAssetKind } from '@/lib/ai-genera
 import { requireApprovalForDangerousAction } from '@/lib/approval';
 import { checkToolPermission, summarizeAdsMetrics } from '@hokko/shared';
 import { generateAdsImprovementDraft } from '@/lib/ads-insight';
+import { generateSeoBriefDraft } from '@/lib/seo-brief';
 import { toNumber } from '@/lib/utils';
 
 function num(v: FormDataEntryValue | null, d = 0): number {
@@ -241,4 +242,44 @@ export async function generateAdsImprovementDraftAction(formData: FormData) {
   });
   revalidatePath('/marketing/ads');
   redirect('/marketing/ads?generated=1');
+}
+
+/** C21 SEO/Content: SEO ブリーフの下書きを生成する（Phase 3.5 Stream A2・roadmap73）。
+ *  下書きのみ。公開・CMS 投稿・外部検索・PR 配信は行わない（封印中）。生成は人間のみ。 */
+export async function generateSeoBriefDraftAction(formData: FormData) {
+  const user = await requireUser();
+  if (!hasPermission(user, 'marketing', 'create')) redirect('/marketing/content?denied=1');
+  if (user.isAi) redirect('/marketing/content?denied=1');
+  const tool = checkToolPermission('user', 'generate');
+  if (!tool.allowed) redirect('/marketing/content?error=tool');
+
+  const keyword = String(formData.get('keyword') ?? '').trim();
+  if (!keyword) redirect('/marketing/content?error=keyword');
+  // 既存記事タイトルのみ渡す（顧客 PII・CUSTOMER_CONFIDENTIAL は取得も送出もしない）。
+  const existing = await prisma.contentAsset.findMany({
+    where: { tenantId: user.tenantId, type: { in: ['article', 'lp'] } },
+    select: { title: true },
+    take: 100,
+  });
+  const result = await generateSeoBriefDraft({
+    tenantId: user.tenantId,
+    userId: user.userId,
+    input: {
+      keyword,
+      audience: String(formData.get('audience') ?? '').trim(),
+      theme: String(formData.get('theme') ?? '').trim(),
+      existingTitles: existing.map((e) => e.title),
+    },
+  });
+  if (result.blocked) redirect('/marketing/content?blocked=1');
+  await writeAudit({
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    action: 'ai_run',
+    entityType: 'ContentAsset',
+    entityId: result.aiOutputId ?? 'seo-brief',
+    summary: `SEOブリーフ下書きを生成: ${keyword.slice(0, 40)}（公開なし・封印中）`,
+  });
+  revalidatePath('/marketing/content');
+  redirect('/marketing/content?generated=1');
 }

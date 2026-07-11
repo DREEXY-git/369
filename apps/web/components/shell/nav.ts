@@ -81,6 +81,7 @@ export const NAV: NavGroup[] = [
       { label: '成長イベント台帳', href: '/growth/events', icon: Activity },
       { label: 'Marketing OS', href: '/marketing', icon: Megaphone },
       { label: '広告・チャネル分析', href: '/marketing/ads', icon: BarChart3 },
+      { label: 'SEO・コンテンツ', href: '/marketing/content', icon: FileText },
       { label: 'DX OS', href: '/dx', icon: Cpu },
     ],
   },

@@ -1,8 +1,9 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
+import { AccessDenied } from '@/components/access-denied';
 import { Card, CardContent, CardHeader, CardTitle, Stat, Badge, Button, EmptyState } from '@/components/ui';
 import { formatJpy, formatDateTime } from '@hokko/shared';
 
@@ -10,6 +11,15 @@ export const dynamic = 'force-dynamic';
 
 export default async function MarketingHomePage() {
   const user = await requireUser();
+  // Stream A2（roadmap73・§9 ハードニング）: 予算・消化を含む Marketing OS ホームにページ基礎権限を適用。
+  if (!hasPermission(user, 'marketing', 'read')) {
+    return (
+      <AccessDenied
+        title="Marketing OS"
+        reason="この画面の閲覧にはマーケティングの閲覧権限（marketing:read）が必要です"
+      />
+    );
+  }
   const t = user.tenantId;
   const [campaigns, assets, pending, metrics, recentCampaigns] = await Promise.all([
     prisma.marketingCampaign.findMany({ where: { tenantId: t } }),

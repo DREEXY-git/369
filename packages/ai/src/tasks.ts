@@ -1,5 +1,6 @@
 import {
   classifyBusinessRelevance,
+  detectForbiddenClaims,
   detectUnsubscribeRequest,
   maskText,
   suggestDynamicPrice,
@@ -9,6 +10,7 @@ import type { LLMProvider } from './providers/types';
 import { getLLMProvider } from './providers/index';
 import {
   AdsImprovementSchema,
+  SeoBriefSchema,
   ContractRiskSchema,
   CustomerInsightSchema,
   KnowledgeAnswerSchema,
@@ -20,6 +22,7 @@ import {
   ReviewAnalysisSchema,
   WebsiteAnalysisSchema,
   type AdsImprovementResult,
+  type SeoBriefResult,
   type ContractRiskResult,
   type CustomerInsightResult,
   type KnowledgeAnswerResult,
@@ -695,5 +698,65 @@ export async function generateAdsImprovement(
     user: `広告キャンペーンの改善案の下書きを作成。実行はしない。JSON {title,recommendations[],rationale[],dataGaps[],nextHumanChecks[],confidence}。\n${JSON.stringify(input)}`,
     schema: AdsImprovementSchema,
     fake: () => fakeAdsImprovement(input),
+  });
+}
+
+// ============================ C21 SEO ブリーフ（Phase 3.5） ==================
+// read-only 分析に基づく下書きのみ。外部検索・順位取得・公開・CMS 投稿・PR 配信は行わない（封印中）。
+// No.1・業界初・顧客名・成果数値は根拠・同意なしに生成しない（誇大表示・ステマ規制の防止）。
+
+export interface SeoBriefInput {
+  keyword: string;
+  audience: string;
+  theme: string;
+  /** 既存記事タイトル（重複回避の材料・PII を含めないこと）。 */
+  existingTitles: string[];
+}
+
+export function fakeSeoBrief(input: SeoBriefInput): SeoBriefResult {
+  const kw = input.keyword.trim() || 'テーマ未設定';
+  const audRaw = input.audience.trim() || '見込み顧客';
+  const aud = detectForbiddenClaims(audRaw).length ? '見込み顧客' : audRaw;
+  const claims = detectForbiddenClaims(`${input.keyword}\n${input.audience}\n${input.theme}`);
+  // 誇大表現（No.1・業界初・満足度数値等）は入力に含まれていても生成コピーへ持ち込まない。
+  // 表示用のキーワード/テーマは安全な代替に差し替え、原文の扱いは nextHumanChecks に回す。
+  const displayKw = detectForbiddenClaims(kw).length ? '対象サービス（表現の根拠確認が必要）' : kw;
+  const rawTheme = input.theme.trim();
+  const displayTheme = !rawTheme || detectForbiddenClaims(rawTheme).length ? displayKw : rawTheme;
+  const dup = input.existingTitles.some((t) => t.includes(kw));
+  const gaps: string[] = [];
+  if (!input.audience.trim()) gaps.push('想定読者が未指定です。');
+  if (input.existingTitles.length === 0) gaps.push('既存記事の記録がなく、内部リンク候補を提案できません。');
+
+  const checks = [
+    '公開・CMS 投稿は行われません（下書きのみ・外部公開は人間の承認と別途の解禁が必要）。',
+    '検索順位・検索ボリュームは取得していません（外部検索は封印中）。実データでの検証が必要です。',
+  ];
+  if (claims.length > 0) {
+    checks.push(`入力に ${claims.join('・')} が含まれています。根拠資料と同意の確認なしに本文へ使用しないでください（本下書きには含めていません）。`);
+  }
+  if (dup) checks.push('同じキーワードを含む既存記事があります。重複コンテンツ（カニバリ）の確認が必要です。');
+
+  return SeoBriefSchema.parse({
+    title: `【SEOブリーフ・下書き】${displayKw}`,
+    keyword: kw,
+    searchIntent: `「${displayKw}」を検索する${aud}は、比較検討の前段で信頼できる地域情報と具体的な進め方を求めていると推定します。`,
+    outline: [
+      `# ${displayTheme} の基本と選び方`,
+      `## ${aud}がまず確認すべきポイント`,
+      '## 進め方の手順（準備〜実施）',
+      '## 費用感と見積の考え方（実数値は掲載前に人間が確認）',
+      '## よくある質問',
+      '## 相談・問い合わせの案内',
+    ],
+    metaTitle: `${displayKw}の進め方と選び方ガイド`,
+    metaDescription: `${displayKw}を検討する${aud}向けに、確認ポイント・手順・費用の考え方を整理しました。まずは無料相談から。`,
+    rationale: [
+      `キーワード「${kw}」と想定読者「${aud}」からの決定論テンプレート生成（FakeLLM）`,
+      `既存記事 ${input.existingTitles.length} 件との重複チェック済み`,
+    ],
+    dataGaps: gaps,
+    nextHumanChecks: checks,
+    confidence: gaps.length === 0 ? 0.65 : 0.5,
   });
 }

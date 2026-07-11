@@ -130,3 +130,20 @@ export const AdsImprovementSchema = z.object({
   confidence: z.number().min(0).max(1),
 });
 export type AdsImprovementResult = z.infer<typeof AdsImprovementSchema>;
+
+/** C21 SEO ブリーフ下書き（Phase 3.5・下書きのみ。外部検索・順位取得・公開・CMS 投稿は封印中）。 */
+export const SeoBriefSchema = z.object({
+  title: z.string(),
+  keyword: z.string(),
+  /** 検索意図の推定（情報収集/比較検討/購入行動 など）。 */
+  searchIntent: z.string(),
+  /** 記事構成（見出し案）。 */
+  outline: z.array(z.string()).min(3),
+  metaTitle: z.string(),
+  metaDescription: z.string(),
+  rationale: z.array(z.string()).default([]),
+  dataGaps: z.array(z.string()).default([]),
+  nextHumanChecks: z.array(z.string()).min(1),
+  confidence: z.number().min(0).max(1),
+});
+export type SeoBriefResult = z.infer<typeof SeoBriefSchema>;

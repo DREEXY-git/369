@@ -100,3 +100,50 @@ describe('FakeEmbedding', () => {
     expect(cosineSimilarity(a!, b!)).toBeGreaterThan(cosineSimilarity(a!, c!));
   });
 });
+
+describe('fakeAdsImprovement（C19 Ads 改善案・Phase 3.5）', () => {
+  it('実績があるとき、根拠・次の人間確認つきの下書きを返す（Zod 検証済み・決定論）', async () => {
+    const { fakeAdsImprovement } = await import('../tasks');
+    const input = {
+      campaignName: '夏のイベント集客',
+      channel: 'ads',
+      budget: 500000,
+      spent: 350000,
+      impressions: 120000,
+      clicks: 900,
+      conversions: 24,
+      cost: 350000,
+      ctr: 0.0075,
+      cvr: 0.0267,
+      cpa: 14583,
+    };
+    const a = fakeAdsImprovement(input);
+    const b = fakeAdsImprovement(input);
+    expect(a).toEqual(b); // 決定論
+    expect(a.title).toContain('夏のイベント集客');
+    expect(a.recommendations.length).toBeGreaterThan(0);
+    expect(a.rationale.join(' ')).toContain('CTR');
+    expect(a.nextHumanChecks.join(' ')).toContain('封印中');
+    expect(a.confidence).toBeGreaterThan(0);
+    expect(a.confidence).toBeLessThanOrEqual(1);
+  });
+
+  it('実績ゼロのとき、データ不足を明示し働いているように見せない', async () => {
+    const { fakeAdsImprovement } = await import('../tasks');
+    const a = fakeAdsImprovement({
+      campaignName: '新規campaign',
+      channel: 'ads',
+      budget: 0,
+      spent: 0,
+      impressions: 0,
+      clicks: 0,
+      conversions: 0,
+      cost: 0,
+      ctr: null,
+      cvr: null,
+      cpa: null,
+    });
+    expect(a.dataGaps.length).toBeGreaterThan(0);
+    expect(a.recommendations.join(' ')).toContain('記録');
+  });
+});

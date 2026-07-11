@@ -109,6 +109,12 @@ export const PROMPT_TEMPLATES: PromptTemplateDef[] = [
     template: `営業メールへの返信を、興味あり/今は不要/後日連絡希望/担当転送/資料希望/見積希望/配信停止希望/クレーム/自動返信/判定不能 に分類してください。\n${GUARDRAIL}\n返信: {{reply}}`,
   },
   {
+    key: 'ads_improvement',
+    name: '広告改善案（下書き）',
+    description: '広告キャンペーンの実績指標から改善案の下書きを作成（実行はしない・封印中）',
+    template: `広告キャンペーンの指標（CTR/CVR/CPA/予算消化）に基づき、改善案の下書きを作成してください。必ず下書きであり、出稿変更・費用の増減・外部媒体への反映は行わないこと。根拠・データ不足・次の人間確認事項を必ず含めること。\n${GUARDRAIL}\n実績: {{metrics}}`,
+  },
+  {
     key: 'ceo_sales_report',
     name: '社長向け営業報告',
     description: '営業状況を社長向けに要約',

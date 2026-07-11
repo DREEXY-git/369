@@ -8,6 +8,7 @@ import {
 import type { LLMProvider } from './providers/types';
 import { getLLMProvider } from './providers/index';
 import {
+  AdsImprovementSchema,
   ContractRiskSchema,
   CustomerInsightSchema,
   KnowledgeAnswerSchema,
@@ -18,6 +19,7 @@ import {
   ReplyClassificationSchema,
   ReviewAnalysisSchema,
   WebsiteAnalysisSchema,
+  type AdsImprovementResult,
   type ContractRiskResult,
   type CustomerInsightResult,
   type KnowledgeAnswerResult,
@@ -619,4 +621,79 @@ export function generateSubsidyApplicationDraft(input: {
     '',
     '※ 本ドラフトはAIによる下書きです。採択を保証するものではなく、提出前に中小企業診断士・行政書士等の専門家確認を必ず行ってください。',
   ].join('\n');
+}
+
+// ============================ C19 Ads 改善案（Phase 3.5） ====================
+// read-only 分析に基づく下書きのみ。外部広告 API・広告費の支出・自動最適化は行わない（封印中）。
+
+export interface AdsImprovementInput {
+  campaignName: string;
+  channel: string;
+  budget: number;
+  spent: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  cost: number;
+  ctr: number | null;
+  cvr: number | null;
+  cpa: number | null;
+}
+
+export function fakeAdsImprovement(input: AdsImprovementInput): AdsImprovementResult {
+  const recs: string[] = [];
+  const rationale: string[] = [];
+  const gaps: string[] = [];
+  const remaining = Math.max(0, input.budget - input.spent);
+
+  if (input.impressions <= 0) {
+    gaps.push('表示回数（impressions）の実績が未記録です。');
+  }
+  if (input.ctr != null) {
+    rationale.push(`CTR ${(input.ctr * 100).toFixed(2)}%（clicks ${input.clicks} / impressions ${input.impressions}）`);
+    if (input.ctr < 0.01) recs.push('CTR が 1% 未満です。見出し・クリエイティブの差し替え候補を用意し、訴求軸を2案比較してください。');
+    else recs.push('CTR は水準内です。現行クリエイティブを維持しつつ、配信面の内訳記録を検討してください。');
+  } else {
+    gaps.push('CTR が計算できません（表示回数の記録が必要）。');
+  }
+  if (input.cvr != null) {
+    rationale.push(`CVR ${(input.cvr * 100).toFixed(2)}%（conversions ${input.conversions} / clicks ${input.clicks}）`);
+    if (input.cvr < 0.03) recs.push('CVR が 3% 未満です。受け皿（LP・フォーム）の導線と初回特典の明示を見直してください。');
+  } else {
+    gaps.push('CVR が計算できません（クリックまたは CV の記録が必要）。');
+  }
+  if (input.cpa != null) {
+    rationale.push(`CPA ${input.cpa.toLocaleString()}円（cost ${input.cost.toLocaleString()}円 / conversions ${input.conversions}）`);
+    recs.push(`CPA ${input.cpa.toLocaleString()}円を許容獲得単価と比較し、超過時は配信の絞り込み案を検討してください。`);
+  } else {
+    gaps.push('CPA が計算できません（費用または CV の記録が必要）。');
+  }
+  rationale.push(`予算 ${input.budget.toLocaleString()}円 / 消化 ${input.spent.toLocaleString()}円（残 ${remaining.toLocaleString()}円）`);
+  if (recs.length === 0) recs.push('実績データの記録を先に進めてください（本下書きは分析材料が不足しています）。');
+
+  return AdsImprovementSchema.parse({
+    title: `【広告改善案・下書き】${input.campaignName}（${input.channel}）`,
+    recommendations: recs,
+    rationale,
+    dataGaps: gaps,
+    nextHumanChecks: [
+      '改善案の採否は人間が判断してください（AI は実行しません）。',
+      '外部媒体への反映・出稿変更・費用の増減は封印中です。個別承認まで実施されません。',
+      '許容 CPA・目標 CV の設定値を確認してください。',
+    ],
+    confidence: gaps.length === 0 ? 0.7 : 0.5,
+  });
+}
+
+export async function generateAdsImprovement(
+  input: AdsImprovementInput,
+  ctx: LlmContext = {},
+): Promise<AdsImprovementResult> {
+  return runStructured(ctx, {
+    task: 'ads_improvement',
+    system: SYS,
+    user: `広告キャンペーンの改善案の下書きを作成。実行はしない。JSON {title,recommendations[],rationale[],dataGaps[],nextHumanChecks[],confidence}。\n${JSON.stringify(input)}`,
+    schema: AdsImprovementSchema,
+    fake: () => fakeAdsImprovement(input),
+  });
 }

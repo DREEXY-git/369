@@ -7,7 +7,9 @@ import { prisma, writeAudit } from '@/lib/db';
 import { emitGrowthEvent } from '@/lib/growth';
 import { generateMarketingAsset, type MarketingAssetKind } from '@/lib/ai-generate';
 import { requireApprovalForDangerousAction } from '@/lib/approval';
-import { checkToolPermission } from '@hokko/shared';
+import { checkToolPermission, summarizeAdsMetrics } from '@hokko/shared';
+import { generateAdsImprovementDraft } from '@/lib/ads-insight';
+import { toNumber } from '@/lib/utils';
 
 function num(v: FormDataEntryValue | null, d = 0): number {
   const n = Number(v ?? d);
@@ -183,4 +185,60 @@ export async function recordMarketingCampaignResultAction(formData: FormData) {
   await writeAudit({ tenantId: user.tenantId, actorId: user.userId, action: 'update', entityType: 'MarketingCampaign', entityId: campaignId, summary: '実績KPIを記録' });
   revalidatePath(`/marketing/campaigns/${campaignId}`);
   redirect(`/marketing/campaigns/${campaignId}`);
+}
+
+/** C19 Ads: 広告改善案の下書きを生成する（Phase 3.5 Stream A・roadmap70）。
+ *  read-only 分析＋下書きのみ。出稿変更・費用増減・外部媒体反映・外部送信は行わない（封印中）。
+ *  生成は人間のみ（AI ロールの再帰生成を作らない・P3-CT-4 と同方針）。 */
+export async function generateAdsImprovementDraftAction(formData: FormData) {
+  const user = await requireUser();
+  if (!hasPermission(user, 'marketing', 'create')) redirect('/marketing/ads?denied=1');
+  if (user.isAi) redirect('/marketing/ads?denied=1');
+  const tool = checkToolPermission('user', 'generate');
+  if (!tool.allowed) redirect('/marketing/ads?error=tool');
+
+  const campaignId = String(formData.get('campaignId') ?? '');
+  const campaign = await prisma.marketingCampaign.findFirst({
+    where: { id: campaignId, tenantId: user.tenantId },
+    include: { metrics: true },
+  });
+  if (!campaign) redirect('/marketing/ads?error=notfound');
+
+  const summary = summarizeAdsMetrics(
+    campaign!.metrics.map((m) => ({
+      impressions: m.impressions,
+      clicks: m.clicks,
+      conversions: m.conversions,
+      cost: toNumber(m.cost),
+    })),
+  );
+  const result = await generateAdsImprovementDraft({
+    tenantId: user.tenantId,
+    userId: user.userId,
+    campaignId: campaign!.id,
+    input: {
+      campaignName: campaign!.name,
+      channel: campaign!.channel,
+      budget: toNumber(campaign!.budget),
+      spent: toNumber(campaign!.spent),
+      impressions: summary.impressions,
+      clicks: summary.clicks,
+      conversions: summary.conversions,
+      cost: summary.cost,
+      ctr: summary.ctr,
+      cvr: summary.cvr,
+      cpa: summary.cpa,
+    },
+  });
+  if (result.blocked) redirect('/marketing/ads?blocked=1');
+  await writeAudit({
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    action: 'ai_run',
+    entityType: 'MarketingCampaign',
+    entityId: campaign!.id,
+    summary: `広告改善案の下書きを生成: ${campaign!.name}（実行なし・封印中）`,
+  });
+  revalidatePath('/marketing/ads');
+  redirect('/marketing/ads?generated=1');
 }

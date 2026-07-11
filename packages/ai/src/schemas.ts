@@ -116,3 +116,17 @@ export const ContractRiskSchema = z.object({
     .default([]),
 });
 export type ContractRiskResult = z.infer<typeof ContractRiskSchema>;
+
+/** C19 Ads 改善案下書き（Phase 3.5・read-only 分析＋下書きのみ。外部広告 API・支出は封印中）。 */
+export const AdsImprovementSchema = z.object({
+  title: z.string(),
+  recommendations: z.array(z.string()).min(1),
+  /** 根拠（どの指標・どのデータから導いたか）。 */
+  rationale: z.array(z.string()).default([]),
+  /** データ不足の明示（不足がなければ空配列）。 */
+  dataGaps: z.array(z.string()).default([]),
+  /** 次に人間が確認すべき事項。 */
+  nextHumanChecks: z.array(z.string()).min(1),
+  confidence: z.number().min(0).max(1),
+});
+export type AdsImprovementResult = z.infer<typeof AdsImprovementSchema>;

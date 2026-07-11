@@ -148,6 +148,7 @@
 - [[ControlTowerV0完遂とP3CT5承認導線]] — 管制塔の最終段 P3-CT-5（承認導線 deep link・リンクのみ・実行ボタンなし・件数countのみ）を統合オートパイロットで完了し Control Tower v0 が全段完成：push 前レビューで昔からの穴（リード閲覧3ページの権限ゲート欠如）も発見して先に修正・CI「80 passed / 0 failed」をログ本文確認・専用テスト8件体制（roadmap59-60/doc158-159・CT v0 完遂）。
 - [[CRM閲覧境界クローズとGrowthEvent成果可視化]] — 顧客管理の7つの穴（無権限の一覧全行表示・判定前取得・拒否画面の顧客名・履歴/インサイトの判定漏れ・ページ表示だけで顧客名＋履歴が AI に送られ得る構造 等）を「先に判定・後に取得」の二段階で全経路クローズし doc125 の HOLD を解消：あわせて管制塔に成果と削減時間（Growth Event Ledger）を read-only 表示・金額は財務権限者のみ・財務件数は引き算復元も遮断・レビュー5視点で critical 1 含む10件を push 前修正・テスト 80→85件（roadmap61-63/doc160-162・WIP1 完全クローズ）。
 - [[Phase3クローズ準備_境界クローズ4連WIP]] — Phase 3 のクローズ準備として閲覧境界を4連 WIP でクローズ：/growth・/dx の財務境界、見積/請求/印刷/案件の閲覧境界（原価・粗利は quote:read 配下と明文化・宛先にも可視ラベルガード）、承認待ち件数のシグナル遮断、顧客 PII 29 経路の機械監査台帳と Critical/High 修正。設計原則「取得段階遮断・fail-closed 既定・判定は fetch より先」が型として確立。Phase 3 完了は宣言せず案A/案B を人間 Gate に提示（roadmap64-68/doc163-167・CI 88→91→93 green）。
+- [[案Bプラス並行前進とPhase3.5_Phase4開始]] — 人間Gateが案B+を採択：Phase 3 は AI Growth Engine v0 としてクローズ準備・C19/C21/C22 は Phase 3.5 として正本化（捨てない）・Phase 4（AI社員OS/3Dオフィス）と並行前進・Phase 4 完了条件に Growth Channel 接続を必須化。Stream A=広告 read model＋AI下書き（PR #4・CI 96 green）、Stream B=AI社員の証拠由来状態を3Dオフィスで可視化（PR #5）。外部操作は封印のまま・台帳同期は PENDING 継続（roadmap69-71/audit168-170）。
 
 ## 🔗 コード側の正（source of truth）
 

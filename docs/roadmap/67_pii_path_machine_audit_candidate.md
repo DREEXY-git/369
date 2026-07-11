@@ -56,6 +56,25 @@
 - [x] 全経路の機械列挙と実読判定（29経路・台帳化）
 - [x] Critical 1・High 2 の修正（取得段階遮断＋ページゲート・fail-closed 既定）
 - [x] Medium 小規模（P-17 select 縮小）
-- [ ] ローカル電池 green
-- [ ] レビュー → 指摘反映
+- [x] ローカル電池 green（tsc 0 / lint 0 / unit 278/0 / safety 0 / secret NONE）
+- [x] レビュー → 指摘反映（§5 追補）
 - [ ] CI 93/0 をログ本文で確認（テスト数不変・回帰なし）
+
+## 5. 追補（レビュー結果・2026-07-11）
+
+独立レビュー（fa01e13 対象・実 DB での Prisma 挙動検証を含む）: **Critical/High 級の欠陥なし**。
+
+- 実証済み: `label: { in: [] }` は findMany=[] / findFirst=null（エラーなし・fail-closed 成立）。
+  STAFF 可視集合では CUSTOMER_CONFIDENTIAL のみ返ることも実 DB で確認。呼び出し元3＋1箇所の全列挙、
+  customerName の null 許容（AttentionList/summarize は非依存）、customerId・hasCustomer は event
+  スカラ由来で進捗判定不変、e2e 93 件のアサーションは顧客名非依存（ceo/sales・seed 全顧客
+  CUSTOMER_CONFIDENTIAL 可視）を机上実行で確認。
+- Low（反映: 台帳 P-18 の記述を拡張）: 督促下書き（dunning）は label 無フィルタで顧客名を文面に
+  埋め込み・二次保存する。到達は invoice:update∧finance:read（実質マネージャ）だが、DM には
+  STRICT_SECRET 等が不可視のため同一画面内で宛先ヘッダ（遮断済み）と下書き本文（顧客名あり）の
+  不整合が生じ得る → **P-18 HOLD の scope に「ラベル迂回表示」を追加**（督促文面は宛先が本質的
+  構成要素であり、修正は保持期間・削除連動と併せて Phase 4 で設計）。
+- Info（反映済み）: 可視集合が空のとき顧客クエリ自体を発行しない短絡を追加（control-tower の
+  フォールスルー呼び出しで毎回 `in: []` クエリが走っていた）。
+- Info（記録のみ）: /operations/events 一覧・/operations は inventory:read 無ゲートだが顧客 PII
+  非取得（案件名・会場のみ）→ CRM 境界外・ページゲート統一は Phase 4 UI 整理と併せて判断。

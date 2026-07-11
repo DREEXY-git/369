@@ -39,7 +39,7 @@ export async function getEventGoldenPathStatus(
 
   // 顧客・ブリッジ済み・請求候補・正式請求書 を横断取得（EventProject 由来でたどる）。
   const [customer, eventRevenueFe, candidate] = await Promise.all([
-    event.customerId
+    event.customerId && visibleCustomerLabels.length
       ? prisma.customer.findFirst({
           // 可視ラベルのみ name を取得（不可視は null 扱い・取得段階遮断）。
           where: { id: event.customerId, tenantId, label: { in: [...visibleCustomerLabels] } },

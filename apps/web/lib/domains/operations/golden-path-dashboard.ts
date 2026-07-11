@@ -48,7 +48,7 @@ export async function getGoldenPathExecutiveDashboardData(
 
   // 2) 横断データをバッチ取得（すべて { in: eventIds } で一括）。
   const [customers, openHighRisks, logisticsRows, revenueFEs, candidates, pendingApprovals, cashflow] = await Promise.all([
-    customerIds.length
+    customerIds.length && visibleCustomerLabels.length
       ? prisma.customer.findMany({
           // 可視ラベルの顧客のみ取得（不可視ラベルは name を Map に載せない＝表示は null）。
           where: { tenantId, id: { in: customerIds }, label: { in: [...visibleCustomerLabels] } },

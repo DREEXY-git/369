@@ -5,6 +5,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { MobileNav } from './mobile-nav';
 import { logoutAction } from '@/app/login/actions';
 import { ROLE_LABEL, primaryRole, type CurrentUser } from '@/lib/auth/current-user';
+import type { BuildInfo } from '@/lib/build-info';
 
 export function Topbar({
   user,
@@ -12,6 +13,7 @@ export function Topbar({
   approvals,
   showApprovals = true,
   allowedHrefs,
+  buildInfo = null,
 }: {
   user: CurrentUser;
   notifications: number;
@@ -20,6 +22,8 @@ export function Topbar({
   showApprovals?: boolean;
   /** ナビ権限フィルタ（roadmap74 §9）: モバイルドロワーへそのまま渡す。 */
   allowedHrefs?: string[];
+  /** ビルド識別（v6.1）: OWNER/ADMIN のみ。Production/Preview と short SHA を表示（非機密メタのみ）。 */
+  buildInfo?: BuildInfo | null;
 }) {
   const role = primaryRole(user.roles);
   const initial = (user.name ?? '?').trim().slice(0, 1) || '?';
@@ -43,6 +47,21 @@ export function Topbar({
         />
       </form>
       <div className="flex-1 md:hidden" />
+
+      {buildInfo ? (
+        <span
+          className="hidden items-center gap-1 rounded-md border border-border bg-secondary/60 px-2 py-1 text-[10px] font-medium text-muted-foreground sm:inline-flex"
+          title={`配信ビルド: ${buildInfo.env}${buildInfo.branch ? ` / ${buildInfo.branch}` : ''} / ${buildInfo.shortSha}（この情報は非機密です）`}
+          data-testid="build-info"
+        >
+          <span
+            className={`inline-block h-1.5 w-1.5 rounded-full ${
+              buildInfo.env === 'production' ? 'bg-emerald-500' : 'bg-amber-500'
+            }`}
+          />
+          {buildInfo.label}
+        </span>
+      ) : null}
 
       <ThemeToggle />
 

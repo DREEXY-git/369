@@ -4,9 +4,23 @@ import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, EmptyState } from '@/components/ui';
 import { AccessDenied } from '@/components/access-denied';
-import { formatDateTime } from '@hokko/shared';
+import { AiPortrait } from '@/components/ai-office/portrait';
+import { getAiWorkforceReadModel } from '@/lib/domains/ai-workforce/read-model';
+import { formatDateTime, getAiCharacter, AI_WORKFORCE_STATE_LABEL, type AiWorkforceState } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
+
+// 稼働状態バッジの色（3D Office と同じ AiWorkforceState を使い、同じ意味で表示する）。
+const STATE_TONE: Record<AiWorkforceState, 'green' | 'amber' | 'red' | 'slate' | 'purple'> = {
+  working: 'green',
+  idle: 'slate',
+  planning: 'purple',
+  waiting_approval: 'amber',
+  blocked: 'red',
+  error: 'red',
+  offline: 'slate',
+  unknown: 'slate',
+};
 
 export default async function AiAgentsPage() {
   const user = await requireUser();
@@ -20,12 +34,10 @@ export default async function AiAgentsPage() {
       />
     );
   }
-  const [agents, runs] = await Promise.all([
-    prisma.aIAgent.findMany({
-      where: { tenantId: user.tenantId },
-      include: { _count: { select: { runs: true } } },
-      orderBy: { createdAt: 'asc' },
-    }),
+  // v6.1 統一: 一覧の人物・ポートレートは getAiCharacter(key) を正本にし、稼働状態は 3D Office と
+  // 同じ read model（deriveAgentState 由来）を使う。生の AIAgent.status は表示に使わない。
+  const [model, runs] = await Promise.all([
+    getAiWorkforceReadModel(user.tenantId),
     prisma.aIAgentRun.findMany({
       where: { tenantId: user.tenantId },
       include: { agent: true, actions: true },
@@ -36,30 +48,43 @@ export default async function AiAgentsPage() {
 
   return (
     <div>
-      <PageHeader title="AI社員" description="AI社員は人間と同様に権限を持つ主体として扱われ、活動はすべて監査ログに記録されます。外部送信・承認はできません。" />
+      <PageHeader title="AI社員" description="AI社員は人間と同様に権限を持つ主体として扱われ、活動はすべて監査ログに記録されます。外部送信・承認はできません。稼働状態は証拠から導出（生データの断定なし）。" />
 
       <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-        {agents.map((a) => (
-          <Link key={a.id} href={`/ai-agents/${a.id}`}>
-            <Card className="h-full transition hover:border-primary/50">
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-lg">🤖</span>
-                  <div>
-                    <div className="text-sm font-semibold">{a.name}</div>
-                    <div className="text-xs text-muted-foreground">{a.department}</div>
+        {model.agents.map((a) => {
+          const prof = getAiCharacter(a.key);
+          const hasProfile = prof.fullName !== '（設定未作成）';
+          return (
+            <Link key={a.id} href={`/ai-agents/${a.id}`} data-testid={`ai-agent-card-${a.id}`}>
+              <Card className="h-full transition hover:border-primary/50">
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2.5">
+                    <span className="shrink-0 overflow-hidden rounded-lg shadow-sm">
+                      <AiPortrait profile={prof} size={44} />
+                    </span>
+                    <div className="min-w-0">
+                      {prof.epithet ? (
+                        <div className="truncate text-[11px] font-medium" style={{ color: prof.appearance.accentColor }}>
+                          {prof.epithet}
+                        </div>
+                      ) : null}
+                      <div className="truncate text-sm font-semibold">{hasProfile ? prof.fullName : a.name}</div>
+                      <div className="truncate text-xs text-muted-foreground">{a.department}</div>
+                    </div>
+                    <Badge tone={STATE_TONE[a.state]} className="ml-auto shrink-0">
+                      {AI_WORKFORCE_STATE_LABEL[a.state]}
+                    </Badge>
                   </div>
-                  <Badge tone={a.status === 'active' ? 'green' : 'slate'} className="ml-auto">{a.status}</Badge>
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">{a.role}</p>
-                <div className="mt-2 flex items-center gap-2 text-xs">
-                  <Badge tone="purple">{a.autonomy}</Badge>
-                  <span className="text-muted-foreground">実行 {a._count.runs} 回</span>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
+                  <p className="mt-2 line-clamp-1 text-xs text-muted-foreground">{a.role}</p>
+                  <div className="mt-2 flex items-center gap-2 text-xs">
+                    <Badge tone="purple">{a.permissionLevel}</Badge>
+                    <span className="text-muted-foreground">実行 {a.runCount} 回</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          );
+        })}
       </div>
 
       <Card>

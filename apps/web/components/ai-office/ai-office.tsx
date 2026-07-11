@@ -65,8 +65,9 @@ function zoneFor(department: string) {
   return ZONES.find((z) => z.key === department) ?? ZONES[ZONES.length - 1]!;
 }
 
-export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+export function AiOffice({ model, initialAgentId = null }: { model: AiWorkforceReadModel; initialAgentId?: string | null }) {
+  // /ai-agents からの deep link（?agent=<id>）で初期選択。無効値はページ側で null 化済み。
+  const [selectedId, setSelectedId] = useState<string | null>(initialAgentId);
   const [deptFilter, setDeptFilter] = useState<string>('all');
   const [stateFilter, setStateFilter] = useState<string>('all');
   const [isNarrow, setIsNarrow] = useState(false);
@@ -521,6 +522,14 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
                         {prof.kana ? <div className="text-xs text-muted-foreground">{prof.kana}（{prof.codeName}）</div> : null}
                         <div className="mt-0.5 text-xs text-muted-foreground">{selected.name} ／ {selected.role}</div>
                         <div className="text-xs text-muted-foreground">{selected.department}</div>
+                        {/* v6.1: AI社員ページへの deep link（人物・プロフィール・状態は同一正本）。 */}
+                        <Link
+                          href={`/ai-agents/${selected.id}`}
+                          className="mt-1 inline-block text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-300"
+                          data-testid="to-ai-agent"
+                        >
+                          AI社員ページで詳細を見る →
+                        </Link>
                       </div>
                     </div>
 

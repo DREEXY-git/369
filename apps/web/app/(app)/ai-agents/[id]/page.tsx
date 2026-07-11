@@ -1,12 +1,35 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, EmptyState } from '@/components/ui';
 import { AccessDenied } from '@/components/access-denied';
-import { formatDateTime } from '@hokko/shared';
+import { AiProfileCard } from '@/components/ai-office/profile-card';
+import { getAiWorkforceReadModel } from '@/lib/domains/ai-workforce/read-model';
+import { formatDateTime, getAiCharacter, AI_WORKFORCE_STATE_LABEL, type AiWorkforceState } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
+
+const STATE_TONE: Record<AiWorkforceState, 'green' | 'amber' | 'red' | 'slate' | 'purple'> = {
+  working: 'green',
+  idle: 'slate',
+  planning: 'purple',
+  waiting_approval: 'amber',
+  blocked: 'red',
+  error: 'red',
+  offline: 'slate',
+  unknown: 'slate',
+};
+
+function Row({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3 text-xs">
+      <span className="shrink-0 text-muted-foreground">{k}</span>
+      <span className="text-right">{v}</span>
+    </div>
+  );
+}
 
 export default async function AiAgentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -20,6 +43,7 @@ export default async function AiAgentDetailPage({ params }: { params: Promise<{ 
       />
     );
   }
+  // tenantId でスコープ。別テナント/存在しない id は notFound（存在有無を漏らさない・404 に統一）。
   const agent = await prisma.aIAgent.findFirst({
     where: { id, tenantId: user.tenantId },
     include: {
@@ -29,16 +53,84 @@ export default async function AiAgentDetailPage({ params }: { params: Promise<{ 
   });
   if (!agent) notFound();
 
+  // v6.1 統一: 人物・プロフィールは getAiCharacter(key)、稼働状態は 3D Office と同じ read model を正本にする。
+  const profile = getAiCharacter(agent.key);
+  const model = await getAiWorkforceReadModel(user.tenantId);
+  const view = model.agents.find((a) => a.id === agent.id) ?? null;
+
   return (
     <div>
       <PageHeader
-        title={agent.name}
+        title={profile.fullName !== '（設定未作成）' ? profile.fullName : agent.name}
         description={agent.role}
         breadcrumb={[{ label: 'AI社員', href: '/ai-agents' }, { label: agent.name, href: '#' }]}
-        action={<Badge tone="purple">{agent.autonomy}</Badge>}
+        action={
+          <div className="flex items-center gap-2">
+            {view ? <Badge tone={STATE_TONE[view.state]}>{AI_WORKFORCE_STATE_LABEL[view.state]}</Badge> : null}
+            <Link
+              href={`/ai-office?agent=${agent.id}`}
+              className="rounded-md border px-2.5 py-1 text-xs font-medium text-indigo-600 transition hover:bg-secondary dark:text-indigo-300"
+              data-testid="to-3d-office"
+            >
+              3Dオフィスで見る →
+            </Link>
+          </div>
+        }
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="space-y-4">
+          {/* プロフィール（キャラクター設定・正本 = getAiCharacter） */}
+          <Card>
+            <CardHeader><CardTitle>プロフィール（設定）</CardTitle></CardHeader>
+            <CardContent>
+              <AiProfileCard profile={profile} />
+            </CardContent>
+          </Card>
+
+          {/* 稼働状態（実測・証拠由来・3D Office と同じ導出） */}
+          <Card>
+            <CardHeader><CardTitle>稼働状態（実測・証拠由来）</CardTitle></CardHeader>
+            <CardContent className="space-y-1.5">
+              {view ? (
+                <>
+                  <Row k="状態" v={AI_WORKFORCE_STATE_LABEL[view.state]} />
+                  <Row k="根拠" v={view.stateReason} />
+                  {view.blockedReason ? <Row k="ブロック理由" v={view.blockedReason} /> : null}
+                  <Row k="現在のタスク" v={view.currentTask ?? '—'} />
+                  <Row k="最終活動" v={view.lastActivityLabel} />
+                  <Row k="承認待ち" v={view.pendingApprovals > 0 ? `${view.pendingApprovals} 件` : 'なし'} />
+                  <Row k="実行回数" v={String(view.runCount)} />
+                  <Row k="権限レベル" v={view.permissionLevel} />
+                  <Row k="次の推奨" v={view.nextRecommendedAction} />
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">稼働状態を導出できませんでした。</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle>権限・ガードレール</CardTitle></CardHeader>
+            <CardContent className="space-y-1 text-sm">
+              <div className="flex items-center justify-between"><span>外部送信</span><Badge tone="red">禁止</Badge></div>
+              <div className="flex items-center justify-between"><span>承認権限</span><Badge tone="red">なし</Badge></div>
+              <div className="flex items-center justify-between"><span>データ参照</span><Badge tone="green">許可（ログ記録）</Badge></div>
+              <div className="flex items-center justify-between"><span>下書き生成</span><Badge tone="green">許可</Badge></div>
+              <p className="pt-1 text-[11px] text-muted-foreground">AI社員の生成物は必ず下書きで、送信・承認は人間が行います。</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle>記憶（メモリ）</CardTitle></CardHeader>
+            <CardContent className="space-y-1 text-xs">
+              {agent.memory.length === 0 ? <span className="text-muted-foreground">なし</span> : agent.memory.map((m) => (
+                <div key={m.id}><span className="text-muted-foreground">{m.key}: </span>{m.value}</div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+
         <Card className="lg:col-span-2">
           <CardHeader><CardTitle>活動ログ（実行履歴）</CardTitle></CardHeader>
           <CardContent className="space-y-2">
@@ -46,7 +138,7 @@ export default async function AiAgentDetailPage({ params }: { params: Promise<{ 
               <div key={r.id} className="rounded-md border p-2">
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-medium">{r.task}</span>
-                  <Badge tone={r.status === 'SUCCEEDED' ? 'green' : 'amber'}>{r.status}</Badge>
+                  <Badge tone={r.status === 'SUCCEEDED' ? 'green' : r.status === 'FAILED' ? 'red' : 'amber'}>{r.status}</Badge>
                 </div>
                 <div className="text-xs text-muted-foreground">{r.actions.map((a) => `${a.type}: ${a.summary}`).join(' / ')}</div>
                 <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
@@ -59,27 +151,6 @@ export default async function AiAgentDetailPage({ params }: { params: Promise<{ 
             ))}
           </CardContent>
         </Card>
-
-        <div className="space-y-4">
-          <Card>
-            <CardHeader><CardTitle>権限・ガードレール</CardTitle></CardHeader>
-            <CardContent className="space-y-1 text-sm">
-              <div className="flex items-center justify-between"><span>外部送信</span><Badge tone="red">禁止</Badge></div>
-              <div className="flex items-center justify-between"><span>承認権限</span><Badge tone="red">なし</Badge></div>
-              <div className="flex items-center justify-between"><span>データ参照</span><Badge tone="green">許可（ログ記録）</Badge></div>
-              <div className="flex items-center justify-between"><span>下書き生成</span><Badge tone="green">許可</Badge></div>
-              <p className="pt-1 text-[11px] text-muted-foreground">AI社員の生成物は必ず下書きで、送信・承認は人間が行います。</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle>記憶（メモリ）</CardTitle></CardHeader>
-            <CardContent className="space-y-1 text-xs">
-              {agent.memory.length === 0 ? <span className="text-muted-foreground">なし</span> : agent.memory.map((m) => (
-                <div key={m.id}><span className="text-muted-foreground">{m.key}: </span>{m.value}</div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
       </div>
     </div>
   );

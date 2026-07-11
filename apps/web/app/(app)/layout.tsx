@@ -4,6 +4,7 @@ import { Sidebar } from '@/components/shell/sidebar';
 import { Topbar } from '@/components/shell/topbar';
 import { NAV } from '@/components/shell/nav';
 import { filterAllowedHrefs } from '@/lib/nav-permissions';
+import { getBuildInfo } from '@/lib/build-info';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     (resource, action) => hasPermission(user, resource, action),
   );
 
+  // ビルド識別バッジ（v6.1）: OWNER/ADMIN（admin:read）にだけ Production/Preview と short SHA を見せる。
+  // 「今どの配信を見ているか」を判断できるようにするためで、非機密メタのみ（Secrets は含めない）。
+  const canSeeBuild = hasPermission(user, 'admin', 'read');
+  const buildInfo = canSeeBuild ? getBuildInfo() : null;
+
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar allowedHrefs={allowedHrefs} />
@@ -38,6 +44,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           approvals={approvals}
           showApprovals={canViewApprovals}
           allowedHrefs={allowedHrefs}
+          buildInfo={buildInfo}
         />
         <main className="flex-1 overflow-y-auto scrollbar-thin p-4 md:p-6">
           <div className="mx-auto max-w-7xl">{children}</div>

@@ -26,7 +26,7 @@ type TabKey = (typeof TABS)[number]['key'];
 export default async function AiOfficePage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; agent?: string }>;
 }) {
   const user = await requireUser();
   // ページ基礎権限: 経営運用の可視化として dashboard:read（/growth・/dashboard と同一規約）。
@@ -52,7 +52,10 @@ export default async function AiOfficePage({
   if (tab === 'office') {
     const m = await getAiWorkforceReadModel(user.tenantId);
     generatedAtLabel = m.generatedAtLabel;
-    content = <AiOffice model={m} />;
+    // /ai-agents からの deep link（?agent=<id>）で初期選択する。存在しない/別テナント id は
+    // read model に無いので無視され、AiOffice 側の既定（先頭選択）にフォールバックする（存在を漏らさない）。
+    const initialAgentId = sp.agent && m.agents.some((a) => a.id === sp.agent) ? sp.agent : null;
+    content = <AiOffice model={m} initialAgentId={initialAgentId} />;
   } else if (tab === 'inbox') {
     const m = await getHumanWorkInboxReadModel(user.tenantId, { canViewApprovals });
     generatedAtLabel = m.generatedAtLabel;

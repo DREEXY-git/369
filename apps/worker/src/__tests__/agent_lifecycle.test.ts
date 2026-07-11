@@ -206,6 +206,51 @@ describe('runWithAgentLifecycle（v5.8 hardening）', () => {
     expect(inputs.length).toBeGreaterThanOrEqual(48);
   });
 
+  it('v6.6 P1: balanced-but-invalid tail（`,SECRET"x"` 等）が、保存値・再throw・Action要約の3経路で 0 残存', async () => {
+    // quote 均衡だが文法的に不正な tail（偽 closer を信頼させる）を worker 経路で網羅する。
+    const SENTINEL = 'O0F144S64';
+    const INNER = 'INNERSECRET66';
+    const KEYS = ['password', 'token', 'authorization', 'session'];
+    const mk = (k: string): string[] => [
+      `upstream {"${k}":"${INNER}",${SENTINEL}"x"} boom`,
+      `upstream {"${k}":"${INNER}",${SENTINEL}} boom`,
+      `upstream {"${k}":"${INNER}","${SENTINEL}""x"} boom`,
+      `upstream {"${k}":"${INNER}", ${SENTINEL}"x"} boom`,
+      `upstream ["${k}":"${INNER}",${SENTINEL}"x"] boom`,
+      `upstream {"${k}":"${INNER}",42,${SENTINEL}"x"} boom`,
+    ];
+    const inputs = KEYS.flatMap(mk);
+
+    let i = 0;
+    for (const input of inputs) {
+      const { db, runs, actions } = makeDb();
+      await expect(
+        runWithAgentLifecycle({ ...params, task: `v66-save-${i}` }, async () => {
+          throw new Error(input);
+        }, db),
+      ).rejects.toThrow(/agent lifecycle job failed/);
+      expect(runs[0]!.status).toBe('FAILED');
+      for (const sec of [SENTINEL, INNER]) {
+        expect(runs[0]!.error, `保存値に残存: ${JSON.stringify(runs[0]!.error)}`).not.toContain(sec);
+        for (const a of actions as { data: { summary: string } }[]) {
+          expect(a.data.summary, `Action要約に残存: ${a.data.summary}`).not.toContain(sec);
+        }
+      }
+      try {
+        await runWithAgentLifecycle({ ...params, task: `v66-rethrow-${i}` }, async () => {
+          throw new Error(input);
+        }, db);
+        expect.unreachable('should throw');
+      } catch (e) {
+        for (const sec of [SENTINEL, INNER]) {
+          expect(String(e), `再throwに残存: ${String(e)}`).not.toContain(sec);
+        }
+      }
+      i += 1;
+    }
+    expect(inputs.length).toBeGreaterThanOrEqual(24);
+  });
+
   it('二重 Run 防止: 新鮮な RUNNING が既存なら実行せず skip する', async () => {
     const { db } = makeDb({
       preexisting: [

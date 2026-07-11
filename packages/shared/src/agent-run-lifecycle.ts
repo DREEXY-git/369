@@ -115,21 +115,18 @@ function countBackslashesBefore(s: string, i: number): number {
   return n;
 }
 
-// 閉じ引用符の後続 tail（〜走査末尾）が構造的に健全か（危険な dangling quote が無いか）を検証する。
-// 文字列外に現れる escaped quote（`\"`/`\'`・別 depth の偽装終端）や、末尾で開きっぱなしの文字列は「破損」。
-// これが v6.4 を破った攻撃（偽 closer を開始と同 depth に、本物の終端引用符を別 depth に置く）の検出点。
-// 健全（quote 無し／同 depth の均衡ペアのみ）なときだけ clean close を信頼して最小マスクにできる。
-function tailIsStructurallyClean(s: string, from: number, end: number): boolean {
+// prose（非構造テキスト）tail の安全判定。文字列外に現れる escaped quote（`\"`/`\'`・別 depth の偽装終端）や
+// 末尾で開きっぱなしの文字列があれば「破損」。純テキスト（quote 無し／均衡ペアのみ）なら安全。
+function proseTailClean(s: string, from: number, end: number): boolean {
   let inStr = false;
   let strQuote = '';
   let i = from;
   while (i < end) {
     const c = s[i]!;
     if (c === '\\') {
-      // 文字列の外にある escaped quote（`\"`）は「別 depth の偽装終端」= 危険。
       const next = s[i + 1];
-      if (!inStr && (next === '"' || next === "'")) return false;
-      i += 2; // escape は次の1文字を消費（文字列内外を問わず）。
+      if (!inStr && (next === '"' || next === "'")) return false; // 文字列外の escaped quote = 偽装終端
+      i += 2;
       continue;
     }
     if (c === '"' || c === "'") {
@@ -140,11 +137,112 @@ function tailIsStructurallyClean(s: string, from: number, end: number): boolean 
         inStr = false;
         strQuote = '';
       }
-      // strQuote と異なる引用符が文字列内にある場合は literal（無視）。
     }
     i++;
   }
-  return !inStr; // 開きっぱなし（unbalanced）は破損。
+  return !inStr;
+}
+
+// bare token が JSON プリミティブ（number / true / false / null）か。これ以外の裸トークンは
+// 秘密の疑いとして構造 tail では拒否する（`O0F144S64` のような英数字混在を通さない）。
+function isJsonPrimitiveToken(t: string): boolean {
+  return t === 'true' || t === 'false' || t === 'null' || /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(t);
+}
+
+// 開始引用符 s[i]=q から対応する閉じ引用符（even-backslash）まで消費し、閉じの次 index を返す。未閉なら -1。
+function consumeQuotedString(s: string, i: number, end: number): number {
+  const q = s[i]!;
+  let k = i + 1;
+  while (k < end) {
+    if (s[k] === '\\') {
+      k += 2;
+      continue;
+    }
+    if (s[k] === q) return k + 1;
+    k++;
+  }
+  return -1;
+}
+
+// container を出切った後（top-level を超えた）残りが安全な separator/prose かを判定。
+// 直後が glued な非区切り（bare/quote/backslash）＝偽装の疑い → 破損。それ以外は prose として安全判定。
+function afterContainerExitSafe(s: string, from: number, end: number): boolean {
+  if (from < end) {
+    const c = s[from]!;
+    if (!/[\s,;:)}\]]/.test(c)) return false; // 例: `}O0F144S64` のような glued 継続は不正
+  }
+  return proseTailClean(s, from, end);
+}
+
+// 構造 tail（値の閉じ引用符直後）を bounded state machine で**文法的に**検証する。
+// v6.6 P1 修正: quote 数の均衡だけを信頼する（`,O0F144S64"x"` を健全と誤判定する）規則を廃止し、
+// 候補 closer は後続 tail が「正規の次フィールド / 配列要素 / container 終端 / record 終端」として
+// 解析できる場合だけ採用する。曖昧・不正・途中切断・未知 tail は false（＝末尾まで fail-closed）。
+// 状態: expectValue=false（EXPECT_SEP・値の直後）/ true（EXPECT_VALUE・区切りの直後）。depth は
+// 値を含む container を 0 とし、出切ったら残りを prose として扱う。O(n)・ReDoS なし・文字列固有パッチなし。
+function structuredTailValid(s: string, from: number, end: number): boolean {
+  let i = from;
+  let depth = 0;
+  let expectValue = false; // 値の直後から開始（次は区切り/container 終端のはず）
+  while (i < end) {
+    const c = s[i]!;
+    if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
+      i++;
+      continue;
+    }
+    if (c === '\\') return false; // 構造内の裸 backslash（escaped quote 偽装終端含む）は破損
+    if (c === ',') {
+      if (expectValue) return false; // `,,` 等・値位置に区切り
+      expectValue = true;
+      i++;
+      continue;
+    }
+    if (c === ':' || c === ';') {
+      expectValue = true; // key:value / 文の区切り（lenient に値期待へ）
+      i++;
+      continue;
+    }
+    if (c === '{' || c === '[' || c === '(') {
+      depth++;
+      expectValue = true;
+      i++;
+      continue;
+    }
+    if (c === '}' || c === ']' || c === ')') {
+      depth--;
+      i++;
+      if (depth < 0) return afterContainerExitSafe(s, i, end); // container を出切った → 残りは prose
+      expectValue = false; // 閉じた後は値の直後扱い（次は区切り）
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      if (!expectValue) return false; // 値位置でないのに string（値の隣接）= 破損
+      const r = consumeQuotedString(s, i, end);
+      if (r < 0) return false; // 未閉
+      i = r;
+      expectValue = false;
+      continue;
+    }
+    // bare token
+    if (!expectValue) return false; // 値位置でない bare = 破損
+    let j = i;
+    while (j < end && !/[\s,;:{}[\]()"'\\]/.test(s[j]!)) j++;
+    if (!isJsonPrimitiveToken(s.slice(i, j))) return false; // 非プリミティブ bare = 秘密の疑い
+    i = j;
+    expectValue = false;
+  }
+  return depth === 0; // 途中切断（未閉 container・depth>0）は破損
+}
+
+// tail が値の終端として妥当か。最初の非空白が構造区切りなら文法検証、そうでなければ prose 安全判定。
+function tailIsSafeContinuation(s: string, from: number, end: number): boolean {
+  let k = from;
+  while (k < end && /\s/.test(s[k]!)) k++;
+  const firstNonWs = k < end ? s[k]! : '';
+  if (firstNonWs && /[,;:)}\]]/.test(firstNonWs)) {
+    return structuredTailValid(s, from, end);
+  }
+  return proseTailClean(s, from, end);
 }
 
 // 値領域の終端 index を返す（quote/escape 状態を理解して消費する）。
@@ -156,13 +254,12 @@ function scanValueEnd(s: string, start: number, headerKey: boolean): number {
   const quotedish = first === '"' || first === "'";
 
   if (quotedish) {
-    // v6.5 P1 全面修正: 「閉じ引用符の個数/parity/次文字」だけを信頼する規則は、偽 closer を開始と同 depth に、
-    // 本物の終端引用符を別 depth に置く生成 matrix（Codex 再監査で 84/84 sentinel 残存）で破られる。
-    // 単純に「最初の同 depth 閉じ引用符で終端」とすると、その後ろに置かれた秘密 suffix を漏らすため。
-    // → clean close（開始と同 depth の最初の閉じ引用符）を「候補」とし、その**後続 tail を構造検証**する。
-    //   tail に文字列外の escaped/別 depth quote（dangling）や未均衡があれば、値の終端は構造的に確定できない＝
-    //   **走査末尾まで fail-closed でマスク**して秘密 suffix を漏らさない。tail が健全なときだけ最小マスク
-    //   （＝別フィールドを跨いだ均衡ペアは値の外＝保持、改行を跨ぐ 1 値内の秘密は tail 健全でも値内として消費）。
+    // v6.6 P1 全面修正: clean close（開始と同 depth の最初の閉じ引用符）を「候補」とし、glued token を値へ
+    // 取り込んだ上で、**残り tail を文法的に検証**する（`tailIsSafeContinuation`）。
+    // - v6.5 は tail の quote 均衡だけを見ていたため `,O0F144S64"x"` のような balanced-but-invalid を健全と誤判定。
+    // - v6.6 は候補 closer を「後続 tail が正規の次フィールド/配列要素/container 終端/record 終端として解析できる」
+    //   場合だけ採用する。曖昧・不正・途中切断・未知 tail は **走査末尾まで fail-closed** で秘密 suffix を漏らさない。
+    //   quote balance/parity/次文字/quote 個数/最後の quote 単独 heuristic には依存しない・O(n)・ReDoS なし。
     const q = s[p]!; // 開始引用符文字（" または '）
     const openDepth = p - start; // 開始引用符の直前 backslash 個数（= 実 escape depth）
     let firstClose = -1;
@@ -174,11 +271,11 @@ function scanValueEnd(s: string, start: number, headerKey: boolean): number {
     }
     // 同 depth の閉じ引用符が無い（unclosed）→ fail-closed。
     if (firstClose < 0) return s.length;
-    // clean close の後続 tail に dangling quote / 未均衡があれば構造未確定 → fail-closed。
-    if (!tailIsStructurallyClean(s, firstClose + 1, s.length)) return s.length;
-    // 健全: 閉じ引用符まで＋直後に空白/構造区切りを挟まず続く glued token（`"abc"SUFFIXSECRET`）も一緒にマスク。
+    // 閉じ引用符の直後に空白/構造区切りを挟まず続く glued token（`"abc"SUFFIXSECRET`）は値へ取り込む。
     let end = firstClose + 1;
     while (end < s.length && !/[\s,;:&)}\]]/.test(s[end]!)) end++;
+    // 残り tail が値の終端として文法的に妥当でなければ、候補 closer を信頼せず末尾まで fail-closed。
+    if (!tailIsSafeContinuation(s, end, s.length)) return s.length;
     return end;
   }
 

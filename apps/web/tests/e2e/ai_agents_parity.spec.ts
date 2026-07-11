@@ -54,6 +54,31 @@ test('8名全員で 一覧・詳細・3D Office の canonical key/fullName/state
   expect(new Set(rows.map((r) => r.key)).size).toBe(AGENT_KEYS.length); // key 重複なし
   expect(rows.map((r) => r.key).sort()).toEqual([...AGENT_KEYS].sort()); // 8 canonical key 一致
 
+  // v6.6: 全プロフィール項目を「画面上の実値」で 詳細⇔3D 間で比較する（fingerprint は補助）。
+  // 正本は getAiCharacter(key) の1つで、両画面が同じ人物の値を描画していることを field 単位で証明する。
+  const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
+  type Profile = { name: string; epithet: string; personality: string; skills: string; traits: string; mistakes: string; evalNote: string };
+  async function readProfile(prefix: string): Promise<Profile> {
+    const textOf = async (id: string) => {
+      const loc = page.getByTestId(id);
+      return (await loc.count()) > 0 ? norm(await loc.first().innerText()) : '';
+    };
+    const skillsLoc = page.getByTestId(`${prefix}-skills`);
+    const skills =
+      (await skillsLoc.count()) > 0
+        ? (await skillsLoc.locator('[data-skill]').evaluateAll((els) => els.map((e) => (e as HTMLElement).getAttribute('data-skill')).join('|')))
+        : '';
+    return {
+      name: await textOf(`${prefix}-name`),
+      epithet: await textOf(`${prefix}-epithet`),
+      personality: await textOf(`${prefix}-personality`),
+      skills,
+      traits: await textOf(`${prefix}-traits`),
+      mistakes: await textOf(`${prefix}-mistakes`),
+      evalNote: await textOf(`${prefix}-eval`),
+    };
+  }
+
   for (const r of rows) {
     // 詳細画面: key/name/state が一覧と値一致・プロフィールカードあり。
     await page.goto(`/ai-agents/${r.id}`);
@@ -64,10 +89,11 @@ test('8名全員で 一覧・詳細・3D Office の canonical key/fullName/state
     await expect(page.getByTestId('ai-profile-card')).toBeVisible();
     await expect(page.getByTestId('ai-profile-name')).toHaveText(r.name);
     await expect(page.getByTestId('to-3d-office')).toHaveAttribute('href', `/ai-office?agent=${r.id}`);
-    // v6.4 P2: 人物正本の「値」まで一致を確認する（key/name/state だけでなく portrait/profile 本文）。
     await expect(page.getByTestId('ai-profile-card').locator('svg').first()).toBeVisible(); // portrait(SVG)
-    const detailPersonality = (await page.getByTestId('ai-profile-personality').innerText()).trim();
-    expect(detailPersonality.length).toBeGreaterThan(0);
+    const detailProfile = await readProfile('ai-profile');
+    // 全項目が非空（設定済み8名は空プロフィールでない）。
+    expect(detailProfile.personality.length, `personality empty ${r.key}`).toBeGreaterThan(0);
+    expect(detailProfile.skills.length, `skills empty ${r.key}`).toBeGreaterThan(0);
 
     // 3D Office: 同一 agent が初期選択され、key/name/state が値一致。
     await page.goto(`/ai-office?agent=${r.id}`);
@@ -77,11 +103,20 @@ test('8名全員で 一覧・詳細・3D Office の canonical key/fullName/state
     await expect(office).toHaveAttribute('data-agent-name', r.name);
     await expect(office).toHaveAttribute('data-agent-state', r.state);
     await expect(page.getByTestId('to-ai-agent')).toHaveAttribute('href', `/ai-agents/${r.id}`);
-    // 3D 側でも人物名・ポートレート・性格が詳細画面と同一正本（getAiCharacter）で一致する。
-    await expect(page.getByTestId('ai-office-profile-name')).toHaveText(r.name);
-    await expect(page.getByTestId('ai-office-profile').locator('svg').first()).toBeVisible();
-    const officePersonality = (await page.getByTestId('ai-office-profile-personality').innerText()).trim();
-    expect(officePersonality, `personality mismatch for ${r.key}`).toBe(detailPersonality);
+    await expect(page.getByTestId('ai-office-profile').locator('svg').first()).toBeVisible(); // portrait(SVG)
+    const officeProfile = await readProfile('ai-office-profile');
+
+    // 全プロフィール項目を field 単位で実値比較（同一正本＝完全一致）。
+    expect(officeProfile.name, `name mismatch ${r.key}`).toBe(detailProfile.name);
+    expect(officeProfile.name).toBe(r.name);
+    expect(officeProfile.epithet, `epithet mismatch ${r.key}`).toBe(detailProfile.epithet);
+    expect(officeProfile.personality, `personality mismatch ${r.key}`).toBe(detailProfile.personality);
+    expect(officeProfile.skills, `skills mismatch ${r.key}`).toBe(detailProfile.skills);
+    expect(officeProfile.traits, `traits mismatch ${r.key}`).toBe(detailProfile.traits);
+    expect(officeProfile.mistakes, `mistakes mismatch ${r.key}`).toBe(detailProfile.mistakes);
+    expect(officeProfile.evalNote, `evaluationNote mismatch ${r.key}`).toBe(detailProfile.evalNote);
+    // 補助: 全項目連結の fingerprint 一致。
+    expect(JSON.stringify(officeProfile), `fingerprint mismatch ${r.key}`).toBe(JSON.stringify(detailProfile));
   }
 });
 

@@ -531,7 +531,7 @@ export function AiOffice({ model, initialAgentId = null }: { model: AiWorkforceR
                       </span>
                       <div className="min-w-0">
                         {prof.epithet ? (
-                          <div className="text-xs font-medium" style={{ color: prof.appearance.accentColor }}>
+                          <div className="text-xs font-medium" style={{ color: prof.appearance.accentColor }} data-testid="ai-office-profile-epithet">
                             ― {prof.epithet} ―
                           </div>
                         ) : null}
@@ -582,9 +582,9 @@ export function AiOffice({ model, initialAgentId = null }: { model: AiWorkforceR
                         {prof.skills.length > 0 ? (
                           <div>
                             <div className="mb-1 text-xs font-medium">スキル</div>
-                            <div className="space-y-1">
+                            <div className="space-y-1" data-testid="ai-office-profile-skills">
                               {prof.skills.map((s) => (
-                                <div key={s.name} className="grid grid-cols-[7.5rem_1fr_1.6rem] items-center gap-2">
+                                <div key={s.name} className="grid grid-cols-[7.5rem_1fr_1.6rem] items-center gap-2" data-skill={`${s.name}:${s.level}`}>
                                   <div className="truncate text-xs text-muted-foreground">{s.name}</div>
                                   <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
                                     <div
@@ -601,7 +601,7 @@ export function AiOffice({ model, initialAgentId = null }: { model: AiWorkforceR
                         {prof.traits.length > 0 ? (
                           <div>
                             <div className="text-xs font-medium">クセ・特徴・個性</div>
-                            <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-xs text-muted-foreground">
+                            <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-xs text-muted-foreground" data-testid="ai-office-profile-traits">
                               {prof.traits.map((t) => <li key={t}>{t}</li>)}
                             </ul>
                           </div>
@@ -609,14 +609,14 @@ export function AiOffice({ model, initialAgentId = null }: { model: AiWorkforceR
                         {prof.commonMistakes.length > 0 ? (
                           <div>
                             <div className="text-xs font-medium">よくあるミス（人間がレビューで見る所）</div>
-                            <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-xs text-muted-foreground">
+                            <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-xs text-muted-foreground" data-testid="ai-office-profile-mistakes">
                               {prof.commonMistakes.map((t) => <li key={t}>{t}</li>)}
                             </ul>
                           </div>
                         ) : null}
                         <div>
                           <div className="text-xs font-medium">評価（人事コメント・設定）</div>
-                          <p className="text-xs text-muted-foreground">{prof.evaluationNote}</p>
+                          <p className="text-xs text-muted-foreground" data-testid="ai-office-profile-eval">{prof.evaluationNote}</p>
                         </div>
                         <p className="text-[11px] text-muted-foreground/80">
                           プロフィールはキャラクター設定です。稼働状態・実行回数などの実測データとは区別して表示しています。

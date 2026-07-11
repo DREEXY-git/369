@@ -41,8 +41,13 @@
 
 ## 4. Gate 判定
 
-- [ ] ローカル電池 green（unit/tsc/lint/safety）
-- [ ] 敵対的レビュー→反映
-- [ ] Draft PR 作成・CI green をログ本文で確認（100＋3 = 103 期待）
+- [x] ローカル電池 green（unit 305/0・tsc 0・lint 0〔警告 0〕・build 0〔/ai-office 148kB〕・safety 0）
+- [x] 敵対的レビュー→反映（read model の二重取得を1回化・stale 判定を理由文の文字列一致から
+  DerivedAgentState.stale フラグへ変更・stale 時の nextRecommendedAction を実行記録確認へ）
+- [x] Draft PR #6 作成・CI green をログ本文で確認: run 29150129654（#196・stage1/stage3_e2e とも success）・
+  head ed7d5a7・`103 passed (1.5m)` / 0 failed（期待 103 = 100+3 と一致・work_evidence 3件を CI 上で検証）。
+  スクリーンショット artifact `e2e-screenshots-29150129654` も取得
+  （https://github.com/DREEXY-git/369/actions/runs/29150129654/artifacts/8247952591 ）
 
-（チェックは audit174 追補で確定させる）
+→ **Stream C1（Work Evidence Cockpit v0）クローズ**（Outcome Ledger は「区分の器と規律」まで・
+事業 KPI 値の接続は後続 WIP。完成宣言ではない）

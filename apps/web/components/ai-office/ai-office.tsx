@@ -12,6 +12,17 @@ import Link from 'next/link';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import {
+  Moon,
+  ClipboardList,
+  Cog,
+  Hand,
+  Ban,
+  AlertTriangle,
+  PauseCircle,
+  HelpCircle,
+  type LucideIcon,
+} from 'lucide-react';
+import {
   AI_WORKFORCE_STATES,
   AI_WORKFORCE_STATE_LABEL,
   AI_WORKFORCE_STATE_COLOR,
@@ -22,16 +33,23 @@ import type { AiWorkforceReadModel } from '@/lib/domains/ai-workforce/read-model
 import { AiPortrait } from './portrait';
 import { buildCharacter, buildDesk } from './avatar-3d';
 
-const STATE_ICON: Record<AiWorkforceState, string> = {
-  idle: '💤',
-  planning: '📋',
-  working: '⚙️',
-  waiting_approval: '✋',
-  blocked: '🚧',
-  error: '⚠️',
-  offline: '⏸',
-  unknown: '❓',
+// v5.8 §6: DOM の状態アイコンは Unicode emoji ではなく Lucide（OS/headless で外観が揺れない・
+// JRPG 調 UI とも整合）。Canvas 側は makeTextSprite が決定論的な図形（色付き丸）を描く。
+const STATE_LUCIDE: Record<AiWorkforceState, LucideIcon> = {
+  idle: Moon,
+  planning: ClipboardList,
+  working: Cog,
+  waiting_approval: Hand,
+  blocked: Ban,
+  error: AlertTriangle,
+  offline: PauseCircle,
+  unknown: HelpCircle,
 };
+
+function StateIcon({ state, className }: { state: AiWorkforceState; className?: string }) {
+  const Icon = STATE_LUCIDE[state];
+  return <Icon className={className ?? 'h-3.5 w-3.5'} aria-hidden />;
+}
 
 // 業務ゾーン（部署 → 平面上の区画）。未定義の部署は「その他」ゾーンへ。
 const ZONES: { key: string; label: string; x: number; z: number; color: string }[] = [
@@ -79,6 +97,16 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
     setMeasured(true);
     mq.addEventListener('change', update);
     return () => mq.removeEventListener('change', update);
+  }, []);
+
+  // v5.8 §6: 初期表示で最初の可視 AI 社員を自動選択し、プロフィールを最初から見せる
+  // （空の詳細パネルを第一印象にしない）。既にユーザーが選択済みなら上書きしない。
+  useEffect(() => {
+    if (selectedId == null && model.agents.length > 0) {
+      setSelectedId(model.agents[0]!.id);
+    }
+    // 初回のみ（model はサーバ描画ごとに固定・ユーザー操作を尊重）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Three.js シーン構築（計測前・狭幅では構築しない）。
@@ -170,6 +198,11 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
         ctx.font = '30px sans-serif';
         ctx.fillStyle = opts.subColor ?? '#94a3b8';
         ctx.fillText(opts.sub, 256, 116);
+        // 状態マーカー: 決定論的な色付き丸（emoji はレンダラ依存のため使わない）
+        const tw = ctx.measureText(opts.sub).width;
+        ctx.beginPath();
+        ctx.arc(256 - tw / 2 - 18, 106, 8, 0, Math.PI * 2);
+        ctx.fill();
       }
       const tex = new THREE.CanvasTexture(canvas);
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
@@ -232,7 +265,7 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
       const nameLabel = makeTextSprite(displayName, {
         size: 3.6,
         plate: true,
-        sub: `${STATE_ICON[a.state]} ${AI_WORKFORCE_STATE_LABEL[a.state]}`,
+        sub: AI_WORKFORCE_STATE_LABEL[a.state],
         subColor: color,
       });
       nameLabel.position.y = 2.75;
@@ -346,7 +379,8 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
           key={s}
           active={stateFilter === s}
           onClick={() => setStateFilter(s)}
-          label={`${STATE_ICON[s]} ${AI_WORKFORCE_STATE_LABEL[s]}（${model.totals.byState[s] ?? 0}）`}
+          icon={<StateIcon state={s} className="h-3 w-3" />}
+          label={`${AI_WORKFORCE_STATE_LABEL[s]}（${model.totals.byState[s] ?? 0}）`}
         />
       ))}
     </div>
@@ -419,7 +453,7 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
                       <td className="px-3 py-2 text-xs">{a.department}</td>
                       <td className="px-3 py-2">
                         <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs" style={{ backgroundColor: `${AI_WORKFORCE_STATE_COLOR[a.state]}22`, color: AI_WORKFORCE_STATE_COLOR[a.state] }}>
-                          <span aria-hidden>{STATE_ICON[a.state]}</span>
+                          <StateIcon state={a.state} className="h-3 w-3" />
                           {AI_WORKFORCE_STATE_LABEL[a.state]}
                         </span>
                       </td>
@@ -449,15 +483,17 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
                       </span>
                       <div className="min-w-0">
                         {prof.epithet ? (
-                          <div className="truncate text-[11px] font-medium" style={{ color: prof.appearance.accentColor }}>
+                          <div className="text-xs font-medium" style={{ color: prof.appearance.accentColor }}>
                             ― {prof.epithet} ―
                           </div>
                         ) : null}
                         <div className="text-base font-bold leading-tight" data-testid="ai-office-profile-name">
                           {hasProfile ? prof.fullName : selected.name}
-                          <span className="ml-1.5 text-lg align-middle" aria-hidden>{STATE_ICON[selected.state]}</span>
+                          <span className="ml-1.5 inline-flex align-middle" style={{ color: AI_WORKFORCE_STATE_COLOR[selected.state] }}>
+                            <StateIcon state={selected.state} className="h-4 w-4" />
+                          </span>
                         </div>
-                        {prof.kana ? <div className="text-[11px] text-muted-foreground">{prof.kana}（{prof.codeName}）</div> : null}
+                        {prof.kana ? <div className="text-xs text-muted-foreground">{prof.kana}（{prof.codeName}）</div> : null}
                         <div className="mt-0.5 text-xs text-muted-foreground">{selected.name} ／ {selected.role}</div>
                         <div className="text-xs text-muted-foreground">{selected.department}</div>
                       </div>
@@ -493,14 +529,14 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
                             <div className="space-y-1">
                               {prof.skills.map((s) => (
                                 <div key={s.name} className="grid grid-cols-[7.5rem_1fr_1.6rem] items-center gap-2">
-                                  <div className="truncate text-[11px] text-muted-foreground">{s.name}</div>
+                                  <div className="truncate text-xs text-muted-foreground">{s.name}</div>
                                   <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
                                     <div
                                       className="h-full rounded-full"
                                       style={{ width: `${(s.level / 5) * 100}%`, backgroundColor: prof.appearance.accentColor }}
                                     />
                                   </div>
-                                  <div className="text-right text-[11px] font-medium tabular-nums">{s.level}</div>
+                                  <div className="text-right text-xs font-medium tabular-nums">{s.level}</div>
                                 </div>
                               ))}
                             </div>
@@ -509,7 +545,7 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
                         {prof.traits.length > 0 ? (
                           <div>
                             <div className="text-xs font-medium">クセ・特徴・個性</div>
-                            <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-[11px] text-muted-foreground">
+                            <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-xs text-muted-foreground">
                               {prof.traits.map((t) => <li key={t}>{t}</li>)}
                             </ul>
                           </div>
@@ -517,16 +553,16 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
                         {prof.commonMistakes.length > 0 ? (
                           <div>
                             <div className="text-xs font-medium">よくあるミス（人間がレビューで見る所）</div>
-                            <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-[11px] text-muted-foreground">
+                            <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-xs text-muted-foreground">
                               {prof.commonMistakes.map((t) => <li key={t}>{t}</li>)}
                             </ul>
                           </div>
                         ) : null}
                         <div>
                           <div className="text-xs font-medium">評価（人事コメント・設定）</div>
-                          <p className="text-[11px] text-muted-foreground">{prof.evaluationNote}</p>
+                          <p className="text-xs text-muted-foreground">{prof.evaluationNote}</p>
                         </div>
-                        <p className="text-[10px] text-muted-foreground/80">
+                        <p className="text-[11px] text-muted-foreground/80">
                           プロフィールはキャラクター設定です。稼働状態・実行回数などの実測データとは区別して表示しています。
                         </p>
                       </div>
@@ -547,7 +583,7 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
               <div className="mt-3 space-y-1 text-xs">
                 {AI_WORKFORCE_STATES.map((s) => (
                   <div key={s} className="flex items-center gap-2">
-                    <span aria-hidden>{STATE_ICON[s]}</span>
+                    <StateIcon state={s} className="h-3.5 w-3.5" />
                     <span style={{ color: AI_WORKFORCE_STATE_COLOR[s] }}>■</span>
                     <span>{AI_WORKFORCE_STATE_LABEL[s]}</span>
                   </div>
@@ -561,13 +597,14 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
   );
 }
 
-function FilterChip({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+function FilterChip({ active, onClick, label, icon }: { active: boolean; onClick: () => void; label: string; icon?: React.ReactNode }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full border px-2.5 py-1 text-xs transition focus-visible:ring-2 focus-visible:ring-ring ${active ? 'border-primary bg-primary/10 font-medium text-primary' : 'hover:bg-secondary'}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition focus-visible:ring-2 focus-visible:ring-ring ${active ? 'border-primary bg-primary/10 font-medium text-primary' : 'hover:bg-secondary'}`}
     >
+      {icon}
       {label}
     </button>
   );

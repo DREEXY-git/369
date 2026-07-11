@@ -14,11 +14,12 @@
 | app PR #12 | `claude/integration-v59` | `7ef2d9f444a21273ce1070fa7a16ef6801c39e4c` | Draft/open |
 | app PR #14 | `claude/full-recovery-v61` | `9e72958df31c8ee7f9a2636d1c817013c78ab882` | Draft/HOLD; V65 fixed head not received |
 | app PR #15 | `codex/phase-roadmap-audit-v2` | `553e4537a05ad0be726b5e16420da81e5b3c29b3` | stale V2 snapshot |
-| app PR #16 | `codex/v64-independent-reaudit` | `8add2422e70ea03984e084db738144932ade731c` | Draft; V64 evidence canonical remote history |
+| app PR #16 preaudit parent | `codex/v64-independent-reaudit` | `8add2422e70ea03984e084db738144932ade731c` | V65記録追加前の親。公開後のexact headはPR #16 commentを正とする |
 | Codex local archive | `codex/archive-v64-local-7c54901` | `7c54901a7fc17479f9e9196e7eb64f5c0078e5d7` | preserved, not canonical remote |
-| Codex V65 clean worktree | `codex/v65-independent-reaudit-sync` | `8add2422e70ea03984e084db738144932ade731c` | clean start from remote canonical |
+| Codex V65 clean start | `codex/v65-independent-reaudit-sync` | `8add2422e70ea03984e084db738144932ade731c` | remote canonicalからの非破壊開始点 |
 | independent vault GitHub | `main` | `0812634ec443abf966819d2cf6b10e73efb3a94a` | V64/V65 notes not integrated |
 | independent vault local | `main` | `0812634ec443abf966819d2cf6b10e73efb3a94a` | SHA matches GitHub; user untracked files preserved |
+| independent vault PR #3 initial head | `codex/v65-vault-sync` | `95ac734b51369ea7cd48847df15c812e8386a582` | Draft作成時。以後のexact headはPR #3 commentを正とする |
 
 ## 2. Pull request topology snapshot
 
@@ -81,7 +82,7 @@ These V64 bindings cannot be reused as V65 final evidence after the Claude head 
 3. Publish `CODEX_PASS_V65` or `CHANGES_REQUIRED / HOLD`.
 4. On PASS only, create `PHASE_READINESS_MATRIX_V3.md`.
 5. Update PR #16 or a non-force successor PR with final V65 evidence.
-6. Synchronize V64/V65 notes, Matrix V3, manifest, and required index links to independent vault branch.
+6. V64/V65 notes, manifest, and index links are staged in independent vault PR #3; add Matrix V3 on PASS.
 7. Merge independent vault PR to vault main only after app PASS.
 8. Review Claude release candidate and publish `CODEX_MAIN_SYNC_READY_V65` only if ancestry, content, CI, and safety pass.
 9. Claude merges app main only after the separate Production-impact gate.

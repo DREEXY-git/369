@@ -100,9 +100,11 @@ BullMQ実queue retry/failed telemetryは`EVIDENCE_GAP`のままです。Human Pr
 
 - GitHub `DREEXY-git/369-vault` mainは`0812634ec443abf966819d2cf6b10e73efb3a94a`です。
 - local vault mainも同じSHAです。
+- Draft branch `codex/v65-vault-sync`は`95ac734b51369ea7cd48847df15c812e8386a582`、treeは`eef71243dc5290913195c25efe5c990cd82ad355`です。
+- 独立vault PR #3はDraftで、V64/V65監査、Sync Manifest、indexリンクをPASS待ちとして保持しています。
 - `.DS_Store`、`.obsidian/`、未追跡canvasはユーザー所有として保持し、変更・削除していません。
 - remoteは値を表示せずcredential-free HTTPS URLへ差し替えました。
-- V64/V65監査ノート、Matrix V3、Sync Manifestは独立vault mainに未統合です。
+- V64/V65監査ノートとSync ManifestはDraftへ同期済みですが、Matrix V3は未作成で、独立vault mainには未統合です。
 - 過去の埋め込みcredentialは人間による失効・ローテーション確認が必要です。値は記録しません。
 
 ## 9. V65最終監査の再開条件

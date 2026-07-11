@@ -22,9 +22,10 @@ Claude CodeのV65修正はまだ固定されていない。現在のPR #14はV64
 - app mainはまだV65を含まない。
 - PR #16のV64監査内容はlocal/remoteで同一だが、commit履歴は分岐していたため、旧local headをarchive参照へ保存しremote正本からclean worktreeを作った。
 - 独立369-vaultのGitHub mainとlocal mainは`0812634`で一致する。
+- 独立vault PR #3（branch `codex/v65-vault-sync`、head `95ac734`）へV64/V65監査、Sync Manifest、indexリンクをDraft同期した。
 - ユーザーの`.obsidian/`、`.DS_Store`、未追跡canvasは変更していない。
 - remoteは資格情報なしURLへ差し替えた。過去credentialの失効・ローテーションは人間確認が必要。
-- V64/V65監査、Matrix V3、Sync Manifestはまだ独立vault mainへ統合していない。
+- Matrix V3は未作成であり、Draft内容はまだ独立vault mainへ統合していない。
 
 ## 次に行うこと
 

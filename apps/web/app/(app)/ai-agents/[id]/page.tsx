@@ -59,7 +59,12 @@ export default async function AiAgentDetailPage({ params }: { params: Promise<{ 
   const view = model.agents.find((a) => a.id === agent.id) ?? null;
 
   return (
-    <div>
+    <div
+      data-testid="ai-agent-detail-root"
+      data-agent-key={agent.key}
+      data-agent-state={view?.state ?? ''}
+      data-agent-name={profile.fullName !== '（設定未作成）' ? profile.fullName : agent.name}
+    >
       <PageHeader
         title={profile.fullName !== '（設定未作成）' ? profile.fullName : agent.name}
         description={agent.role}

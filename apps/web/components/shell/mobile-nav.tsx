@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
@@ -9,6 +10,11 @@ import { cn } from '@/lib/utils';
 
 export function MobileNav({ allowedHrefs }: { allowedHrefs?: string[] }) {
   const [open, setOpen] = useState(false);
+  // v6.4: drawer を document.body へ portal する。Topbar/header は backdrop-blur を持ち、これが
+  // position:fixed の containing block を作るため、header 内に描くと fixed inset-0 が「header の高さ」に
+  // 閉じ込められる（mobile 証拠が 288×63px = ブランド行だけになる原因）。portal で viewport 全体へ出す。
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const pathname = usePathname();
   // 権限フィルタ（roadmap74 §9）: Sidebar と同一の許可 href 一覧でフィルタ（未指定時は全表示）。
   const allowed = allowedHrefs ? new Set(allowedHrefs) : null;
@@ -45,19 +51,21 @@ export function MobileNav({ allowedHrefs }: { allowedHrefs?: string[] }) {
         <Menu className="h-5 w-5" />
       </button>
 
-      {open ? (
-        <div className="fixed inset-0 z-50">
-          {/* オーバーレイ */}
-          <div
-            className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm"
-            onClick={() => setOpen(false)}
-            aria-hidden
-          />
-          {/* ドロワー本体 */}
-          <div
-            className="absolute left-0 top-0 flex h-full w-72 max-w-[82%] animate-fade-in flex-col bg-sidebar text-sidebar-foreground shadow-pop"
-            data-testid="mobile-nav-drawer"
-          >
+      {mounted && open
+        ? createPortal(
+            // portal 先は document.body（backdrop-blur の containing block を回避し viewport 全体を覆う）。
+            <div className="fixed inset-0 z-[100]" data-testid="mobile-nav-portal">
+              {/* オーバーレイ */}
+              <div
+                className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm"
+                onClick={() => setOpen(false)}
+                aria-hidden
+              />
+              {/* ドロワー本体（viewport 全高） */}
+              <div
+                className="absolute left-0 top-0 flex h-full w-72 max-w-[82%] animate-fade-in flex-col bg-sidebar text-sidebar-foreground shadow-pop"
+                data-testid="mobile-nav-drawer"
+              >
             <div className="flex h-16 items-center justify-between px-4">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-sm font-black tracking-tight text-white">
@@ -116,9 +124,11 @@ export function MobileNav({ allowedHrefs }: { allowedHrefs?: string[] }) {
                 </div>
               ))}
             </nav>
-          </div>
-        </div>
-      ) : null}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

@@ -10,6 +10,16 @@ import { formatDateTime, getAiCharacter, AI_WORKFORCE_STATE_LABEL, type AiWorkfo
 
 export const dynamic = 'force-dynamic';
 
+// 自律レベルの短い日本語ラベル（v6.4: 長い permissionLevel を nowrap Badge に入れて見切れる問題の分離）。
+const AUTONOMY_LABEL: Record<string, string> = {
+  supervised: '監督付き',
+  assist: '補助',
+  autonomous: '自律',
+};
+function autonomyLabel(a: string): string {
+  return AUTONOMY_LABEL[a] ?? a;
+}
+
 // 稼働状態バッジの色（3D Office と同じ AiWorkforceState を使い、同じ意味で表示する）。
 const STATE_TONE: Record<AiWorkforceState, 'green' | 'amber' | 'red' | 'slate' | 'purple'> = {
   working: 'green',
@@ -55,7 +65,14 @@ export default async function AiAgentsPage() {
           const prof = getAiCharacter(a.key);
           const hasProfile = prof.fullName !== '（設定未作成）';
           return (
-            <Link key={a.id} href={`/ai-agents/${a.id}`} data-testid={`ai-agent-card-${a.id}`}>
+            <Link
+              key={a.id}
+              href={`/ai-agents/${a.id}`}
+              data-testid={`ai-agent-card-${a.id}`}
+              data-agent-key={a.key}
+              data-agent-state={a.state}
+              data-agent-name={hasProfile ? prof.fullName : a.name}
+            >
               <Card className="h-full transition hover:border-primary/50">
                 <CardContent className="pt-4">
                   <div className="flex items-center gap-2.5">
@@ -76,10 +93,14 @@ export default async function AiAgentsPage() {
                     </Badge>
                   </div>
                   <p className="mt-2 line-clamp-1 text-xs text-muted-foreground">{a.role}</p>
-                  <div className="mt-2 flex items-center gap-2 text-xs">
-                    <Badge tone="purple">{a.permissionLevel}</Badge>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                    {/* 短い自律ラベルだけを Badge（nowrap）に。長いガードレール説明は折返し可能な行に分離（v6.4）。 */}
+                    <Badge tone="purple">{autonomyLabel(a.autonomy)}</Badge>
                     <span className="text-muted-foreground">実行 {a.runCount} 回</span>
                   </div>
+                  <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                    外部送信・承認・削除は不可／人間承認必須
+                  </p>
                 </CardContent>
               </Card>
             </Link>

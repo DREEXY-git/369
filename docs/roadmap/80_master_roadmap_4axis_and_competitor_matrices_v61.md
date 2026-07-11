@@ -53,16 +53,16 @@ Human Boundary と Trust Center が全体を包む。人間を労働から解放
 | Foundation | 統合OS・CRM・LeadMap・会計/在庫等 MVP | 1 | `PRODUCTION_VERIFIED`（Phase 1 完了・基準 `e95f887`・doc25） | — | 個別機能の ASSISTIVE 化 |
 | Quality | CI 4段・E2E・静的安全ゲート | X | `PRODUCTION_VERIFIED`（Phase X 完了・恒久資産） | — | E2E カバレッジ拡張 |
 | P2-BRAIN | Company Brain・Playbook・Case Study・Consent | 2 | `PRODUCTION_VERIFIED`（Phase 2-A/B/C 完了） | — | Customer Pain / 公開活用（別承認） |
-| P3-GROWTH | Growth Control Tower・成果台帳・承認導線 | 3 | `CI_GREEN`（PR#12/#14・Draft・HOLD） | 人間 GO＋ATOMIC_LEDGER | Preview 目視 |
-| P3-Q2C | 見積・契約・請求・入金・会計入口・督促下書き | 3 | 会計 schema=`SCHEMA_ONLY`／請求UI=`IMPLEMENTATION_UNVERIFIED`／AI 高度化=`REQUIREMENT_ONLY` | 高リスク・実請求/実送金は不可 | CASH-001 read-only+draft の Gate |
-| P35-CHANNELS | 広告(C19)・SEO(C21)・紹介(C22) | 3.5 | C19/C21=`CI_GREEN`(Draft)／C22=`REQUIREMENT_ONLY`(Gate) | 人間承認 bridge・外部封印 | 1チャネルの人間承認接続 |
-| P4-WORKFORCE | AI社員・Control Plane・3D Office・Outcome | 4 | `CI_GREEN`（PR#14・recovery 最優先）／Preview 未監査 | Exit Gate（§5）・人間 GO | Preview 目視＋Codex Track B |
-| P5-MEETING-INTEL | 高度会議知能・知識変換 | 5 | 基本会議=Foundation／高度化=`REQUIREMENT_ONLY` | 設計 Gate | Meeting Decision DB 設計 |
-| P6-BUSINESS-TWIN | 経営ダッシュボード/Business Twin(AIOS-004) | 6 | `REQUIREMENT_ONLY` | 未着手 | finance 集計の read-only 派生設計 |
-| P7-TEMPLATES-MARKETPLACE | 業種テンプレ・審査済み Marketplace(MARKET) | 7 | `REQUIREMENT_ONLY` | 課金依存(P8) | 分類のみ |
-| P8-BILLING | 369 自体の課金・credit・SaaS化 | 8 | 凍結（`REQUIREMENT_ONLY`・実課金なし） | 明示解禁承認 | UsageEvent 台帳維持 |
-| P9-ENTERPRISE | SSO/SCIM/Trust Center 本格化(TRUST-003) | 9 | `REQUIREMENT_ONLY` | 未着手 | 自前認証との併存設計 |
-| Phase Y / GTM | 導入・販売・サポート・事業運営 | Y | `REQUIREMENT_ONLY` | 未着手 | — |
+| P3-GROWTH | Growth Control Tower・成果台帳・承認導線 | 3 | `CI_VERIFIED`（PR#12/#14・Draft・HOLD） | 人間 GO＋ATOMIC_LEDGER | Preview 目視 |
+| P3-Q2C | 見積・契約・請求・入金・会計入口・督促下書き | 3 | 会計 schema=`SCHEMA_ONLY`／請求UI=`IMPLEMENTATION_UNVERIFIED`／AI 高度化=`ROADMAP_ONLY` | 高リスク・実請求/実送金は不可 | CASH-001 read-only+draft の Gate |
+| P35-CHANNELS | 広告(C19)・SEO(C21)・紹介(C22) | 3.5 | C19/C21=`CI_VERIFIED`(Draft)／C22=`ROADMAP_ONLY`(Gate) | 人間承認 bridge・外部封印 | 1チャネルの人間承認接続 |
+| P4-WORKFORCE | AI社員・Control Plane・3D Office・Outcome | 4 | `CI_VERIFIED`（PR#14・recovery 最優先）／Preview 未監査 | Exit Gate（§5）・人間 GO | Preview 目視＋Codex Track B |
+| P5-MEETING-INTEL | 高度会議知能・知識変換 | 5 | 基本会議=Foundation／高度化=`ROADMAP_ONLY` | 設計 Gate | Meeting Decision DB 設計 |
+| P6-BUSINESS-TWIN | 経営ダッシュボード/Business Twin(AIOS-004) | 6 | `ROADMAP_ONLY` | 未着手 | finance 集計の read-only 派生設計 |
+| P7-TEMPLATES-MARKETPLACE | 業種テンプレ・審査済み Marketplace(MARKET) | 7 | `ROADMAP_ONLY` | 課金依存(P8) | 分類のみ |
+| P8-BILLING | 369 自体の課金・credit・SaaS化 | 8 | 凍結（`ROADMAP_ONLY`・実課金なし） | 明示解禁承認 | UsageEvent 台帳維持 |
+| P9-ENTERPRISE | SSO/SCIM/Trust Center 本格化(TRUST-003) | 9 | `ROADMAP_ONLY` | 未着手 | 自前認証との併存設計 |
+| Phase Y / GTM | 導入・販売・サポート・事業運営 | Y | `ROADMAP_ONLY` | 未着手 | — |
 
 ## 5. P4-WORKFORCE Exit Gate（完了条件・すべて必須）
 
@@ -79,22 +79,22 @@ Human Boundary と Trust Center が全体を包む。人間を労働から解放
 
 | Epic | 必須能力 | 台帳候補ID | workstream | 証拠段階 | 次の薄い縦切り |
 |---|---|---|---|---|---|
-| Agent Registry | ID・役割・所属・状態・owner・version | AIOS-001 | P4-WORKFORCE | `CI_GREEN`（AIAgent＋read model・PR#14） | 状態算出の統一（完了） |
-| Persona/Profile | 正本プロフィール・portrait・役割 | USR-003 系 | P4-WORKFORCE | `CI_GREEN`（getAiCharacter 単一正本・PR#14 統一） | 評価/スキルの根拠注記 |
-| Skill Registry | skill 定義・version・依存・権限・評価 | AIOS-001 | P4-WORKFORCE | `REQUIREMENT_ONLY` | read-only skill 一覧 |
-| Tool Registry | tool manifest・scope・risk・approval | GATE-002 | P4/Gateway | `REQUIREMENT_ONLY` | tool 台帳（read-only） |
+| Agent Registry | ID・役割・所属・状態・owner・version | AIOS-001 | P4-WORKFORCE | `CI_VERIFIED`（AIAgent＋read model・PR#14） | 状態算出の統一（完了） |
+| Persona/Profile | 正本プロフィール・portrait・役割 | USR-003 系 | P4-WORKFORCE | `CI_VERIFIED`（getAiCharacter 単一正本・PR#14 統一） | 評価/スキルの根拠注記 |
+| Skill Registry | skill 定義・version・依存・権限・評価 | AIOS-001 | P4-WORKFORCE | `ROADMAP_ONLY` | read-only skill 一覧 |
+| Tool Registry | tool manifest・scope・risk・approval | GATE-002 | P4/Gateway | `ROADMAP_ONLY` | tool 台帳（read-only） |
 | Prompt Registry | template・version・rollback・review | `UNMAPPED_CANDIDATE` | P4-WORKFORCE | `SCHEMA_ONLY`（PROMPT_TEMPLATES 既存） | prompt version 表示 |
-| Sandbox | fake data・隔離実行・fixture・no external send | AIOS-002 | P4-WORKFORCE | `IMPLEMENTED_ON_DRAFT`（FakeLLM/封印 env） | sandbox 実行ログ可視化 |
+| Sandbox | fake data・隔離実行・fixture・no external send | AIOS-002 | P4-WORKFORCE | `DRAFT_IMPLEMENTED`（FakeLLM/封印 env） | sandbox 実行ログ可視化 |
 | Evaluation Center | golden set・否定系・安全・品質・回帰 | C05 | P4-WORKFORCE | `SCHEMA_ONLY`（AISafetyLog 既存） | 評価結果 read-only |
-| Run Lifecycle | queue・retry・idempotency・pause/resume | AIOS-001 | P4-WORKFORCE | `CI_GREEN`（lifecycle CAS＋stale 修正・PR#14） | — |
+| Run Lifecycle | queue・retry・idempotency・pause/resume | AIOS-001 | P4-WORKFORCE | `CI_VERIFIED`（lifecycle CAS＋stale 修正・PR#14） | — |
 | Memory/Knowledge | Company Brain 参照・memory 境界・出典 | BRAIN-001/002 | P4/Brain | `PRODUCTION_VERIFIED`（AI参照＋ai_reference ログ） | office 連携 |
-| Budget/Cost | budget・usage・上限・警告・実課金なし | AIOS-002 | P4-WORKFORCE | `REQUIREMENT_ONLY` | usage 表示（非課金） |
-| Human Inbox | 承認・差戻し・説明・resume | AIOS-005 | P4/Gateway | `CI_GREEN`（Human Work Inbox・deep link のみ） | 承認 bridge 設計(roadmap78) |
-| Observability | logs・trace・outcome・human time・failure | USR-004 | P4-WORKFORCE | `CI_GREEN`（Outcome 台帳・区分×単位） | — |
-| Release Stages | draft・sandbox・pilot・production・rollback | `UNMAPPED_CANDIDATE` | P4-WORKFORCE | `REQUIREMENT_ONLY` | 段階表示 |
-| 3D Office | evidence-derived state・task・profile・deep link | USR-003 | P4-WORKFORCE | `CI_GREEN`（PR#14・双方向 deep link・状態統一） | Preview 目視 |
-| Agent Studio | 人間が役割/skill/guardrail を設定する UI | `UNMAPPED_CANDIDATE` | P4次段 | `REQUIREMENT_ONLY` | **次の薄い縦切り候補=Agent Development Console v0（read-only・既存 schema・別 Gate）** |
-| External Developer Platform | SDK・MCP/API・審査・Marketplace | API-001/002/003 | future/P7-P9 | `REQUIREMENT_ONLY`（公開は future・封印） | 内部 scope 設計のみ |
+| Budget/Cost | budget・usage・上限・警告・実課金なし | AIOS-002 | P4-WORKFORCE | `ROADMAP_ONLY` | usage 表示（非課金） |
+| Human Inbox | 承認・差戻し・説明・resume | AIOS-005 | P4/Gateway | `CI_VERIFIED`（Human Work Inbox・deep link のみ） | 承認 bridge 設計(roadmap78) |
+| Observability | logs・trace・outcome・human time・failure | USR-004 | P4-WORKFORCE | `CI_VERIFIED`（Outcome 台帳・区分×単位） | — |
+| Release Stages | draft・sandbox・pilot・production・rollback | `UNMAPPED_CANDIDATE` | P4-WORKFORCE | `ROADMAP_ONLY` | 段階表示 |
+| 3D Office | evidence-derived state・task・profile・deep link | USR-003 | P4-WORKFORCE | `CI_VERIFIED`（PR#14・双方向 deep link・状態統一） | Preview 目視 |
+| Agent Studio | 人間が役割/skill/guardrail を設定する UI | `UNMAPPED_CANDIDATE` | P4次段 | `ROADMAP_ONLY` | **次の薄い縦切り候補=Agent Development Console v0（read-only・既存 schema・別 Gate）** |
+| External Developer Platform | SDK・MCP/API・審査・Marketplace | API-001/002/003 | future/P7-P9 | `ROADMAP_ONLY`（公開は future・封印） | 内部 scope 設計のみ |
 
 **次の薄い縦切り = `Agent Development Console v0`**（recovery 完了後に Gate 作成・既存 schema で成立する read-only から・新 schema/外部 SDK/MCP 公開は別の人間承認）。
 
@@ -110,19 +110,19 @@ Human Boundary と Trust Center が全体を包む。人間を労働から解放
 | Opportunity / Deal | `Deal`・/deals | NATIVE | `IMPLEMENTATION_UNVERIFIED` | — |
 | Pipeline / Kanban | /deals/kanban・`DealStageHistory` | NATIVE | `IMPLEMENTATION_UNVERIFIED` | — |
 | Activity / Task / Meeting / Calendar | `CustomerInteraction`・meeting・horenso | NATIVE(部分) | `IMPLEMENTATION_UNVERIFIED`(基本) | Calendar 連携=CONNECTOR future(INT) |
-| Campaign / Attribution / Growth | `MarketingCampaign`＋Growth Ledger＋C19 Ads | ASSISTIVE | `CI_GREEN`(Draft) | 実広告 API=CONNECTOR 封印 |
+| Campaign / Attribution / Growth | `MarketingCampaign`＋Growth Ledger＋C19 Ads | ASSISTIVE | `CI_VERIFIED`(Draft) | 実広告 API=CONNECTOR 封印 |
 | Quote / Contract / Order | `Quote`/`QuoteLineItem`・見積 | NATIVE(quote)/部分(contract) | `IMPLEMENTATION_UNVERIFIED`(quote) | 契約=DOC-001 future |
-| Forecast / Territory / Lead Scoring | CASH-002 予測(設計)・—・— | ASSISTIVE/DEFERRED | `REQUIREMENT_ONLY` | Lead Scoring=DEFERRED |
+| Forecast / Territory / Lead Scoring | CASH-002 予測(設計)・—・— | ASSISTIVE/DEFERRED | `ROADMAP_ONLY` | Lead Scoring=DEFERRED |
 | Customer Service / Case / SLA | `CustomerComplaint` | NATIVE(部分) | `SCHEMA_ONLY` | SLA=DEFERRED |
-| Omnichannel Communication | Email/DM 基盤(OutreachDraft) | ASSISTIVE | `CI_GREEN` | 実送信=封印(EXTERNAL_SEND) |
+| Omnichannel Communication | Email/DM 基盤(OutreachDraft) | ASSISTIVE | `CI_VERIFIED` | 実送信=封印(EXTERNAL_SEND) |
 | Reports / Dashboard / Analytics | 各ダッシュボード・管制塔 | NATIVE | `IMPLEMENTATION_UNVERIFIED` | Business Twin=P6 |
 | Workflow / Approval / Automation | `ApprovalRequest`／FLOW(将来) | NATIVE(承認)/future(flow) | `IMPLEMENTATION_UNVERIFIED`(承認) | Workflow Fabric=P4 以降 |
 | RBAC / Field Security / Audit / Consent | rbac.ts・labels.ts・writeAudit・ConsentRecord | NATIVE | `IMPLEMENTATION_UNVERIFIED` | Field Security=部分 |
 | Import / Export / Dedup / Data Quality | export(部分) | NATIVE(部分)/DEFERRED | `SCHEMA_ONLY` | Dedup=DEFERRED |
-| Custom Object / Metadata / API | — | future | `REQUIREMENT_ONLY` | API-001 Gate |
-| App Marketplace / Integration | MARKET(P7)・INT(future) | CONNECTOR future | `REQUIREMENT_ONLY` | 分類のみ |
+| Custom Object / Metadata / API | — | future | `ROADMAP_ONLY` | API-001 Gate |
+| App Marketplace / Integration | MARKET(P7)・INT(future) | CONNECTOR future | `ROADMAP_ONLY` | 分類のみ |
 | Mobile / Offline | レスポンシブ UI | NATIVE(部分)/DEFERRED | `IMPLEMENTATION_UNVERIFIED`(responsive) | Offline=DEFERRED |
-| AI Sales Assistant / Copilot | AIOS-003＋SALES-002 | ASSISTIVE | `REQUIREMENT_ONLY`〜draft | 商品推奨の縦切り |
+| AI Sales Assistant / Copilot | AIOS-003＋SALES-002 | ASSISTIVE | `ROADMAP_ONLY`〜draft | 商品推奨の縦切り |
 
 ## 8. マネーフォワード / freee 相当 競合機能台帳（§15）
 
@@ -132,19 +132,19 @@ Human Boundary と Trust Center が全体を包む。人間を労働から解放
 |---|---|---|---|---|
 | Chart of Accounts | `Account` model | NATIVE | `IMPLEMENTATION_UNVERIFIED`(schema) | — |
 | General Ledger / Journal Entry | `JournalEntry`/`JournalEntryLine` | NATIVE | `IMPLEMENTATION_UNVERIFIED`(schema) | 仕訳確定は人間 |
-| AR / Invoice / Collection | `Invoice`＋dunning＋CASH-001 | NATIVE(請求)/ASSISTIVE(督促) | `IMPLEMENTATION_UNVERIFIED`(invoice)/`REQUIREMENT_ONLY`(督促AI) | 実送信=封印 |
+| AR / Invoice / Collection | `Invoice`＋dunning＋CASH-001 | NATIVE(請求)/ASSISTIVE(督促) | `IMPLEMENTATION_UNVERIFIED`(invoice)/`ROADMAP_ONLY`(督促AI) | 実送信=封印 |
 | AP / Bills / Payment Request | `InvoiceCandidate`/`Expense` | NATIVE(部分)/HUMAN_ONLY(支払) | `SCHEMA_ONLY` | 実支払=HUMAN_ONLY |
 | Expense / Receipt / OCR | `Expense` model | NATIVE/DEFERRED(OCR) | `IMPLEMENTATION_UNVERIFIED`(expense) | OCR=DOC future |
-| Bank / Card Feed | INT-002 | CONNECTOR future | `REQUIREMENT_ONLY` | 資金移動非踏込 |
+| Bank / Card Feed | INT-002 | CONNECTOR future | `ROADMAP_ONLY` | 資金移動非踏込 |
 | Reconciliation | `JournalCandidate` | ASSISTIVE | `SCHEMA_ONLY` | 確定は人間 |
-| Cash Flow / Forecast / Budget | /finance/cashflow＋CASH-002 | ASSISTIVE | `CI_GREEN`(read-only)/`REQUIREMENT_ONLY`(予測) | 断定表示禁止(信頼度併記) |
+| Cash Flow / Forecast / Budget | /finance/cashflow＋CASH-002 | ASSISTIVE | `CI_VERIFIED`(read-only)/`ROADMAP_ONLY`(予測) | 断定表示禁止(信頼度併記) |
 | Closing / Financial Statements | finance 集計 | NATIVE(部分) | `SCHEMA_ONLY` | 決算確定=HUMAN_ONLY |
-| Fixed Asset / Depreciation | — | DEFERRED | `REQUIREMENT_ONLY` | — |
-| Tax / 電子帳簿 / インボイス制度 | — | HUMAN_ONLY/DEFERRED | `REQUIREMENT_ONLY` | 税務断定しない |
+| Fixed Asset / Depreciation | — | DEFERRED | `ROADMAP_ONLY` | — |
+| Tax / 電子帳簿 / インボイス制度 | — | HUMAN_ONLY/DEFERRED | `ROADMAP_ONLY` | 税務断定しない |
 | Payroll / Attendance / HR | HR モジュール | NATIVE(部分)/HUMAN_ONLY(給与) | `SCHEMA_ONLY` | 給与/評価確定=HUMAN_ONLY |
 | Approval / Segregation of Duties | `ApprovalRequest`・RBAC | NATIVE | `IMPLEMENTATION_UNVERIFIED` | — |
 | Audit Trail / External Accountant | writeAudit/writeDataAccess | NATIVE/DEFERRED(会計士連携) | `IMPLEMENTATION_UNVERIFIED`(audit) | 会計士連携=future |
-| API / Connector / Import Export | — | future | `REQUIREMENT_ONLY` | API-001/INT Gate |
+| API / Connector / Import Export | — | future | `ROADMAP_ONLY` | API-001/INT Gate |
 | Anomaly / Dunning Draft / Prediction | anomaly.ts＋CASH-001/002 | ASSISTIVE | `SCHEMA_ONLY`〜draft | 実送信/断定=禁止 |
 
 **総括**: 369 は会計ソフトを「置き換え済み」とは言わない。会計 schema は自前で持ちつつ、**AI は未回収検知・督促下書き・入金予測まで**。実際の会計処理・送金は既存会計ソフト＋人間承認へ委ねる（CONNECTOR は future Gate）。

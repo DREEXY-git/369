@@ -494,7 +494,14 @@ export function AiOffice({ model, initialAgentId = null }: { model: AiWorkforceR
         </div>
 
         {/* 詳細パネル（固定領域・選択で本文のみ入れ替え＝レイアウト不変）。 */}
-        <div className="min-h-[320px] scroll-mt-20 rounded-md border p-4" data-testid="ai-office-detail" data-agent-id={selected?.id ?? ''}>
+        <div
+          className="min-h-[320px] scroll-mt-20 rounded-md border p-4"
+          data-testid="ai-office-detail"
+          data-agent-id={selected?.id ?? ''}
+          data-agent-key={selected?.key ?? ''}
+          data-agent-state={selected?.state ?? ''}
+          data-agent-name={selected ? (getAiCharacter(selected.key).fullName !== '（設定未作成）' ? getAiCharacter(selected.key).fullName : selected.name) : ''}
+        >
           {selected ? (
             <div className="space-y-3 text-sm">
               {(() => {

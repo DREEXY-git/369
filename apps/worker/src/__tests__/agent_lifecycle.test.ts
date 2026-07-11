@@ -132,6 +132,31 @@ describe('runWithAgentLifecycle（v5.8 hardening）', () => {
     }
   });
 
+  it('v6.4 P1: 内部 depth3 escaped quote 直後の秘密も、保存エラー・再throw・Action要約でマスクされる', async () => {
+    const { db, runs, actions } = makeDb();
+    // 開始 depth 1・内部 quote depth 3・直後 comma（Codex 再現ケース）を含む秘密。
+    const payload = String.raw`upstream {\"password\":\"abc\\\",DEPTH3SECRET64\"} boom`;
+    await expect(
+      runWithAgentLifecycle(params, async () => {
+        throw new Error(payload);
+      }, db),
+    ).rejects.toThrow(/agent lifecycle job failed/);
+    expect(runs[0]!.status).toBe('FAILED');
+    expect(runs[0]!.error).not.toContain('DEPTH3SECRET64'); // 保存値
+    // 失敗 Action 要約にも残らない。
+    for (const a of actions as { data: { summary: string } }[]) {
+      expect(a.data.summary).not.toContain('DEPTH3SECRET64');
+    }
+    try {
+      await runWithAgentLifecycle({ ...params, task: 'depth3別' }, async () => {
+        throw new Error(payload);
+      }, db);
+      expect.unreachable('should throw');
+    } catch (e) {
+      expect(String(e)).not.toContain('DEPTH3SECRET64'); // 再throw値
+    }
+  });
+
   it('二重 Run 防止: 新鮮な RUNNING が既存なら実行せず skip する', async () => {
     const { db } = makeDb({
       preexisting: [

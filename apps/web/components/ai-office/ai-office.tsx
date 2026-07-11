@@ -245,8 +245,14 @@ export function AiOffice({ model }: { model: AiWorkforceReadModel }) {
         const m = o as THREE.Mesh;
         if (m.geometry) m.geometry.dispose();
         const mat = m.material as THREE.Material | THREE.Material[] | undefined;
-        if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
-        else mat?.dispose();
+        const disposeMat = (x: THREE.Material) => {
+          // Material.dispose は map テクスチャを解放しないため、CanvasTexture を明示 dispose する。
+          const map = (x as THREE.Material & { map?: THREE.Texture | null }).map;
+          map?.dispose();
+          x.dispose();
+        };
+        if (Array.isArray(mat)) mat.forEach(disposeMat);
+        else if (mat) disposeMat(mat);
       });
     };
     // model はサーバ描画ごとに固定。フィルタは可視切替 effect で別処理。

@@ -41,12 +41,14 @@ export async function getAiWorkforceReadModel(tenantId: string, now: Date = new 
       select: { id: true, key: true, name: true, role: true, department: true, status: true, autonomy: true },
       orderBy: { name: 'asc' },
     }),
-    // 直近 run をエージェントごとに1件（input/output は取得しない）。
+    // 直近 run をエージェントごとに1件（distinct・input/output/error は取得しない）。
+    // テナント全体の固定ウィンドウ（take:N）にすると run が偏るエージェント運用で
+    // 「証拠はあるが取得ウィンドウ外」の偽 unknown が出るため distinct を使う。
     prisma.aIAgentRun.findMany({
       where: { tenantId },
-      select: { agentId: true, status: true, task: true, startedAt: true, finishedAt: true, error: true },
-      orderBy: { startedAt: 'desc' },
-      take: 200,
+      select: { id: true, agentId: true, status: true, task: true, startedAt: true, finishedAt: true },
+      orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
+      distinct: ['agentId'],
     }),
     prisma.aIApprovalGate.findMany({
       where: { tenantId, status: { in: ['PENDING', 'REJECTED'] } },
@@ -55,10 +57,7 @@ export async function getAiWorkforceReadModel(tenantId: string, now: Date = new 
     prisma.aIAgentRun.groupBy({ by: ['agentId'], where: { tenantId }, _count: { _all: true } }),
   ]);
 
-  const latestRunByAgent = new Map<string, (typeof runs)[number]>();
-  for (const r of runs) {
-    if (!latestRunByAgent.has(r.agentId)) latestRunByAgent.set(r.agentId, r);
-  }
+  const latestRunByAgent = new Map(runs.map((r) => [r.agentId, r]));
   const runCountByAgent = new Map(runCounts.map((r) => [r.agentId, r._count._all]));
 
   // AIApprovalGate は runId 経由でのみエージェントに紐づく（runId null はテナント全体の件数として扱わない）。
@@ -70,11 +69,18 @@ export async function getAiWorkforceReadModel(tenantId: string, now: Date = new 
   }
   const pendingByAgent = new Map<string, number>();
   const rejectedByAgent = new Map<string, number>();
+  const latestRunId = new Map([...latestRunByAgent].map(([agentId, r]) => [agentId, r.id]));
   for (const g of gates) {
     const agentId = g.runId ? runAgent.get(g.runId) : undefined;
     if (!agentId) continue;
-    const m = g.status === 'PENDING' ? pendingByAgent : rejectedByAgent;
-    m.set(agentId, (m.get(agentId) ?? 0) + 1);
+    if (g.status === 'PENDING') {
+      // PENDING はどの run 由来でも「人間の判断待ち」として数える。
+      pendingByAgent.set(agentId, (pendingByAgent.get(agentId) ?? 0) + 1);
+    } else if (g.runId === latestRunId.get(agentId)) {
+      // REJECTED は「直近 run の承認が却下され、再実行の証拠がない」場合のみブロック根拠にする
+      // （古い run の却下を永久に blocked 扱いしない・deriveAgentState のセマンティクスと一致）。
+      rejectedByAgent.set(agentId, (rejectedByAgent.get(agentId) ?? 0) + 1);
+    }
   }
 
   const views: AiWorkforceAgentView[] = agents.map((a) => {
@@ -83,7 +89,7 @@ export async function getAiWorkforceReadModel(tenantId: string, now: Date = new 
     const rejected = rejectedByAgent.get(a.id) ?? 0;
     const derived = deriveAgentState({
       agentStatus: a.status,
-      latestRun: run ? { status: run.status, startedAt: run.startedAt, finishedAt: run.finishedAt, task: run.task, error: run.error } : null,
+      latestRun: run ? { status: run.status, startedAt: run.startedAt, finishedAt: run.finishedAt, task: run.task } : null,
       pendingApprovalGates: pending,
       rejectedApprovalGates: rejected,
     });

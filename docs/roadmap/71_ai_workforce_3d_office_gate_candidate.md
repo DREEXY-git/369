@@ -31,6 +31,21 @@
 ## 4. Gate 判定
 
 - [x] schema/seed/RBAC/labels 変更なし・封印 env 不変・外部送信/実行導線なし
-- [ ] ローカル電池 green（unit/tsc/lint/build/safety）
-- [ ] 敵対的レビュー → 指摘反映
-- [ ] Draft PR 作成・CI green（100 = 93+3(A)+4(B) は別ブランチのため本ブランチは 97 = 93+4）をログ本文で確認
+- [x] ローカル電池 green（unit 285/0・tsc 0・lint 0・build 0〔/ai-office 148kB〕・safety 0）
+- [x] 敵対的レビュー → 指摘反映（§5 追補）
+- [ ] Draft PR 作成・CI green（本ブランチは 97 = 93+4）をログ本文で確認
+
+## 5. 追補（敵対的レビューの結果と反映・2026-07-11）
+
+独立レビュー（4204936 対象）: ブロッカーなし。「捏造しない」原則・情報境界・tenant スコープ・
+read-only 性・依存最小性・SSR 安全性・クリーンアップ・e2e 検算（97=93+4）はすべて実読で確認済み。検出と反映:
+
+| # | 深刻度 | 指摘 | 反映 |
+|---|---|---|---|
+| 1 | Medium | 直近 run の取得がテナント全体 take:200 ウィンドウのため、run が偏る運用（worker は chief_of_staff に集中）で「証拠はあるが取得ウィンドウ外」の偽 unknown（実行回数 N と自己矛盾） | **`distinct: ['agentId']`＋orderBy [startedAt desc, id desc]** に変更（同時刻 tiebreaker も解消） |
+| 2 | Medium(latent) | REJECTED ゲートを時間条件なしで数え「直近 run 以降」のセマンティクスと矛盾（producer は現状 0 件で未発火） | REJECTED は **直近 run の gate のみ** blocked 根拠に採用（PENDING は従来どおり全件＝人間の判断待ち） |
+| 3 | Low | CanvasTexture が dispose 漏れ（Material.dispose は map を解放しない） | traverse で map を明示 dispose |
+| 4 | Low | ピクセル検査が背景単色でも通る閾値＋固定 sleep | 背景色 #0f172a からの乖離ピクセル > 200＋色数 > 12 に強化・expect.poll（10s）で条件待ち化 |
+| 5 | Info | run.error を select するが未使用 | select から除去（最小取得） |
+| 6 | Info | フィルタ検証が no-op でも通る | 厳密減少＋0件メッセージ表示を検証 |
+| 7 | Info（記録のみ） | lockfile 差分に three 推移依存＋eslint 系 peer キー再解決を含む（バージョン変更なし）／working 系状態の producer 不在（接続線・アニメは前方互換コード・unit で担保）／webglcontextlost 未処理／nav の権限フィルタなし（既存パターン） | roadmap69 §4 の表現を本追補で補正。producer は Phase 4 の C04（Agent Control Plane）実装で接続 |

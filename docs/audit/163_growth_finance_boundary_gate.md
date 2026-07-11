@@ -25,6 +25,13 @@
   記録対称性・e2e の空振り防止）。
 - CI: push 後に run ログ本文で `88 passed / 0 failed` と封印 env（fake/log/false）を確認し追補に記録。
 
+## 追補（CI 確認・2026-07-11）
+
+- run 29138214775（#161・stage1 success / stage3_e2e success）・head 96eec33（f9907f2＋レビュー反映 96eec33）。
+- ログ本文で `88 passed (1.3m)`・失敗 0 を確認（growth_boundary 3件を含む）。
+- workflow ファイルは本 WIP で未変更のため、封印 env（LLM_PROVIDER=fake / EMAIL_PROVIDER=log /
+  EXTERNAL_SEND_ENABLED=false）は run #160 での確認と同一。**WIP-3 クローズ。**
+
 ## fix commit 変更ファイル（レビュー反映）
 
 | ファイル | 変更 |

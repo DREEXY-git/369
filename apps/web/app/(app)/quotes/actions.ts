@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { computeQuoteTotals, requiresApproval, isLowMargin } from '@hokko/shared';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
+import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
 
 interface LineInput {
   name: string;
@@ -18,8 +19,22 @@ export async function createQuoteAction(formData: FormData) {
   if (!hasPermission(user, 'quote', 'create')) redirect('/quotes?denied=1');
 
   const title = String(formData.get('title') ?? '').trim() || '無題の見積';
-  const customerId = String(formData.get('customerId') ?? '') || null;
-  const dealId = String(formData.get('dealId') ?? '') || null;
+  let customerId = String(formData.get('customerId') ?? '') || null;
+  let dealId = String(formData.get('dealId') ?? '') || null;
+  // WIP-4（roadmap65 追補）: フォーム値の紐付け ID を server 側で検証する。
+  // ドロップダウンのフィルタは表示層に過ぎないため、①自テナント外の ID（テナント越え FK 接続）
+  // ②閲覧不可ラベル顧客の ID を直接 POST された場合は紐付けを拒否（null に落とす・fail-closed）。
+  if (customerId) {
+    const c = await prisma.customer.findFirst({
+      where: { id: customerId, tenantId: user.tenantId, label: { in: visibleCustomerLabels(user.roles) } },
+      select: { id: true },
+    });
+    customerId = c?.id ?? null;
+  }
+  if (dealId) {
+    const d = await prisma.deal.findFirst({ where: { id: dealId, tenantId: user.tenantId }, select: { id: true } });
+    dealId = d?.id ?? null;
+  }
   const discountRate = Math.max(0, Math.min(100, Number(formData.get('discountRate') ?? 0) || 0));
   const taxRate = Number(formData.get('taxRate') ?? 10) || 10;
 

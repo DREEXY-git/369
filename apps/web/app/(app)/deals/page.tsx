@@ -1,21 +1,37 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, Table, Th, Td, Badge, Button, EmptyState } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { DEAL_STAGE_LABEL } from '@/components/badges';
 import { formatJpy, formatDate, computeQuoteTotals } from '@hokko/shared';
+import { canSeeCustomerLabel } from '@/lib/security/customer-visibility';
 
 export const dynamic = 'force-dynamic';
 
 export default async function DealsPage() {
   const user = await requireUser();
+  // WIP-4（roadmap65 追補）: /quotes に quote:read を課しても、/deals が無ゲートだと
+  // 案件経由で見積の粗利率・顧客名に到達できる迂回が残るため、deal:read を fetch 前に適用。
+  if (!hasPermission(user, 'deal', 'read')) {
+    return (
+      <AccessDenied
+        title="案件管理"
+        reason="案件一覧の閲覧には案件の閲覧権限（deal:read）が必要です"
+        breadcrumb={[{ label: '案件', href: '/deals' }]}
+      />
+    );
+  }
   const deals = await prisma.deal.findMany({
     where: { tenantId: user.tenantId },
     orderBy: { updatedAt: 'desc' },
-    include: { customer: true },
+    // 顧客は表示に使う name と可視判定の label のみ取得（PII over-fetch 防止）。
+    include: { customer: { select: { name: true, label: true } } },
   });
+  // 顧客名は CRM の閲覧境界（WIP1）に従う（deal:read はあるが顧客ラベル不可視の閲覧者には出さない）。
+  const canReadCustomer = hasPermission(user, 'customer', 'read');
 
   return (
     <div>
@@ -40,7 +56,7 @@ export default async function DealsPage() {
                 return (
                   <tr key={d.id} className="hover:bg-secondary/50">
                     <Td><Link href={`/deals/${d.id}`} className="font-medium text-primary hover:underline">{d.title}</Link></Td>
-                    <Td className="text-xs">{d.customer.name}</Td>
+                    <Td className="text-xs">{canReadCustomer && canSeeCustomerLabel(user.roles, d.customer.label) ? d.customer.name : ''}</Td>
                     <Td><Badge tone="blue">{DEAL_STAGE_LABEL[d.stage]}</Badge></Td>
                     <Td className="font-medium">{formatJpy(amount)}</Td>
                     <Td><Badge tone={gm < 15 ? 'red' : gm < 25 ? 'amber' : 'green'}>{gm}%</Badge></Td>

@@ -8,6 +8,7 @@ import { executeApprovedAction } from '@/lib/approval';
 import { requestInvoiceExternalSend, executeInvoiceExternalSend } from '@/lib/domains/finance/invoice-send';
 import { recordInvoicePayment } from '@/lib/domains/finance/payments';
 import { createDunningDraft, requestDunningSend, executeDunningSend } from '@/lib/domains/finance/dunning';
+import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
 
 interface LineInput {
   name: string;
@@ -21,8 +22,21 @@ export async function createInvoiceAction(formData: FormData) {
   // 営業/STAFF の下書き業務は当面 Quote(見積) で担保。STAFF 向けマスク/スコープ付き請求は将来の案E。
   if (!hasPermission(user, 'invoice', 'create') || !hasPermission(user, 'finance', 'read')) redirect('/invoices?denied=1');
 
-  const customerId = String(formData.get('customerId') ?? '') || null;
-  const dealId = String(formData.get('dealId') ?? '') || null;
+  let customerId = String(formData.get('customerId') ?? '') || null;
+  let dealId = String(formData.get('dealId') ?? '') || null;
+  // WIP-4（roadmap65 追補）: 紐付け ID を server 側で検証（テナント越え FK・閲覧不可ラベル顧客の
+  // 直接 POST を遮断・fail-closed で null に落とす）。quotes/actions.ts と同方針。
+  if (customerId) {
+    const c = await prisma.customer.findFirst({
+      where: { id: customerId, tenantId: user.tenantId, label: { in: visibleCustomerLabels(user.roles) } },
+      select: { id: true },
+    });
+    customerId = c?.id ?? null;
+  }
+  if (dealId) {
+    const d = await prisma.deal.findFirst({ where: { id: dealId, tenantId: user.tenantId }, select: { id: true } });
+    dealId = d?.id ?? null;
+  }
   const taxRate = Number(formData.get('taxRate') ?? 10) || 10;
   const dueRaw = String(formData.get('dueDate') ?? '');
 

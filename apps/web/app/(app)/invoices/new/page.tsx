@@ -29,7 +29,13 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
       orderBy: { name: 'asc' },
       select: { id: true, name: true },
     }),
-    prisma.deal.findMany({ where: { tenantId: user.tenantId }, orderBy: { updatedAt: 'desc' }, select: { id: true, title: true }, take: 50 }),
+    // 案件候補も、不可視ラベル顧客に紐づく案件を除外（title に顧客名が含まれる運用への備え・fail-closed）。
+    prisma.deal.findMany({
+      where: { tenantId: user.tenantId, customer: { label: { in: visibleCustomerLabels(user.roles) } } },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true, title: true },
+      take: 50,
+    }),
   ]);
   const defaultDue = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
 

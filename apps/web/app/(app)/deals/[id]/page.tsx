@@ -1,29 +1,52 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Select, Stat, EmptyState } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { DEAL_STAGE_LABEL } from '@/components/badges';
 import { updateDealStageAction } from '../actions';
 import { formatJpy, formatDate, computeQuoteTotals, DEAL_STAGES } from '@hokko/shared';
+import { canSeeCustomerLabel } from '@/lib/security/customer-visibility';
 
 export const dynamic = 'force-dynamic';
 
 export default async function DealDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
+  // WIP-4（roadmap65 追補）: /quotes 系と同じく、案件詳細（見積の粗利率・顧客名への迂回経路）にも
+  // ページ基礎権限（deal:read）を fetch 前に適用する。
+  if (!hasPermission(user, 'deal', 'read')) {
+    return (
+      <AccessDenied
+        title="案件詳細"
+        reason="案件の閲覧には案件の閲覧権限（deal:read）が必要です"
+        breadcrumb={[{ label: '案件', href: '/deals' }]}
+      />
+    );
+  }
+  // 見積（合計・粗利率）は quote:read 配下（roadmap65 §2-1）。権限が無い閲覧者には取得もしない。
+  const canViewQuote = hasPermission(user, 'quote', 'read');
   const deal = await prisma.deal.findFirst({
     where: { id, tenantId: user.tenantId },
     include: {
-      customer: true,
-      quotes: { include: { lineItems: true } },
+      // 顧客は表示に使う name と可視判定の label のみ取得（PII over-fetch 防止）。
+      customer: { select: { name: true, label: true } },
+      // lineItems（unitCost 含む）は本画面で未表示のため取得しない（over-fetch の解消）。
+      ...(canViewQuote ? { quotes: { select: { id: true, number: true, title: true, status: true, total: true, grossMarginRate: true } } } : {}),
       activities: { orderBy: { occurredAt: 'desc' }, take: 5 },
       stageHistory: { orderBy: { createdAt: 'desc' }, take: 8 },
     },
   });
   if (!deal) notFound();
+  const quotes = canViewQuote && 'quotes' in deal ? deal.quotes : [];
+  // 顧客名は CRM の閲覧境界（WIP1）に従う。
+  const customerName =
+    hasPermission(user, 'customer', 'read') && canSeeCustomerLabel(user.roles, deal.customer.label)
+      ? deal.customer.name
+      : '';
 
   const amount = toNumber(deal.amount);
   const cost = toNumber(deal.cost);
@@ -33,7 +56,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     <div>
       <PageHeader
         title={deal.title}
-        description={deal.customer.name}
+        description={customerName}
         breadcrumb={[{ label: '案件', href: '/deals' }, { label: deal.title, href: `/deals/${deal.id}` }]}
         action={<Link href={`/deals/${deal.id}/edit`}><Button variant="outline">編集</Button></Link>}
       />
@@ -50,7 +73,9 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           <Card>
             <CardHeader><CardTitle>見積</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              {deal.quotes.length === 0 ? <EmptyState title="見積なし" /> : deal.quotes.map((q) => (
+              {!canViewQuote ? (
+                <p className="text-xs text-muted-foreground">見積の内容は見積の閲覧権限のある人にのみ表示されます。</p>
+              ) : quotes.length === 0 ? <EmptyState title="見積なし" /> : quotes.map((q) => (
                 <div key={q.id} className="rounded-md border p-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-medium">{q.number} {q.title}</span>

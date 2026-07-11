@@ -48,5 +48,31 @@
 - [x] 顧客名の宛先表示に customer:read＋可視ラベルガード（quotes 詳細・print/quotes）
 - [x] 顧客 over-fetch 解消（全列 include → name/label select）
 - [ ] ローカル電池 green（tsc / lint / unit / safety / secret）
-- [ ] 敵対的レビュー3視点 → 指摘反映
+- [x] 敵対的レビュー3視点 → 指摘反映（§6 追補）
 - [ ] CI 91/0 をログ本文で確認
+
+## 6. 追補（敵対的レビュー3視点の結果と反映・2026-07-11）
+
+実装 3662828 に対し独立レビュー3件（①権限ゲート・ABAC判定順 ②顧客可視性整合 ③E2E回帰）を実施。
+③は「91=88+3 で正・回帰経路なし・新3件を落とす欠陥なし」。検出と反映:
+
+| # | 深刻度 | 指摘 | 反映 |
+|---|---|---|---|
+| 1 | High | /deals 系4画面（一覧・カンバン・詳細・編集）が無ゲートで、見積の合計・粗利率・顧客名・deal 原価に全認証ロールが到達（quote:read 境界と WIP1 顧客境界の迂回） | 4画面に **deal:read ゲート**。顧客名は customer:read＋可視ラベルガード・select 縮小。詳細の見積カード（合計・粗利率）は **quote:read のみ取得・表示**。未表示だった lineItems（unitCost）の over-fetch を解消 |
+| 2 | Medium | createQuote/createInvoice が customerId/dealId を無検証で受理（**他テナント ID の FK 接続**・不可視ラベル顧客の直接 POST） | 両 action で server 側検証を追加: 自テナント＋可視ラベルの場合のみ紐付け、それ以外は null に落とす（fail-closed） |
+| 3 | Medium | fetch 前 assert への移動で、実在しない ID にも DataAccessLog（confidential_view/allow）が記録される偽陽性（任意文字列 entityId の注入も可能） | **envelope（id のみ select）先行＋ `skipViewLog`**: 実在時のみ confidential_view を記録。判定は notFound より先のまま（存在オラクルなし）。PolicyDecisionLog は常に記録（探査の検知は維持） |
+| 4 | Medium | 請求宛先が顧客ラベル無ガード（ADMIN/EXTERNAL_EXPERT に STRICT_SECRET/EXECUTIVE_ONLY 顧客名が露出・quote 側と非対称） | **§2-4 の判断を改訂**: 請求の宛先にも customer:read＋可視ラベルガードを適用（詳細・印刷・一覧）。不可視は「宛先未設定」と区別不能でオラクルにならない |
+| 5 | Medium | 同型のドロップダウン無フィルタが operations/events/new に残存 | 可視ラベルフィルタを適用 |
+| 6 | Low | quotes/new・invoices/new の deals ドロップダウンが無フィルタ（title に顧客名が入る運用で露出） | 不可視ラベル顧客に紐づく案件を候補から除外 |
+| 7 | Low | '原価' columnheader の部分一致が将来脆い | `exact: true` に変更 |
+| 8 | Info | 拒否理由が 'label-denied' 等の生コードで表示（UI 日本語ルールと不整合） | AccessDenied に理由コード→日本語のマップを追加（未知コードはそのまま） |
+| 9 | Medium(③) | 「fetch 前拒否」「存在オラクルなし」の e2e 実証が不足 | 実在しない ID でも同一拒否表示になるアサーションを追加（テスト3） |
+
+### 記録のみ（scope 外・後続 WIP 候補）
+
+- **deal の金額・原価・粗利は deal:read 配下**（EXTERNAL_PARTNER は deal:read 保持のため閲覧可）— RBAC 設計どおりだが、外部協力会社に deal 原価を見せる是非は WIP-6 で再判定。
+- quote 側 RBAC 拒否の監査証跡なし（invoice 側は PolicyDecisionLog に deny が残る非対称）→ ページ基礎権限の deny ログ方針として WIP-6 で一括判断。
+- EXTERNAL_EXPERT の機密アクセス理由登録フロー未実装（'sensitive-reason-required' が行き止まり）→ Phase 4 候補。
+- DEPARTMENT_MANAGER が FINANCIAL_CONFIDENTIAL 非許可で請求を一切閲覧できない（labels.ts 設計由来）→ 意図確認を HOLD リストへ。
+- golden-path-dashboard.ts / communications/actions.ts の server 内顧客名参照・customer-visibility ミラーの同期テスト → WIP-6。
+- dunning.spec の STAFF テストが空振り合格のまま（既存）→ WIP-6 または e2e 整備で解消。

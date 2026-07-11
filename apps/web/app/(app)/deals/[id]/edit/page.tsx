@@ -4,7 +4,9 @@ import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, Button, Input } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { updateDealAction } from '../../actions';
+import { canSeeCustomerLabel } from '@/lib/security/customer-visibility';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,15 +18,33 @@ function dateInput(d: Date | null): string {
 export default async function EditDealPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
-  const deal = await prisma.deal.findFirst({ where: { id, tenantId: user.tenantId }, include: { customer: true } });
+  // WIP-4（roadmap65 追補）: /deals と同じページ基礎権限（deal:read）を fetch 前に適用。
+  if (!hasPermission(user, 'deal', 'read')) {
+    return (
+      <AccessDenied
+        title="案件の編集"
+        reason="案件の閲覧には案件の閲覧権限（deal:read）が必要です"
+        breadcrumb={[{ label: '案件', href: '/deals' }]}
+      />
+    );
+  }
+  const deal = await prisma.deal.findFirst({
+    where: { id, tenantId: user.tenantId },
+    // 顧客は表示に使う name と可視判定の label のみ取得（PII over-fetch 防止）。
+    include: { customer: { select: { name: true, label: true } } },
+  });
   if (!deal) notFound();
   const canEdit = hasPermission(user, 'deal', 'update');
+  const customerName =
+    hasPermission(user, 'customer', 'read') && canSeeCustomerLabel(user.roles, deal.customer.label)
+      ? deal.customer.name
+      : '';
 
   return (
     <div className="mx-auto max-w-2xl">
       <PageHeader
         title="案件の編集"
-        description={deal.customer.name}
+        description={customerName}
         breadcrumb={[
           { label: '案件', href: '/deals' },
           { label: deal.title, href: `/deals/${deal.id}` },

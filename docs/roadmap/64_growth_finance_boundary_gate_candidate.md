@@ -47,7 +47,8 @@
 - [x] over-fetch 解消（payload/description 常時非取得）
 - [x] ローカル電池 green（tsc 0 / lint 0 / unit 278 / safety 0 / secret NONE）
 - [x] 敵対的レビュー3視点（金額経路・存在シグナル・E2E回帰）→ 指摘反映（§6 追補）
-- [ ] CI 88/0 をログ本文で確認（封印 env fake/log/false）
+- [x] CI green をログ本文で確認: run 29138214775（#161）・head 96eec33・`88 passed (1.3m)` / 0 failed
+  （growth_boundary 3件 ✓・workflow ファイル未変更のため封印 env は #160 の確認と同一）→ **WIP-3 クローズ**
 
 ## 6. 追補（敵対的レビュー3視点の結果と反映・2026-07-11）
 

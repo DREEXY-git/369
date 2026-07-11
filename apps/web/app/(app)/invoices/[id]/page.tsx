@@ -18,6 +18,7 @@ import {
 } from '../actions';
 import { getDunningContext } from '@/lib/domains/finance/dunning';
 import { formatJpy, formatDate, formatDateTime, isOverdue, canSendInvoice } from '@hokko/shared';
+import { canSeeCustomerLabel } from '@/lib/security/customer-visibility';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +31,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const user = await requireUser();
   // ABAC: 請求は財務機密。WIP-4（roadmap65）で判定を fetch より前に移動した
   // （fetch-then-assert の解消・拒否される閲覧者に対しては ID の存在有無も返さない）。
-  // label は固定の FINANCIAL_CONFIDENTIAL のため行の取得なしで判定できる。
+  // label は固定の FINANCIAL_CONFIDENTIAL のため行本体の取得なしで判定できる。
+  // 存在確認は id のみの envelope で行い、実在しない ID には confidential_view の
+  // allow 記録を残さない（skipViewLog・監査ログの偽陽性防止）。判定は notFound より先
+  // （拒否閲覧者には存在有無を返さない）。
+  const envelope = await prisma.invoice.findFirst({ where: { id, tenantId: user.tenantId }, select: { id: true } });
   try {
     await assertCanViewConfidential(user, {
       dataType: 'invoice',
@@ -38,6 +43,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       entityType: 'Invoice',
       entityId: id,
       purpose: '請求詳細の閲覧',
+      skipViewLog: !envelope,
     });
   } catch (e) {
     if (e instanceof PolicyDenied) {
@@ -52,15 +58,23 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     }
     throw e;
   }
+  if (!envelope) notFound();
   const invoice = await prisma.invoice.findFirst({
     where: { id, tenantId: user.tenantId },
-    // 顧客は宛先表示に使う name のみ取得（連絡先等 PII の over-fetch 防止・宛先は請求書の構成要素）。
-    include: { lineItems: true, payments: { orderBy: { paidAt: 'desc' } }, customer: { select: { name: true } }, receivable: true },
+    // 顧客は宛先表示の name と可視判定の label のみ取得（連絡先等 PII の over-fetch 防止）。
+    include: { lineItems: true, payments: { orderBy: { paidAt: 'desc' } }, customer: { select: { name: true, label: true } }, receivable: true },
   });
   if (!invoice) notFound();
   const canUpdate = hasPermission(user, 'invoice', 'update');
   const overdue = isOverdue(invoice.dueDate, invoice.status);
   const outstanding = toNumber(invoice.total) - toNumber(invoice.paidAmount);
+  // 宛先（顧客名）も CRM の閲覧境界（WIP1）に従う: 財務 ABAC 通過者でも、顧客ラベルが
+  // 不可視（例: ADMIN/EXTERNAL_EXPERT に対する STRICT_SECRET/EXECUTIVE_ONLY）なら表示しない
+  // （quote 側と対称・roadmap65 追補で §2-4 の判断を改訂）。
+  const customerName =
+    invoice.customer && hasPermission(user, 'customer', 'read') && canSeeCustomerLabel(user.roles, invoice.customer.label)
+      ? invoice.customer.name
+      : '';
 
   // 送信承認の状態（承認済みかつ未実行なら送信実行可能）と関連 FinanceEvent。
   const [sendApproval, financeEvents] = await Promise.all([
@@ -83,7 +97,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     <div>
       <PageHeader
         title={`${invoice.number}`}
-        description={invoice.customer?.name ?? ''}
+        description={customerName}
         breadcrumb={[{ label: '請求', href: '/invoices' }, { label: invoice.number, href: '#' }]}
         action={
           <div className="flex items-center gap-3">

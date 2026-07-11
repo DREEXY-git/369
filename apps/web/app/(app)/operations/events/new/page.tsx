@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, Input, Select, Button } from '@/components/ui';
 import { createEventProjectAction } from '../../actions';
+import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,12 @@ export default async function NewEventPage() {
     );
   }
   const [customers, venues] = await Promise.all([
-    prisma.customer.findMany({ where: { tenantId: user.tenantId }, select: { id: true, name: true }, take: 100 }),
+    // WIP-4（roadmap65 追補）: 顧客ドロップダウンは CRM 一覧（WIP1）と同じ可視ラベル集合でフィルタ。
+    prisma.customer.findMany({
+      where: { tenantId: user.tenantId, label: { in: visibleCustomerLabels(user.roles) } },
+      select: { id: true, name: true },
+      take: 100,
+    }),
     prisma.eventVenue.findMany({ where: { tenantId: user.tenantId }, select: { name: true }, take: 100 }),
   ]);
 

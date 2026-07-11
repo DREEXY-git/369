@@ -23,4 +23,4 @@
 - WIP-6 CI: run 29140473828（#164・stage1/stage3_e2e とも success）・head 8685fc3。
   ログ本文で `93 passed (1.1m)`・失敗 0 を確認（quotes_boundary・topbar_dashboard_boundary を含む）。
   **WIP-6 クローズ**（audit166 の詳細と roadmap67 §4/§5 を参照）。
-- Draft PR: 作成結果（URL）は本節に追記する。
+- Draft PR: https://github.com/DREEXY-git/369/pull/3（**Draft・merge は人間 Phase Gate 判断後**・feature→main）。

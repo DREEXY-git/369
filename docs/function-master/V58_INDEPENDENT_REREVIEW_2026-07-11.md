@@ -76,6 +76,8 @@ CI greenはnameplate click、BullMQ retry、成果集計の意味整合を証明
 
 Codex環境では期待raw SHAと一致する原典でgenerator `--check`が成功済み。50カテゴリ、2,553原子機能、7,485 Stable IDs、C49のみsource gapを確認した。`SOURCE_RECHECK_WAITING`は技術的には解消可能だが、High・Medium・統合競合・人間GOとは別Gateである。
 
+独立vault main `0812634`には57件の生成鏡像が同期済み。ただしroot `index.md`が存在しない`知識/完全機能台帳/index`を指していたため、実在する`00_完全機能台帳インデックス`へ直す1行修正を独立vault PR #2へ記録した。旧PR #1はmain同期と重複するためHOLD。
+
 ## 次の必須順
 
 1. High-1の追加3経路を修正し、否定テストを追加

@@ -31,5 +31,6 @@ export * from './content-seo';
 export * from './ai-workforce';
 export * from './agent-run-lifecycle';
 export * from './outcome-evidence';
+export * from './ai-characters';
 // 注: './webhook' は node:crypto を使うため barrel に含めない（client汚染防止）。
 //     サーバ/ワーカーは '@hokko/shared/webhook' から直接 import する。

@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { Users, Briefcase, MapPin, Wallet } from 'lucide-react';
-import { requireUser, primaryRole, ROLE_LABEL } from '@/lib/auth/current-user';
+import { requireUser, hasPermission, primaryRole, ROLE_LABEL } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
+import { AccessDenied } from '@/components/access-denied';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import {
@@ -25,6 +26,16 @@ const DONUT_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#a855f7', '#9
 
 export default async function DashboardPage() {
   const user = await requireUser();
+  // WIP-5（roadmap66）: 経営ダッシュボード（商談パイプライン金額・監査ログ含む）にページ基礎権限
+  // dashboard:read をデータ取得前に適用（/growth 系と同一規約・roadmap64 追補で記録した不整合の解消）。
+  if (!hasPermission(user, 'dashboard', 'read')) {
+    return (
+      <AccessDenied
+        title="ダッシュボード"
+        reason="ダッシュボードの閲覧にはダッシュボードの閲覧権限（dashboard:read）が必要です"
+      />
+    );
+  }
   const t = user.tenantId;
   const [
     customers,

@@ -10,10 +10,13 @@ export function Topbar({
   user,
   notifications,
   approvals,
+  showApprovals = true,
 }: {
   user: CurrentUser;
   notifications: number;
   approvals: number;
+  /** 承認待ちの入口とバッジを表示するか（approval:read / approval:approve 保持者のみ・WIP-5）。 */
+  showApprovals?: boolean;
 }) {
   const role = primaryRole(user.roles);
   const initial = (user.name ?? '?').trim().slice(0, 1) || '?';
@@ -40,18 +43,20 @@ export function Topbar({
 
       <ThemeToggle />
 
-      <Link
-        href="/approvals"
-        className="relative rounded-lg p-2 text-foreground/70 transition hover:bg-secondary hover:text-foreground"
-        title="承認待ち"
-      >
-        <CheckSquare className="h-5 w-5" />
-        {approvals > 0 ? (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white ring-2 ring-card">
-            {approvals}
-          </span>
-        ) : null}
-      </Link>
+      {showApprovals ? (
+        <Link
+          href="/approvals"
+          className="relative rounded-lg p-2 text-foreground/70 transition hover:bg-secondary hover:text-foreground"
+          title="承認待ち"
+        >
+          <CheckSquare className="h-5 w-5" />
+          {approvals > 0 ? (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white ring-2 ring-card">
+              {approvals}
+            </span>
+          ) : null}
+        </Link>
+      ) : null}
 
       <Link
         href="/notifications"

@@ -37,6 +37,8 @@ export default async function DashboardPage() {
     );
   }
   const t = user.tenantId;
+  // 承認待ち件数は Topbar（layout.tsx）と同一条件で取得段階から遮断（WIP-5 追補・同一画面での迂回防止）。
+  const canViewApprovals = hasPermission(user, 'approval', 'approve');
   const [
     customers,
     deals,
@@ -52,7 +54,9 @@ export default async function DashboardPage() {
     prisma.customer.count({ where: { tenantId: t } }),
     prisma.deal.count({ where: { tenantId: t, stage: { not: 'LOST' } } }),
     prisma.localBusinessLead.count({ where: { tenantId: t } }),
-    prisma.approvalRequest.count({ where: { tenantId: t, status: 'PENDING' } }),
+    canViewApprovals
+      ? prisma.approvalRequest.count({ where: { tenantId: t, status: 'PENDING' } })
+      : Promise.resolve(0),
     prisma.deal.aggregate({ where: { tenantId: t, stage: { not: 'LOST' } }, _sum: { amount: true } }),
     prisma.auditLog.findMany({ where: { tenantId: t }, orderBy: { createdAt: 'desc' }, take: 8 }),
     prisma.actionItem.findMany({
@@ -211,12 +215,14 @@ export default async function DashboardPage() {
               >
                 ナレッジ検索
               </Link>
-              <Link
-                href="/approvals"
-                className="rounded-md border p-2 text-center transition hover:border-primary/30 hover:bg-secondary"
-              >
-                承認 ({pendingApprovals})
-              </Link>
+              {canViewApprovals ? (
+                <Link
+                  href="/approvals"
+                  className="rounded-md border p-2 text-center transition hover:border-primary/30 hover:bg-secondary"
+                >
+                  承認 ({pendingApprovals})
+                </Link>
+              ) : null}
             </CardContent>
           </Card>
 

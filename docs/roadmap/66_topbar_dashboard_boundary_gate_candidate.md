@@ -37,9 +37,26 @@
 
 ## 5. Gate 判定
 
-- [x] 承認件数の取得段階遮断（approval:read ∨ approve のみクエリ）
+- [x] 承認件数の取得段階遮断（条件は §6 で approve 単独に改訂）
 - [x] Topbar 入口・バッジの表示遮断（DM のバッジ維持）
 - [x] /dashboard に dashboard:read（AccessDenied は取得前）
 - [ ] ローカル電池 green
-- [ ] 敵対的レビュー → 指摘反映
+- [x] 敵対的レビュー → 指摘反映（§6 追補）
 - [ ] CI 93/0 をログ本文で確認
+
+## 6. 追補（敵対的レビューの結果と反映・2026-07-11）
+
+実装 d900fda に対する独立レビュー（境界＋E2E回帰の統合視点）の検出と反映:
+
+| # | 深刻度 | 指摘 | 反映 |
+|---|---|---|---|
+| 1 | High | /dashboard 本体が承認待ち件数を無条件取得・表示（クイックアクセス「承認 (N)」）— Topbar 遮断が同一画面で無効化 | count クエリと導線を canViewApprovals で遮断 |
+| 2 | High | /dashboard/ceo が無ゲート（承認待ち件数・パイプライン金額へ外部/AI ロールが URL 直打ちで到達＝新設ゲートの迂回口） | dashboard:read ゲート追加＋承認 findMany/Stat を canViewApprovals で遮断（非権限者は「権限者のみ」表示） |
+| 3 | Medium | /reports/morning が無ゲートで承認件数が異常検知文・AI 朝報入力に混入 | dashboard:read ゲート追加＋承認件数を取得段階から redact（財務 redact と同パターン） |
+| 4 | Medium | READ_ONLY は approval:read 保持で入口が見えるが /approvals は approve 必須 → 行き止まり導線（既存の不整合が入口条件で顕在化） | **入口条件を approval:approve 単独に改訂**（/approvals ページゲート＝Phase 1-19 の判断と一致。approval:read 単独ロールの閲覧 UI は存在しない事実を記録） |
+| 5 | Low | サイドバー/モバイルナビの /approvals 導線は全ロール表示のまま（件数なし・ページ側ゲート済み） | 記録のみ（ナビの権限別フィルタは Phase 4 UI 整理候補） |
+| 6 | Low | admin/operations-actions（inventory:update ゲート）で STAFF が OPS 系承認の title/status を閲覧可 | 記録のみ（OPS ドメイン業務の承認可視性として弁護可能・WIP-6 HOLD リストで再判定） |
+| 7 | Info | /dashboard の監査ログ8件表示が dashboard:read のみ（audit:read 非保持の STAFF に可視） | 記録のみ（既存挙動・WIP-6 で再判定） |
+| 8 | Info | e2e の `header` スコープはモバイル project 追加時に脆い | 記録のみ（現構成 Desktop Chrome 固定では一意） |
+
+レビューが「問題なし」と確認: 全10ロール机上列挙（DM バッジ維持✓・外部/AI は F/F）、login リダイレクトの無限ループ・500 なし、layout の hasPermission 追加コストなし、既存91件への回帰なし・総数93検算一致、『としてログイン中』の一意性。

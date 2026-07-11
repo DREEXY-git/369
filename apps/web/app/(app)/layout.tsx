@@ -7,10 +7,11 @@ export const dynamic = 'force-dynamic';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  // WIP-5（roadmap66）: 承認待ち件数はテナント全体の承認業務の存在シグナル（金額・人事等の
-  // 承認案件数を含む）。approval:read / approval:approve のいずれかを持つ閲覧者にのみ
-  // DB クエリ段階から取得する（DEPARTMENT_MANAGER は approve のみ保持のためバッジ維持）。
-  const canViewApprovals = hasPermission(user, 'approval', 'read') || hasPermission(user, 'approval', 'approve');
+  // WIP-5（roadmap66 追補）: 承認待ち件数はテナント全体の承認業務の存在シグナル（金額・人事等の
+  // 承認案件数を含む）。リンク先 /approvals のページゲート（approval:approve・Phase 1-19）と
+  // 入口条件を一致させ、開けないページへの行き止まり導線（READ_ONLY）を作らない。
+  // DEPARTMENT_MANAGER は approve 保持のためバッジ維持。
+  const canViewApprovals = hasPermission(user, 'approval', 'approve');
   const [notifications, approvals] = await Promise.all([
     prisma.notification.count({ where: { tenantId: user.tenantId, userId: user.userId, readAt: null } }),
     canViewApprovals

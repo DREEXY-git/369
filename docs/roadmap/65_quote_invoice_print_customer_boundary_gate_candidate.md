@@ -47,9 +47,10 @@
 - [x] 顧客ドロップダウン 2 箇所に可視ラベルフィルタ（WIP1 境界の迂回を閉鎖）
 - [x] 顧客名の宛先表示に customer:read＋可視ラベルガード（quotes 詳細・print/quotes）
 - [x] 顧客 over-fetch 解消（全列 include → name/label select）
-- [ ] ローカル電池 green（tsc / lint / unit / safety / secret）
+- [x] ローカル電池 green（tsc 0 / lint 0 / unit 278 / safety 0 / secret 誤検知のみ）— 実装・レビュー反映の両時点
 - [x] 敵対的レビュー3視点 → 指摘反映（§6 追補）
-- [ ] CI 91/0 をログ本文で確認
+- [x] CI green をログ本文で確認: run 29139153423（#162）・head 4a99935・`91 passed (1.3m)` / 0 failed
+  （quotes_boundary 3件 ✓・workflow ファイル未変更のため封印 env は #160 の確認と同一）→ **WIP-4 クローズ**
 
 ## 6. 追補（敵対的レビュー3視点の結果と反映・2026-07-11）
 

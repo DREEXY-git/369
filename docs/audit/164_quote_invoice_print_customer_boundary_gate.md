@@ -24,6 +24,28 @@
 
 - ローカル電池・敵対的レビュー・CI の結果は追補に記録。
 
+## 追補（レビュー反映と CI 確認・2026-07-11）
+
+- 敵対的レビュー3視点で High 1（/deals 系4画面の無ゲート迂回）・Medium 4 ほかを検出し、
+  fix commit `4a99935` で反映（詳細は roadmap65 §6 の表を正とする）。
+- レビュー反映後のローカル電池: tsc 0 / lint 0 / unit 278/0 / safety 0 / secret 誤検知のみ。
+- CI: run 29139153423（#162・stage1 success / stage3_e2e success）・head 4a99935。
+  ログ本文で `91 passed (1.3m)`・失敗 0 を確認（quotes_boundary 3件を含む）。
+  workflow ファイル未変更のため封印 env は run #160 での確認と同一。**WIP-4 クローズ。**
+
+## fix commit（4a99935）追加変更ファイル
+
+| ファイル | 変更 |
+|---|---|
+| `apps/web/app/(app)/deals/{page,kanban/page,[id]/page,[id]/edit/page}.tsx` | deal:read ゲート・顧客名ガード・select 縮小・見積カードの quote:read 化 |
+| `apps/web/app/(app)/quotes/actions.ts`・`invoices/actions.ts` | customerId/dealId の server 側検証（テナント・可視ラベル） |
+| `apps/web/lib/security/policy.ts` | assertCanViewConfidential に skipViewLog オプション |
+| `apps/web/app/(app)/invoices/[id]/page.tsx`・`app/print/invoices/[id]/page.tsx` | envelope 先行＋skipViewLog・宛先の可視ラベルガード |
+| `apps/web/app/(app)/invoices/page.tsx` | 宛先ガード・select 縮小 |
+| `apps/web/app/(app)/operations/events/new/page.tsx`・`quotes/new`・`invoices/new` | ドロップダウン/案件候補の可視ラベルフィルタ |
+| `apps/web/components/access-denied.tsx` | 拒否理由コードの日本語化 |
+| `apps/web/tests/e2e/quotes_boundary.spec.ts` | 存在オラクル不在の検証・exact 化 |
+
 ## 残課題（本 WIP scope 外）
 
 - /dashboard のページ基礎権限（商談金額の全認証ロール表示）→ WIP-5。

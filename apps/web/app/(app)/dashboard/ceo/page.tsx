@@ -5,6 +5,7 @@ import { toNumber } from '@/lib/utils';
 import { getGoldenPathExecutiveDashboardData } from '@/lib/domains/operations/golden-path-dashboard';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Stat, Badge, EmptyState } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { GoldenPathKpiGrid, AttentionList } from '@/components/golden-path-kpi';
 import { SeverityBadge, DEAL_STAGE_LABEL } from '@/components/badges';
 import { formatJpy, formatDate, SEVERITY_TONE } from '@hokko/shared';
@@ -13,8 +14,20 @@ export const dynamic = 'force-dynamic';
 
 export default async function CeoDashboard() {
   const user = await requireUser();
+  // WIP-5（roadmap66 追補）: /dashboard と同じページ基礎権限（dashboard:read）をデータ取得前に適用
+  // （1階層下のルートが新設ゲートの迂回口にならないように）。
+  if (!hasPermission(user, 'dashboard', 'read')) {
+    return (
+      <AccessDenied
+        title="社長コックピット"
+        reason="社長コックピットの閲覧にはダッシュボードの閲覧権限（dashboard:read）が必要です"
+      />
+    );
+  }
   const t = user.tenantId;
   const canViewFinance = hasPermission(user, 'finance', 'read');
+  // 承認待ちは Topbar（layout.tsx）・/approvals ページゲートと同一条件で取得段階から遮断。
+  const canViewApprovals = hasPermission(user, 'approval', 'approve');
 
   const [
     dealAgg,
@@ -35,7 +48,9 @@ export default async function CeoDashboard() {
   ] = await Promise.all([
     prisma.deal.aggregate({ where: { tenantId: t, stage: { not: 'LOST' } }, _sum: { amount: true, cost: true } }),
     prisma.deal.groupBy({ by: ['stage'], where: { tenantId: t }, _count: true, _sum: { amount: true } }),
-    prisma.approvalRequest.findMany({ where: { tenantId: t, status: 'PENDING' }, orderBy: { createdAt: 'desc' } }),
+    canViewApprovals
+      ? prisma.approvalRequest.findMany({ where: { tenantId: t, status: 'PENDING' }, orderBy: { createdAt: 'desc' } })
+      : Promise.resolve([]),
     prisma.receivable.findMany({ where: { tenantId: t, status: 'overdue' }, include: { invoice: true } }),
     prisma.aIRecommendation.findMany({ where: { tenantId: t, audience: 'ceo', dismissed: false }, orderBy: { createdAt: 'desc' } }),
     prisma.aIAlert.findMany({ where: { tenantId: t, resolved: false }, orderBy: { createdAt: 'desc' } }),
@@ -71,7 +86,11 @@ export default async function CeoDashboard() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="パイプライン売上" value={formatJpy(pipeline)} sub={`目標達成 ${achieve}%`} tone={achieve >= 100 ? 'green' : 'amber'} />
         <Stat label="想定粗利" value={formatJpy(gross)} sub={`粗利率 ${grossRate}%`} tone={grossRate >= 30 ? 'green' : 'amber'} />
-        <Stat label="承認待ち" value={pendingApprovals.length} sub="要・社長判断" tone="amber" />
+        {canViewApprovals ? (
+          <Stat label="承認待ち" value={pendingApprovals.length} sub="要・社長判断" tone="amber" />
+        ) : (
+          <Stat label="承認待ち" value="権限者のみ" sub="承認権限で表示" tone="slate" />
+        )}
         <Stat label="未回収(延滞)" value={formatJpy(overdueTotal)} sub={`${overdue.length} 件`} tone={overdue.length ? 'red' : 'green'} />
       </div>
 

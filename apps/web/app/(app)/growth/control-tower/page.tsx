@@ -2,10 +2,11 @@ import Link from 'next/link';
 import { Radar, ArrowRight, Sparkles } from 'lucide-react';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { getControlTowerData } from '@/lib/domains/growth/control-tower';
+import { summarizeGrowthEvents } from '@/lib/growth';
 import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Stat } from '@/components/ui';
-import { formatDateTime, isHumanUser, type ControlTowerPriority } from '@hokko/shared';
+import { formatDateTime, formatJpy, isHumanUser, type ControlTowerPriority } from '@hokko/shared';
 import { generateControlTowerNextStepAction } from './actions';
 
 export const dynamic = 'force-dynamic';
@@ -19,6 +20,16 @@ const PRIORITY_TONE: Record<ControlTowerPriority, string> = {
   high: 'red',
   medium: 'amber',
   low: 'slate',
+};
+const GROWTH_CATEGORY_LABEL: Record<string, string> = {
+  marketing: 'マーケ',
+  sales: '営業',
+  finance: '財務',
+  dx: 'DX',
+  ai: 'AI',
+  management: '経営',
+  customer: '顧客',
+  operations: '運用',
 };
 
 export default async function GrowthControlTowerPage({
@@ -60,6 +71,12 @@ export default async function GrowthControlTowerPage({
           where: { tenantId: user.tenantId, status: { in: ['DRAFT', 'PENDING_APPROVAL'] } },
         })
       : Promise.resolve(null),
+  ]);
+  // WIP2（roadmap62）: Growth Event Ledger の read-only 集計。既存 summarizeGrowthEvents のみを使い、
+  // イベントの新規発火・状態変更はしない。select は type/金額/時間の4列のみ（PII・payload 非取得）。
+  const [growth7, growth30] = await Promise.all([
+    summarizeGrowthEvents(user.tenantId, 7),
+    summarizeGrowthEvents(user.tenantId, 30),
   ]);
 
   return (
@@ -177,6 +194,65 @@ export default async function GrowthControlTowerPage({
           </CardContent>
         </Card>
       ) : null}
+
+      <Card className="mt-5">
+        <CardHeader>
+          <CardTitle className="text-base">成果と削減時間（Growth Event Ledger）</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2 text-sm">
+          <p className="text-xs text-muted-foreground">
+            集計期間: 直近7日 / 直近30日。既存の成長イベント台帳の read-only 集計で、イベントの発火・変更・外部送信は行いません。
+          </p>
+          <div data-testid="ct-growth-counts">
+            イベント件数: 直近7日 <span className="font-bold tabular-nums">{growth7.total}</span> 件 ／ 直近30日{' '}
+            <span className="font-bold tabular-nums">{growth30.total}</span> 件
+            {growth30.total === 0 ? (
+              <span className="ml-2 text-xs text-muted-foreground">未計測（イベントなし・データ不足）</span>
+            ) : null}
+          </div>
+          {growth30.total > 0 ? (
+            <div className="flex flex-wrap gap-1.5 text-xs">
+              {Object.entries(growth30.byCategory).map(([cat, n]) => (
+                <Badge key={cat} tone="slate">
+                  {GROWTH_CATEGORY_LABEL[cat] ?? cat}:{' '}
+                  {cat === 'finance' && !canViewFinance ? '—' : `${n} 件`}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
+          {canViewFinance ? (
+            <div data-testid="ct-growth-money">
+              売上効果（30日合計）:{' '}
+              <span className="font-bold tabular-nums">
+                {growth30.totalRevenueImpact > 0 ? formatJpy(growth30.totalRevenueImpact) : '未計測'}
+              </span>
+              <span className="mx-2">／</span>
+              コスト削減（30日合計）:{' '}
+              <span className="font-bold tabular-nums">
+                {growth30.totalCostSaving > 0 ? formatJpy(growth30.totalCostSaving) : '未計測'}
+              </span>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">金額の集計は財務閲覧権限のある人にのみ表示されます。</p>
+          )}
+          <div>
+            削減時間（30日合計）:{' '}
+            <span className="font-bold tabular-nums">
+              {growth30.totalTimeSavingMinutes > 0 ? `${growth30.totalTimeSavingMinutes} 分` : '未計測'}
+            </span>
+            <span className="ml-2 text-[11px] text-muted-foreground">
+              AI・自動化の自己申告値を含む集計です（検証済みの実績ではありません）。
+            </span>
+          </div>
+          <div>
+            <Link href="/growth/events">
+              <Button variant="outline" size="sm" data-testid="ct-link-growth-events">
+                イベント台帳を開く <ArrowRight className="ml-1" />
+              </Button>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="mt-5">
         <CardHeader>

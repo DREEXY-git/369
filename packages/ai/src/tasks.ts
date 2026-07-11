@@ -1,5 +1,6 @@
 import {
   classifyBusinessRelevance,
+  detectForbiddenClaims,
   detectUnsubscribeRequest,
   maskText,
   suggestDynamicPrice,
@@ -8,6 +9,8 @@ import {
 import type { LLMProvider } from './providers/types';
 import { getLLMProvider } from './providers/index';
 import {
+  AdsImprovementSchema,
+  SeoBriefSchema,
   ContractRiskSchema,
   CustomerInsightSchema,
   KnowledgeAnswerSchema,
@@ -18,6 +21,8 @@ import {
   ReplyClassificationSchema,
   ReviewAnalysisSchema,
   WebsiteAnalysisSchema,
+  type AdsImprovementResult,
+  type SeoBriefResult,
   type ContractRiskResult,
   type CustomerInsightResult,
   type KnowledgeAnswerResult,
@@ -619,4 +624,144 @@ export function generateSubsidyApplicationDraft(input: {
     '',
     '※ 本ドラフトはAIによる下書きです。採択を保証するものではなく、提出前に中小企業診断士・行政書士等の専門家確認を必ず行ってください。',
   ].join('\n');
+}
+
+// ============================ C19 Ads 改善案（Phase 3.5） ====================
+// read-only 分析に基づく下書きのみ。外部広告 API・広告費の支出・自動最適化は行わない（封印中）。
+
+export interface AdsImprovementInput {
+  campaignName: string;
+  channel: string;
+  budget: number;
+  spent: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  cost: number;
+  ctr: number | null;
+  cvr: number | null;
+  cpa: number | null;
+}
+
+export function fakeAdsImprovement(input: AdsImprovementInput): AdsImprovementResult {
+  const recs: string[] = [];
+  const rationale: string[] = [];
+  const gaps: string[] = [];
+  const remaining = Math.max(0, input.budget - input.spent);
+
+  if (input.impressions <= 0) {
+    gaps.push('表示回数（impressions）の実績が未記録です。');
+  }
+  if (input.ctr != null) {
+    rationale.push(`CTR ${(input.ctr * 100).toFixed(2)}%（clicks ${input.clicks} / impressions ${input.impressions}）`);
+    if (input.ctr < 0.01) recs.push('CTR が 1% 未満です。見出し・クリエイティブの差し替え候補を用意し、訴求軸を2案比較してください。');
+    else recs.push('CTR は水準内です。現行クリエイティブを維持しつつ、配信面の内訳記録を検討してください。');
+  } else {
+    gaps.push('CTR が計算できません（表示回数の記録が必要）。');
+  }
+  if (input.cvr != null) {
+    rationale.push(`CVR ${(input.cvr * 100).toFixed(2)}%（conversions ${input.conversions} / clicks ${input.clicks}）`);
+    if (input.cvr < 0.03) recs.push('CVR が 3% 未満です。受け皿（LP・フォーム）の導線と初回特典の明示を見直してください。');
+  } else {
+    gaps.push('CVR が計算できません（クリックまたは CV の記録が必要）。');
+  }
+  if (input.cpa != null) {
+    rationale.push(`CPA ${input.cpa.toLocaleString()}円（cost ${input.cost.toLocaleString()}円 / conversions ${input.conversions}）`);
+    recs.push(`CPA ${input.cpa.toLocaleString()}円を許容獲得単価と比較し、超過時は配信の絞り込み案を検討してください。`);
+  } else {
+    gaps.push('CPA が計算できません（費用または CV の記録が必要）。');
+  }
+  rationale.push(`予算 ${input.budget.toLocaleString()}円 / 消化 ${input.spent.toLocaleString()}円（残 ${remaining.toLocaleString()}円）`);
+  if (recs.length === 0) recs.push('実績データの記録を先に進めてください（本下書きは分析材料が不足しています）。');
+
+  return AdsImprovementSchema.parse({
+    title: `【広告改善案・下書き】${input.campaignName}（${input.channel}）`,
+    recommendations: recs,
+    rationale,
+    dataGaps: gaps,
+    nextHumanChecks: [
+      '改善案の採否は人間が判断してください（AI は実行しません）。',
+      '外部媒体への反映・出稿変更・費用の増減は封印中です。個別承認まで実施されません。',
+      '許容 CPA・目標 CV の設定値を確認してください。',
+    ],
+    confidence: gaps.length === 0 ? 0.7 : 0.5,
+  });
+}
+
+export async function generateAdsImprovement(
+  input: AdsImprovementInput,
+  ctx: LlmContext = {},
+): Promise<AdsImprovementResult> {
+  return runStructured(ctx, {
+    task: 'ads_improvement',
+    system: SYS,
+    user: `広告キャンペーンの改善案の下書きを作成。実行はしない。JSON {title,recommendations[],rationale[],dataGaps[],nextHumanChecks[],confidence}。\n${JSON.stringify(input)}`,
+    schema: AdsImprovementSchema,
+    fake: () => fakeAdsImprovement(input),
+  });
+}
+
+// ============================ C21 SEO ブリーフ（Phase 3.5） ==================
+// read-only 分析に基づく下書きのみ。外部検索・順位取得・公開・CMS 投稿・PR 配信は行わない（封印中）。
+// No.1・業界初・顧客名・成果数値は根拠・同意なしに生成しない（誇大表示・ステマ規制の防止）。
+
+export interface SeoBriefInput {
+  keyword: string;
+  audience: string;
+  theme: string;
+  /** 既存記事タイトル（重複回避の材料・PII を含めないこと）。 */
+  existingTitles: string[];
+}
+
+export function fakeSeoBrief(input: SeoBriefInput): SeoBriefResult {
+  // v5.8 Medium-5: 生成側でも長さを防波堤として制限する（action 側の入力上限と二重防御。
+  // 実 LLM 化時は Zod スキーマの max がさらに強制する）。
+  const clamp = (v: string, n: number) => (v.length > n ? `${v.slice(0, n)}…` : v);
+  const kwRaw = input.keyword.trim() || 'テーマ未設定';
+  const kw = clamp(kwRaw, 80);
+  const audRaw = clamp(input.audience.trim() || '見込み顧客', 80);
+  const aud = detectForbiddenClaims(audRaw).length ? '見込み顧客' : audRaw;
+  const claims = detectForbiddenClaims(`${input.keyword}\n${input.audience}\n${input.theme}`);
+  // 誇大表現（No.1・業界初・満足度数値等）は入力に含まれていても生成コピーへ持ち込まない。
+  // 表示用のキーワード/テーマは安全な代替に差し替え、原文の扱いは nextHumanChecks に回す。
+  const displayKw = detectForbiddenClaims(kw).length ? '対象サービス（表現の根拠確認が必要）' : kw;
+  const rawTheme = clamp(input.theme.trim(), 120);
+  const displayTheme = !rawTheme || detectForbiddenClaims(rawTheme).length ? displayKw : rawTheme;
+  const dup = input.existingTitles.some((t) => t.includes(kwRaw) || (kwRaw.length > 80 && t.includes(kw.slice(0, 80))));
+  const gaps: string[] = [];
+  if (kwRaw.length > 80) gaps.push('キーワードが長すぎるため 80 文字で切り詰めて扱いました。原文の意図確認が必要です。');
+  if (!input.audience.trim()) gaps.push('想定読者が未指定です。');
+  if (input.existingTitles.length === 0) gaps.push('既存記事の記録がなく、内部リンク候補を提案できません。');
+
+  const checks = [
+    '公開・CMS 投稿は行われません（下書きのみ・外部公開は人間の承認と別途の解禁が必要）。',
+    '検索順位・検索ボリュームは取得していません（外部検索は封印中）。実データでの検証が必要です。',
+  ];
+  if (claims.length > 0) {
+    checks.push(`入力に ${claims.join('・')} が含まれています。根拠資料と同意の確認なしに本文へ使用しないでください（本下書きには含めていません）。`);
+  }
+  if (dup) checks.push('同じキーワードを含む既存記事があります。重複コンテンツ（カニバリ）の確認が必要です。');
+
+  return SeoBriefSchema.parse({
+    title: `【SEOブリーフ・下書き】${displayKw}`,
+    keyword: kw,
+    searchIntent: `「${displayKw}」を検索する${aud}は、比較検討の前段で信頼できる情報と具体的な進め方を求めていると推定します。`,
+    outline: [
+      `# ${displayTheme} の基本と選び方`,
+      `## ${aud}がまず確認すべきポイント`,
+      '## 進め方の手順（準備〜実施）',
+      '## 費用感と見積の考え方（実数値は掲載前に人間が確認）',
+      '## よくある質問',
+      '## 相談・問い合わせの案内',
+    ],
+    metaTitle: `${displayKw}の進め方と選び方ガイド`,
+    metaDescription: `${displayKw}を検討する${aud}向けに、確認ポイント・手順・費用の考え方を整理しました。`,
+    rationale: [
+      `キーワード「${kw}」と想定読者「${aud}」からの決定論テンプレート生成（FakeLLM）`,
+      `既存記事 ${input.existingTitles.length} 件との重複チェック済み`,
+    ],
+    dataGaps: gaps,
+    nextHumanChecks: checks,
+    confidence: gaps.length === 0 ? 0.65 : 0.5,
+  });
 }

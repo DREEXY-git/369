@@ -9,6 +9,7 @@
 // - 状態更新でレイアウト全体を動かさない（canvas は固定高・パネルは固定幅の別領域）。
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import {
@@ -26,6 +27,8 @@ import {
   AI_WORKFORCE_STATES,
   AI_WORKFORCE_STATE_LABEL,
   AI_WORKFORCE_STATE_COLOR,
+  aiCharacterAppearanceFingerprint,
+  aiCharacterProfileFingerprint,
   getAiCharacter,
   type AiWorkforceState,
 } from '@hokko/shared';
@@ -66,6 +69,8 @@ function zoneFor(department: string) {
 }
 
 export function AiOffice({ model, initialAgentId = null }: { model: AiWorkforceReadModel; initialAgentId?: string | null }) {
+  const searchParams = useSearchParams();
+  const queryAgentId = searchParams.get('agent');
   // /ai-agents からの deep link（?agent=<id>）で初期選択。無効値はページ側で null 化済み。
   const [selectedId, setSelectedId] = useState<string | null>(initialAgentId);
   const [deptFilter, setDeptFilter] = useState<string>('all');
@@ -100,15 +105,17 @@ export function AiOffice({ model, initialAgentId = null }: { model: AiWorkforceR
     return () => mq.removeEventListener('change', update);
   }, []);
 
-  // v5.8 §6: 初期表示で最初の可視 AI 社員を自動選択し、プロフィールを最初から見せる
-  // （空の詳細パネルを第一印象にしない）。既にユーザーが選択済みなら上書きしない。
+  // deep-link は初回値だけでなく URL の変更に同期する。App Router の client navigation、
+  // history back/forward、native pushState で ?agent= が変わっても古い人物を表示し続けない。
+  // 無効/別 tenant の id は存在を漏らさず先頭へフォールバックする。
   useEffect(() => {
-    if (selectedId == null && model.agents.length > 0) {
-      setSelectedId(model.agents[0]!.id);
-    }
-    // 初回のみ（model はサーバ描画ごとに固定・ユーザー操作を尊重）
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const requested = queryAgentId ?? initialAgentId;
+    const next =
+      requested && model.agents.some((agent) => agent.id === requested)
+        ? requested
+        : (model.agents[0]?.id ?? null);
+    setSelectedId((current) => (current === next ? current : next));
+  }, [queryAgentId, initialAgentId, model.agents]);
 
   // Three.js シーン構築（計測前・狭幅では構築しない）。
   useEffect(() => {
@@ -501,6 +508,8 @@ export function AiOffice({ model, initialAgentId = null }: { model: AiWorkforceR
           data-agent-key={selected?.key ?? ''}
           data-agent-state={selected?.state ?? ''}
           data-agent-name={selected ? (getAiCharacter(selected.key).fullName !== '（設定未作成）' ? getAiCharacter(selected.key).fullName : selected.name) : ''}
+          data-profile-fingerprint={selected ? aiCharacterProfileFingerprint(getAiCharacter(selected.key)) : ''}
+          data-appearance-fingerprint={selected ? aiCharacterAppearanceFingerprint(getAiCharacter(selected.key)) : ''}
         >
           {selected ? (
             <div className="space-y-3 text-sm">

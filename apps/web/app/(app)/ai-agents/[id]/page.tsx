@@ -1,13 +1,20 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
-import { prisma } from '@/lib/db';
+import { prisma, writeDataAccess } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, EmptyState } from '@/components/ui';
 import { AccessDenied } from '@/components/access-denied';
 import { AiProfileCard } from '@/components/ai-office/profile-card';
 import { getAiWorkforceReadModel } from '@/lib/domains/ai-workforce/read-model';
-import { formatDateTime, getAiCharacter, AI_WORKFORCE_STATE_LABEL, type AiWorkforceState } from '@hokko/shared';
+import {
+  formatDateTime,
+  getAiCharacter,
+  aiCharacterAppearanceFingerprint,
+  aiCharacterProfileFingerprint,
+  AI_WORKFORCE_STATE_LABEL,
+  type AiWorkforceState,
+} from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,16 +53,59 @@ export default async function AiAgentDetailPage({ params }: { params: Promise<{ 
   // tenantId でスコープ。別テナント/存在しない id は notFound（存在有無を漏らさない・404 に統一）。
   const agent = await prisma.aIAgent.findFirst({
     where: { id, tenantId: user.tenantId },
-    include: {
-      runs: { include: { actions: true }, orderBy: { startedAt: 'desc' }, take: 20 },
-      memory: { take: 10 },
-    },
+    select: { id: true, key: true, name: true, role: true },
   });
   if (!agent) notFound();
 
+  // 子テーブル自身にも tenantId を必須指定する。relation FK が agentId/runId 単独でも、壊れた
+  // cross-tenant child を表示しない。run の input/output/error は不要かつ機密化し得るため select しない。
+  const [runs, memory, model] = await Promise.all([
+    prisma.aIAgentRun.findMany({
+      where: { tenantId: user.tenantId, agentId: agent.id, agent: { tenantId: user.tenantId } },
+      select: {
+        id: true,
+        task: true,
+        status: true,
+        humanReviewed: true,
+        sentExternally: true,
+        riskLevel: true,
+        startedAt: true,
+        actions: {
+          where: { tenantId: user.tenantId },
+          select: { id: true, type: true, summary: true },
+        },
+      },
+      orderBy: { startedAt: 'desc' },
+      take: 20,
+    }),
+    prisma.aIAgentMemory.findMany({
+      where: { tenantId: user.tenantId, agentId: agent.id, agent: { tenantId: user.tenantId } },
+      select: { id: true, key: true, value: true },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    }),
+    getAiWorkforceReadModel(user.tenantId),
+  ]);
+
+  // メモリ値や action summary 自体はログへ複製せず、対象と件数だけを metadata として残す。
+  await writeDataAccess({
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    entityType: 'AIAgent',
+    entityId: agent.id,
+    label: 'INTERNAL',
+    action: 'read',
+    purpose: 'AI社員のメモリと活動ログ閲覧',
+    metadata: {
+      memoryCount: memory.length,
+      runCount: runs.length,
+      actionCount: runs.reduce((sum, run) => sum + run.actions.length, 0),
+      projectedFields: ['memory.key', 'memory.value', 'run.task', 'run.status', 'action.type', 'action.summary'],
+    },
+  });
+
   // v6.1 統一: 人物・プロフィールは getAiCharacter(key)、稼働状態は 3D Office と同じ read model を正本にする。
   const profile = getAiCharacter(agent.key);
-  const model = await getAiWorkforceReadModel(user.tenantId);
   const view = model.agents.find((a) => a.id === agent.id) ?? null;
 
   return (
@@ -64,6 +114,8 @@ export default async function AiAgentDetailPage({ params }: { params: Promise<{ 
       data-agent-key={agent.key}
       data-agent-state={view?.state ?? ''}
       data-agent-name={profile.fullName !== '（設定未作成）' ? profile.fullName : agent.name}
+      data-profile-fingerprint={aiCharacterProfileFingerprint(profile)}
+      data-appearance-fingerprint={aiCharacterAppearanceFingerprint(profile)}
     >
       <PageHeader
         title={profile.fullName !== '（設定未作成）' ? profile.fullName : agent.name}
@@ -129,7 +181,7 @@ export default async function AiAgentDetailPage({ params }: { params: Promise<{ 
           <Card>
             <CardHeader><CardTitle>記憶（メモリ）</CardTitle></CardHeader>
             <CardContent className="space-y-1 text-xs">
-              {agent.memory.length === 0 ? <span className="text-muted-foreground">なし</span> : agent.memory.map((m) => (
+              {memory.length === 0 ? <span className="text-muted-foreground">なし</span> : memory.map((m) => (
                 <div key={m.id}><span className="text-muted-foreground">{m.key}: </span>{m.value}</div>
               ))}
             </CardContent>
@@ -139,7 +191,7 @@ export default async function AiAgentDetailPage({ params }: { params: Promise<{ 
         <Card className="lg:col-span-2">
           <CardHeader><CardTitle>活動ログ（実行履歴）</CardTitle></CardHeader>
           <CardContent className="space-y-2">
-            {agent.runs.length === 0 ? <EmptyState title="実行履歴なし" /> : agent.runs.map((r) => (
+            {runs.length === 0 ? <EmptyState title="実行履歴なし" /> : runs.map((r) => (
               <div key={r.id} className="rounded-md border p-2">
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-medium">{r.task}</span>

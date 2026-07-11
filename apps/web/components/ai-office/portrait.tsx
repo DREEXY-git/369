@@ -5,7 +5,7 @@
 // すべて手書きのベクター（SVG）で、上品な JRPG 調の「端正な」バストアップを描く。
 // appearance（@hokko/shared の AiCharacterProfile）から髪型・配色を組み立てる決定論コンポーネント。
 import { useId } from 'react';
-import type { AiCharacterProfile } from '@hokko/shared';
+import { aiCharacterAppearanceFingerprint, type AiCharacterProfile } from '@hokko/shared';
 
 const OUTLINE = '#241f2e';
 
@@ -189,6 +189,7 @@ export function AiPortrait({ profile, size = 96 }: { profile: AiCharacterProfile
       role="img"
       aria-label={`${profile.fullName}のポートレート`}
       data-testid="ai-portrait"
+      data-appearance-fingerprint={aiCharacterAppearanceFingerprint(profile)}
       style={{ display: 'block' }}
     >
       <defs>

@@ -1,12 +1,19 @@
 import Link from 'next/link';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
-import { prisma } from '@/lib/db';
+import { prisma, writeDataAccess } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, EmptyState } from '@/components/ui';
 import { AccessDenied } from '@/components/access-denied';
 import { AiPortrait } from '@/components/ai-office/portrait';
 import { getAiWorkforceReadModel } from '@/lib/domains/ai-workforce/read-model';
-import { formatDateTime, getAiCharacter, AI_WORKFORCE_STATE_LABEL, type AiWorkforceState } from '@hokko/shared';
+import {
+  formatDateTime,
+  getAiCharacter,
+  aiCharacterAppearanceFingerprint,
+  aiCharacterProfileFingerprint,
+  AI_WORKFORCE_STATE_LABEL,
+  type AiWorkforceState,
+} from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,12 +56,42 @@ export default async function AiAgentsPage() {
   const [model, runs] = await Promise.all([
     getAiWorkforceReadModel(user.tenantId),
     prisma.aIAgentRun.findMany({
-      where: { tenantId: user.tenantId },
-      include: { agent: true, actions: true },
+      // 子 run の tenantId だけでなく、関連 agent も同一 tenant であることを必須にする。
+      // 壊れた/敵対的な cross-tenant relation が存在しても人物名を公開しない。
+      where: { tenantId: user.tenantId, agent: { tenantId: user.tenantId } },
+      // input/output/error は画面で使わず、PII/Secrets を含み得るため取得しない。
+      select: {
+        id: true,
+        task: true,
+        status: true,
+        humanReviewed: true,
+        sentExternally: true,
+        startedAt: true,
+        agent: { select: { name: true } },
+        actions: {
+          where: { tenantId: user.tenantId },
+          select: { summary: true },
+        },
+      },
       orderBy: { startedAt: 'desc' },
       take: 15,
     }),
   ]);
+
+  // 値本文は metadata に複製しない。どの種類を何件閲覧したかだけを記録する。
+  await writeDataAccess({
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    entityType: 'AIAgentActivity',
+    label: 'INTERNAL',
+    action: 'read',
+    purpose: 'AI社員一覧の活動ログ閲覧',
+    metadata: {
+      runCount: runs.length,
+      actionCount: runs.reduce((sum, run) => sum + run.actions.length, 0),
+      projectedFields: ['task', 'status', 'action.summary'],
+    },
+  });
 
   return (
     <div>
@@ -72,6 +109,8 @@ export default async function AiAgentsPage() {
               data-agent-key={a.key}
               data-agent-state={a.state}
               data-agent-name={hasProfile ? prof.fullName : a.name}
+              data-profile-fingerprint={aiCharacterProfileFingerprint(prof)}
+              data-appearance-fingerprint={aiCharacterAppearanceFingerprint(prof)}
             >
               <Card className="h-full transition hover:border-primary/50">
                 <CardContent className="pt-4">

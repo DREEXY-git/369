@@ -4,13 +4,18 @@
 // 人物・外見・静的プロフィールの唯一の正本は @hokko/shared の getAiCharacter(key)。
 // このカードは /ai-agents/[id] と 3D オフィス詳細の双方で同じ AiCharacterProfile を描画するための共有表示層。
 // 実測の稼働状態・実行・成果はここには含めない（キャラクター設定と実測を分離する）。
-import type { AiCharacterProfile } from '@hokko/shared';
+import { aiCharacterAppearanceFingerprint, aiCharacterProfileFingerprint, type AiCharacterProfile } from '@hokko/shared';
 import { AiPortrait } from './portrait';
 
 export function AiProfileCard({ profile, portraitSize = 84 }: { profile: AiCharacterProfile; portraitSize?: number }) {
   const hasProfile = profile.fullName !== '（設定未作成）';
   return (
-    <div className="space-y-3 text-sm" data-testid="ai-profile-card">
+    <div
+      className="space-y-3 text-sm"
+      data-testid="ai-profile-card"
+      data-profile-fingerprint={aiCharacterProfileFingerprint(profile)}
+      data-appearance-fingerprint={aiCharacterAppearanceFingerprint(profile)}
+    >
       {/* 人物ヘッダー（ポートレート＋名前・二つ名） */}
       <div className="flex items-start gap-3">
         <span className="shrink-0 overflow-hidden rounded-lg shadow-md">

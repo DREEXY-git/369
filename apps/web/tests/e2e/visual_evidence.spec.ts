@@ -42,6 +42,8 @@ test('OWNER desktop: NAV 全体・AI社員一覧/詳細・3D選択の証拠＋bu
   await expect(page.getByTestId('ai-profile-name')).not.toBeEmpty();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: 'test-results/ai-agent-detail-desktop.png', fullPage: false });
+  // topbar/余白を含めない完全プロフィール要素証拠。
+  await page.getByTestId('ai-profile-card').screenshot({ path: 'test-results/ai-agent-detail-desktop-profile.png' });
 
   // 3D オフィスで同じ社員が選択済み・canvas 非blank。
   await page.goto(`/ai-office?agent=${id}`);
@@ -86,6 +88,9 @@ test('OWNER mobile: NAV ドロワー・AI社員一覧/詳細・3D選択の証拠
   await expectNoHorizontalOverflow(page);
   await page.getByTestId('ai-profile-card').scrollIntoViewIfNeeded();
   await page.screenshot({ path: 'test-results/ai-agent-detail-mobile.png', fullPage: false });
+  await page.evaluate(() => document.querySelector('header')?.style.setProperty('visibility', 'hidden'));
+  await page.getByTestId('ai-profile-card').screenshot({ path: 'test-results/ai-agent-detail-mobile-profile.png' });
+  await page.evaluate(() => document.querySelector('header')?.style.removeProperty('visibility'));
 
   await page.goto(`/ai-office?agent=${id}`);
   await expect(page.getByTestId('ai-office-detail')).toHaveAttribute('data-agent-id', id);

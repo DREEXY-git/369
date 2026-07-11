@@ -59,6 +59,7 @@ export function MobileNav({ allowedHrefs }: { allowedHrefs?: string[] }) {
               <div
                 className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm"
                 onClick={() => setOpen(false)}
+                data-testid="mobile-nav-overlay"
                 aria-hidden
               />
               {/* ドロワー本体（viewport 全高） */}
@@ -103,6 +104,8 @@ export function MobileNav({ allowedHrefs }: { allowedHrefs?: string[] }) {
                           key={item.href}
                           href={item.href}
                           onClick={() => setOpen(false)}
+                          data-testid="mobile-nav-link"
+                          data-nav-href={item.href}
                           className={cn(
                             'group flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors',
                             active

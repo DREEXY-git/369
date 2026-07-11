@@ -48,6 +48,10 @@ test('v6.4 モバイルドロワーは viewport 全高で、深い導線まで�
   await page.getByRole('button', { name: 'メニューを開く' }).click();
   const drawer = page.getByTestId('mobile-nav-drawer');
   await expect(drawer).toBeVisible();
+  const links = drawer.getByTestId('mobile-nav-link');
+  await expect(links).toHaveCount(67);
+  const hrefs = await links.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-nav-href')));
+  expect(new Set(hrefs).size).toBe(67);
   // backdrop-blur の containing block に閉じ込められていないこと＝drawer 高さが viewport 相当。
   const box = (await drawer.boundingBox())!;
   expect(box.height, 'drawer height').toBeGreaterThan(700);
@@ -63,6 +67,11 @@ test('v6.4 モバイルドロワーは viewport 全高で、深い導線まで�
   await page.getByRole('button', { name: 'メニューを開く' }).click();
   await expect(page.getByTestId('mobile-nav-drawer')).toBeVisible();
   await page.keyboard.press('Escape');
+  await expect(page.getByTestId('mobile-nav-drawer')).toHaveCount(0);
+  // オーバーレイクリックでも閉じる（透明層が drawer を塞ぐ/閉じない回帰を防止）。
+  await page.getByRole('button', { name: 'メニューを開く' }).click();
+  await expect(page.getByTestId('mobile-nav-overlay')).toBeVisible();
+  await page.getByTestId('mobile-nav-overlay').click({ position: { x: 350, y: 100 } });
   await expect(page.getByTestId('mobile-nav-drawer')).toHaveCount(0);
 });
 

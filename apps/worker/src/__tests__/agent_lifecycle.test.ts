@@ -157,6 +157,42 @@ describe('runWithAgentLifecycle（v5.8 hardening）', () => {
     }
   });
 
+  it('v6.5 P1: 一般化 quote-depth matrix を保存・再throw・Action要約の全経路で封鎖する', async () => {
+    const delimiters = [',', ' ', ';', '\n', '}', ']'];
+    let checked = 0;
+    for (let openDepth = 0; openDepth <= 4; openDepth++) {
+      for (let terminalDepth = 0; terminalDepth <= 6; terminalDepth++) {
+        if (terminalDepth === openDepth) continue;
+        for (let d = 0; d < delimiters.length; d++) {
+          const { db, runs, actions } = makeDb();
+          const sentinel = `WORKER_${openDepth}_${terminalDepth}_${d}_SECRET`;
+          const slashes = (n: number) => '\\'.repeat(n);
+          const payload =
+            `{"password":${slashes(openDepth)}"abc${slashes(openDepth)}"` +
+            delimiters[d] +
+            sentinel +
+            `${slashes(terminalDepth)}"}`;
+          let thrown = '';
+          try {
+            await runWithAgentLifecycle(params, async () => {
+              throw new Error(payload);
+            }, db);
+            expect.unreachable('should throw');
+          } catch (e) {
+            thrown = String(e);
+          }
+          expect(runs[0]!.error, `stored error leaked: ${payload}`).not.toContain(sentinel);
+          expect(thrown, `rethrow leaked: ${payload}`).not.toContain(sentinel);
+          for (const action of actions as { data: { summary: string } }[]) {
+            expect(action.data.summary, `action summary leaked: ${payload}`).not.toContain(sentinel);
+          }
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBe(180);
+  });
+
   it('二重 Run 防止: 新鮮な RUNNING が既存なら実行せず skip する', async () => {
     const { db } = makeDb({
       preexisting: [

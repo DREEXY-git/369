@@ -104,17 +104,6 @@ const KEY_SEP_RE = new RegExp(
   'gi',
 );
 
-// index i の直前に連続する backslash の個数（= その位置の実 escape depth）。
-function countBackslashesBefore(s: string, i: number): number {
-  let n = 0;
-  let j = i - 1;
-  while (j >= 0 && s[j] === '\\') {
-    n++;
-    j--;
-  }
-  return n;
-}
-
 // 値領域の終端 index を返す（quote/escape 状態を理解して消費する）。
 function scanValueEnd(s: string, start: number, headerKey: boolean): number {
   // 先頭の backslash を数えて、実体の先頭文字が引用符かどうか（= quotedish）を判定。
@@ -124,29 +113,11 @@ function scanValueEnd(s: string, start: number, headerKey: boolean): number {
   const quotedish = first === '"' || first === "'";
 
   if (quotedish) {
-    // v6.4 P1 修正: parity（偶奇）や「次文字」（攻撃者が操作可能）に依存せず、**実 backslash depth（個数）が
-    // 開始引用符と完全一致する引用符**だけを同レベルの区切りとみなす。これで開始 depth 1（`\"`）と
-    // 内部 depth 3（`\\\"`）を区別する（v6.3 は両者を parity で同一視し内部 quote 直後の delimiter で誤終了→漏洩）。
-    // - 同レベル引用符が **ちょうど1個** → 一意な閉じ引用符 → そこまで消費（内部の delimiter/改行/別 depth の
-    //   引用符はすべて内側として読み飛ばす）。
-    // - 0 個（unclosed）または 2 個以上（曖昧・破損）→ **fail-closed で入力末尾までマスク**（漏洩させない）。
-    const q = s[p]!; // 開始引用符文字（" または '）
-    const openDepth = p - start; // 開始引用符の直前 backslash 個数（= 実 escape depth）
-    let firstCloser = -1;
-    let sameDepthCount = 0;
-    for (let k = p + 1; k < s.length; k++) {
-      if (s[k] === q && countBackslashesBefore(s, k) === openDepth) {
-        if (firstCloser < 0) firstCloser = k;
-        sameDepthCount += 1;
-        if (sameDepthCount > 1) break; // 曖昧確定 → fail-closed
-      }
-    }
-    if (sameDepthCount !== 1) return s.length; // 0（unclosed）または 2 個以上（曖昧・破損）→ fail-closed
-    let end = firstCloser + 1;
-    // 閉じ引用符の直後に空白/構造区切りを挟まず token が続く場合（例: `"abc"SUFFIXSECRET`）は、
-    // その glued token も秘密の可能性として一緒にマスクする（over-mask・漏洩させない安全側）。
-    while (end < s.length && !/[\s,;:&)}\]]/.test(s[end]!)) end++;
-    return end;
+    // ログが正しい JSON とは限らず、引用符と backslash depth は攻撃者が任意に組み替えられる。
+    // 「正しい閉じ引用符」を推測すると別 depth の偽終端で suffix が漏れるため、quoted/escaped-quoted
+    // の機密値を検出した時点から入力末尾までを taint として消す。可観測性より秘密非残存を優先する
+    // fail-closed 境界であり、depth・区切り・改行の組合せに依存しない。
+    return s.length;
   }
 
   if (headerKey) {
@@ -211,4 +182,3 @@ export function maskRunError(err: unknown, maxLen = 200): string {
   if (s.length > maxLen) s = `${s.slice(0, maxLen)}…`;
   return s;
 }
-

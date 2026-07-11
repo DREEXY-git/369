@@ -362,3 +362,37 @@ export function getAiCharacter(key: string): AiCharacterProfile {
     evaluationNote: '設定未作成。稼働状態・実行記録（実測）は詳細パネルの実測欄を参照してください。',
   };
 }
+
+/**
+ * E2E で一覧・詳細・3D Office が同じ人物正本を描画していることを値比較するための決定論 fingerprint。
+ * 暗号用途ではなく、静的プロフィールの差分検知専用。外部アセットや実行時状態は含めない。
+ */
+function stableFingerprint(value: unknown): string {
+  const text = JSON.stringify(value);
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+export function aiCharacterAppearanceFingerprint(profile: AiCharacterProfile): string {
+  return stableFingerprint(profile.appearance);
+}
+
+export function aiCharacterProfileFingerprint(profile: AiCharacterProfile): string {
+  return stableFingerprint({
+    key: profile.key,
+    fullName: profile.fullName,
+    kana: profile.kana,
+    codeName: profile.codeName,
+    epithet: profile.epithet,
+    appearance: profile.appearance,
+    personality: profile.personality,
+    traits: profile.traits,
+    commonMistakes: profile.commonMistakes,
+    skills: profile.skills,
+    evaluationNote: profile.evaluationNote,
+  });
+}

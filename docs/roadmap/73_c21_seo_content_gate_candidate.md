@@ -33,7 +33,9 @@
 - [x] 外部検索・順位取得・公開・CMS 投稿・PR 配信の経路なし（封印表示つき）
 - [x] ローカル電池 green（unit 297/0・tsc 0・lint 0・safety 0）
 - [x] 敵対的レビュー → 指摘反映（§4 追補）
-- [ ] CI green（99/0）をログ本文で確認
+- [x] CI green（99/0）をログ本文で確認: run 29148850090（#188・stage1/stage3_e2e とも success）・
+  head a047989・`99 passed (1.5m)` / 0 failed（content_seo 3件 = 生成フロー・命令注入で生成中止・
+  担当者回帰＋/marketing ホームゲートを CI 上で検証）→ **Stream A2（C21 v0）クローズ**
 
 ## 4. 追補（敵対的レビューの結果と反映・2026-07-11）
 

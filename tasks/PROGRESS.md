@@ -242,6 +242,11 @@
 
 - Phase 2-A-3a「Company Brain 最小可視化（seed＋read-only 一覧）」: `packages/db/prisma/seed.ts`（CompanyPolicy 5件＋ProductCatalogItem 8件・全件 externalAiAllowed=false・label は NORMAL/INTERNAL のみ・PII/secret/実価格なし）＋read-only 2画面新規（`/brain/policies`・`/brain/catalog`。requireUser＋knowledge:read＋tenantId スコープ・作成/編集/削除/Server Action なし）＋ナビ1行（`components/shell/nav.ts` に「会社の頭脳」）＋smoke 末尾1本追加＋`docs/audit/36_phase2a3a_company_brain_readonly.md` 新規＋CURRENT_STATE 更新＋`369-vault/知識/Phase2A3aCompanyBrain可視化.md`（index からリンク）＋本ファイル。**検証全green（test 211・typecheck・lint・build・seed policies:5/catalogItems:8・smoke 12/12 green・既存11本回帰なし）**。**schema・migration・RBAC・labels・package/lock 無変更／作成・編集・writeAudit/writeDataAccess 本実装は 2-A-3b へ送り（別承認）／課金・決済・外部送信・本番接触なし**。詳細 `docs/audit/36_phase2a3a_company_brain_readonly.md`。反映状態は git refs を正とする。
 
+## WIP1: CRM閲覧境界クローズ＋WIP2: Growth Event Ledger成果可視化 — オートパイロットv5.2・判定 WIP1完全クローズ(CI 83/0実測)・WIP2実装完了 / doc125 HOLD追記クローズ
+
+- **doc160-162 / `docs/roadmap/61-63`＋コード9ファイル＋e2e 5件追加（80→85）**（2026-07-11）。WIP1: Customer 全経路監査（7つの穴を実測確定）→Gate 全PASS→実装（read権限のデータ取得前適用・envelope→ABAC→本体の二段階取得・一覧label除外・拒否画面PII撤去・**insights の render 時 LLM 送出構造の遮断**・update対称化）→敵対的レビュー3視点（critical 1=e2e waitForURL即時マッチ含む修正）→push GO→**CI run 29135772068=`83 passed`/0 をログ本文確認**。doc125 HOLD 追記クローズ。WIP2: 既存 summarizeGrowthEvents のみで Control Tower に成果集計 read-only 表示（金額は canViewFinance のみ・finance 件数は算術復元も遮断・未計測明示・自己申告注記）→レビュー2視点→修正。Contact=NO_DIRECT_RUNTIME_SURFACE。schema/seed/RBAC定義/label許可表不変・外部送信/実LLM/課金/本番なし。
+- 記録: doc160-162＋roadmap61-63。次は WIP2 push GO#2 → CI 85/0 確認 → 次 WIP 選定（推奨: /growth ページの金額権限ゲート）。
+
 ## P3-CT-5 完全クローズ＋Control Tower v0 完遂 — 統合オートパイロット v4.0・判定 CT v0 全段完遂 / CI 80/0 ログ本文確認 / 台帳正本化・番号整合込み
 
 - **doc157-159 / `docs/roadmap/58-60`＋コード5ファイル**（2026-07-10）。1回の統合実行（人間承認 = push GO 2回）で、台帳正本化（C41-C44 整合・`25b5cb9`）→ CT-5 設計+Gate PASS（`848317c`）→ 実装（承認導線 deep link・リンクのみ・`14d6b7d`）→ 敵対的レビュー3視点（既存 medium 1件 = leadmap 閲覧3ページの read ゲート欠如を push 前修正・`d1d8e36`）→ push → CI **run 29127896331 = success・`80 passed (1.2m)` / 0 failed をログ本文確認**（env fake/log/false・growth_control_tower 8件 green・15 run 連続 green）。**P3-CT-0〜5 全段完遂 = Control Tower v0 完成**（e2e 72→80件）。schema/RBAC定義/seed/ci.yml 不変・外部送信/実LLM/課金/本番なし。

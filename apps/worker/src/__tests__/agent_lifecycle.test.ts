@@ -251,6 +251,49 @@ describe('runWithAgentLifecycle（v5.8 hardening）', () => {
     expect(inputs.length).toBeGreaterThanOrEqual(24);
   });
 
+  it('v6.7 P1: 値後の空白/LF malformed tail が、保存値・再throw・Action要約の3経路で 0 残存', async () => {
+    // container 内で値の後に空白/改行＋任意 bare token を置く漏洩クラスを worker 経路で網羅する。
+    const SENTINEL = 'O0F144S66';
+    const INNER = 'INNERSECRET67';
+    const KEYS = ['password', 'token', 'authorization', 'session'];
+    const SEPS = [' ', '\n', '\t'];
+    const mk = (k: string): string[] =>
+      SEPS.flatMap((sep) => [
+        `upstream {"${k}":"${INNER}"${sep}${SENTINEL}"x"} boom`,
+        `upstream {"${k}":"${INNER}"${sep}${SENTINEL}} boom`,
+      ]);
+    const inputs = KEYS.flatMap(mk);
+
+    let i = 0;
+    for (const input of inputs) {
+      const { db, runs, actions } = makeDb();
+      await expect(
+        runWithAgentLifecycle({ ...params, task: `v67-save-${i}` }, async () => {
+          throw new Error(input);
+        }, db),
+      ).rejects.toThrow(/agent lifecycle job failed/);
+      expect(runs[0]!.status).toBe('FAILED');
+      for (const sec of [SENTINEL, INNER]) {
+        expect(runs[0]!.error, `保存値に残存: ${JSON.stringify(runs[0]!.error)}`).not.toContain(sec);
+        for (const a of actions as { data: { summary: string } }[]) {
+          expect(a.data.summary, `Action要約に残存: ${a.data.summary}`).not.toContain(sec);
+        }
+      }
+      try {
+        await runWithAgentLifecycle({ ...params, task: `v67-rethrow-${i}` }, async () => {
+          throw new Error(input);
+        }, db);
+        expect.unreachable('should throw');
+      } catch (e) {
+        for (const sec of [SENTINEL, INNER]) {
+          expect(String(e), `再throwに残存: ${String(e)}`).not.toContain(sec);
+        }
+      }
+      i += 1;
+    }
+    expect(inputs.length).toBeGreaterThanOrEqual(24);
+  });
+
   it('二重 Run 防止: 新鮮な RUNNING が既存なら実行せず skip する', async () => {
     const { db } = makeDb({
       preexisting: [

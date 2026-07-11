@@ -9,7 +9,7 @@
 // - 状態更新でレイアウト全体を動かさない（canvas は固定高・パネルは固定幅の別領域）。
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import {
@@ -72,6 +72,17 @@ export function AiOffice({ model, initialAgentId = null }: { model: AiWorkforceR
   // v6.4 P2（AiOffice URL 同期）: client-nav（?agent=A→B）とブラウザ back/forward で選択を追従させる。
   const searchParams = useSearchParams();
   const agentParam = searchParams.get('agent');
+  const router = useRouter();
+  const pathname = usePathname();
+  // v6.7: 画面上の社員選択を「真の client navigation」にする。選択で `?agent=<id>` を router.push し、
+  // 同一 AiOffice を保持したまま URL query を変える（tab など他 param は保持）。これで back/forward が
+  // 選択履歴として機能し、URL→選択の反応 effect（下）と双方向に整合する。
+  const selectAgent = (id: string) => {
+    setSelectedId(id);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('agent', id);
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
   const [deptFilter, setDeptFilter] = useState<string>('all');
   const [stateFilter, setStateFilter] = useState<string>('all');
   const [isNarrow, setIsNarrow] = useState(false);
@@ -478,7 +489,8 @@ export function AiOffice({ model, initialAgentId = null }: { model: AiWorkforceR
                         <button
                           type="button"
                           className="flex items-center gap-2.5 text-left focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ring"
-                          onClick={() => setSelectedId(a.id)}
+                          onClick={() => selectAgent(a.id)}
+                          data-testid={`ai-office-select-${a.id}`}
                         >
                           <span className="shrink-0 overflow-hidden rounded-md">
                             <AiPortrait profile={getAiCharacter(a.key)} size={36} />

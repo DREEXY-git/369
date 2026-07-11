@@ -472,3 +472,77 @@ describe('maskRunError v6.6（balanced-but-invalid tail・文法検証で fail-c
     expect(out).not.toContain('\n');
   });
 });
+
+// v6.7 P1: 「値の後の空白/改行/tab」を prose の逃げ道にしない。container 内では空白後の bare token も構造検証へ
+// 回し、正規の次 field/array item/container 終端だけ保持、それ以外は末尾まで fail-closed。
+// Codex 独立 matrix（6 keys × 2 quotes × 3 depths × 7 separators × 7 malformed tails）を機械的に張る。
+describe('maskRunError v6.7（値後 whitespace/LF の malformed tail・container 構造検証）', () => {
+  const SENTINEL = 'O0F144S66';
+  const KEYS = ['password', 'token', 'authorization', 'secret', 'session', 'api_key'];
+  const QUOTES = ['"', "'"];
+  // depth: 0=raw、1=escaped 一段、2=escaped 二段（開始・閉じ引用符の前置 backslash）。
+  const DEPTHS = ['', '\\', '\\\\\\'];
+  const SEPS = [' ', '\n', '\r\n', '\t', '  ', ' \n ', '\t\n'];
+  const TAILS = (q: string) => [
+    `${SENTINEL}${q}x${q}`,
+    `${SENTINEL}`,
+    `${SENTINEL}${q}`,
+    `${q}${SENTINEL}${q}${q}x${q}`,
+    `${SENTINEL}\\${q}`,
+    `${SENTINEL} ${q}x${q}`,
+    `${SENTINEL}]`,
+  ];
+
+  const matrix: string[] = [];
+  for (const key of KEYS)
+    for (const q of QUOTES)
+      for (const d of DEPTHS)
+        for (const sep of SEPS)
+          for (const tail of TAILS(q))
+            matrix.push(`{${d}${q}${key}${d}${q}:${d}${q}abc${d}${q}${sep}${tail}}`);
+
+  it(`matrix 件数 = 1764`, () => {
+    expect(matrix.length).toBe(KEYS.length * QUOTES.length * DEPTHS.length * SEPS.length * 7);
+    expect(matrix.length).toBe(1764);
+  });
+
+  it('matrix 全 1764 件で sentinel 0（direct・8000/200）', () => {
+    const leaks: string[] = [];
+    for (const input of matrix) {
+      for (const maxLen of [8000, 200]) {
+        const out = maskRunError(input, maxLen);
+        if (out.includes(SENTINEL)) leaks.push(`${JSON.stringify(input)} => ${JSON.stringify(out)}`);
+      }
+    }
+    expect(leaks, `残存 ${leaks.length}:\n${leaks.slice(0, 6).join('\n')}`).toEqual([]);
+  });
+
+  it('代表例（space / LF）が masked', () => {
+    for (const input of ['{"password":"abc" O0F144S66"x"}', '{"password":"abc"\nO0F144S66"x"}']) {
+      expect(maskRunError(input, 8000)).not.toContain(SENTINEL);
+    }
+  });
+
+  it('container 外の純プローズ（quote 無し）は保持・quote を含むと fail-closed', () => {
+    // 保持: container 外・quote 無しの後続文。
+    const keep = maskRunError('config password: "sec-01" and then connected to host ok', 500);
+    expect(keep).toContain('connected to host ok');
+    expect(keep).not.toContain('sec-01');
+    // container 外でも tail に quote を含めば安全境界を証明できない → fail-closed。
+    const closed = maskRunError('password: "abc" O0F144S66"x"', 500);
+    expect(closed).not.toContain('O0F144S66');
+    // container 終端後の純プローズは保持。
+    const afterClose = maskRunError('{"password":"sec63"} then connected ok', 500);
+    expect(afterClose).toContain('then connected ok');
+    expect(afterClose).not.toContain('sec63');
+  });
+
+  it('空白 tail でも一行・maxLen・線形（100KB）', () => {
+    const big = `{"password":"abc" ${'Z'.repeat(30000)}"x"}`;
+    const started = performance.now();
+    const out = maskRunError(big, 200);
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(out.length).toBeLessThanOrEqual(201);
+    expect(out).not.toContain('\n');
+  });
+});

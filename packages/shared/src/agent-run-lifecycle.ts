@@ -115,32 +115,47 @@ function countBackslashesBefore(s: string, i: number): number {
   return n;
 }
 
-// prose（非構造テキスト）tail の安全判定。文字列外に現れる escaped quote（`\"`/`\'`・別 depth の偽装終端）や
-// 末尾で開きっぱなしの文字列があれば「破損」。純テキスト（quote 無し／均衡ペアのみ）なら安全。
-function proseTailClean(s: string, from: number, end: number): boolean {
-  let inStr = false;
-  let strQuote = '';
-  let i = from;
-  while (i < end) {
+// v6.7 P1: unstructured prose（container 外の非構造テキスト）tail の安全判定。
+// 「quote を含まない純テキストだけ」を安全とみなす（＝安全境界を証明できる範囲のみ保持）。
+// 引用符（生・escaped 問わず）が現れたら prose では安全境界を証明できない → 呼び出し側で末尾まで fail-closed。
+// これで v6.6 で残った「値の後に空白＋任意 bare token＋balanced quote」の漏洩（`"abc" O0F144S66"x"`）を塞ぐ。
+function proseTailPureText(s: string, from: number, end: number): boolean {
+  for (let i = from; i < end; i++) {
     const c = s[i]!;
-    if (c === '\\') {
-      const next = s[i + 1];
-      if (!inStr && (next === '"' || next === "'")) return false; // 文字列外の escaped quote = 偽装終端
-      i += 2;
+    if (c === '"' || c === "'") return false;
+  }
+  return true;
+}
+
+// 位置 p（値の開始引用符）が JSON container（`{`/`[`）の内側にあるか。前置文字列を string-aware に走査し、
+// 未閉の `{`/`[` があれば container 内。これにより「container 内で値の後に空白＋bare」を prose と誤認せず
+// **構造検証**へ回す。escaped JSON では string 追跡が完全ではないが、先頭 `{`/`[` で depth>0 になるため
+// 「container 内」判定は保守的に成立する（誤って prose 化しない）。O(p)・線形。
+function isInsideJsonContainer(s: string, p: number): boolean {
+  let depth = 0;
+  let inStr = false;
+  let q = '';
+  for (let i = 0; i < p; i++) {
+    const c = s[i]!;
+    if (inStr) {
+      if (c === '\\') {
+        i++;
+        continue;
+      }
+      if (c === q) inStr = false;
       continue;
     }
     if (c === '"' || c === "'") {
-      if (!inStr) {
-        inStr = true;
-        strQuote = c;
-      } else if (c === strQuote) {
-        inStr = false;
-        strQuote = '';
-      }
+      inStr = true;
+      q = c;
+      continue;
     }
-    i++;
+    if (c === '{' || c === '[') depth++;
+    else if (c === '}' || c === ']') {
+      if (depth > 0) depth--;
+    }
   }
-  return !inStr;
+  return depth > 0;
 }
 
 // bare token が JSON プリミティブ（number / true / false / null）か。これ以外の裸トークンは
@@ -164,14 +179,15 @@ function consumeQuotedString(s: string, i: number, end: number): number {
   return -1;
 }
 
-// container を出切った後（top-level を超えた）残りが安全な separator/prose かを判定。
-// 直後が glued な非区切り（bare/quote/backslash）＝偽装の疑い → 破損。それ以外は prose として安全判定。
-function afterContainerExitSafe(s: string, from: number, end: number): boolean {
+// container を出切った後（top-level を超えた）残りの安全判定。直後が glued な非区切り（bare/quote/backslash）は
+// 偽装の疑い（`}O0F144S64`）→ 破損。それ以外は container 外＝prose として `tailIsSafeContinuation` に委譲する
+// （さらに構造が続けば構造検証、純プローズなら quote 無しのみ許容）。
+function afterContainerExit(s: string, from: number, end: number): boolean {
   if (from < end) {
     const c = s[from]!;
     if (!/[\s,;:)}\]]/.test(c)) return false; // 例: `}O0F144S64` のような glued 継続は不正
   }
-  return proseTailClean(s, from, end);
+  return tailIsSafeContinuation(s, from, end, false);
 }
 
 // 構造 tail（値の閉じ引用符直後）を bounded state machine で**文法的に**検証する。
@@ -211,7 +227,7 @@ function structuredTailValid(s: string, from: number, end: number): boolean {
     if (c === '}' || c === ']' || c === ')') {
       depth--;
       i++;
-      if (depth < 0) return afterContainerExitSafe(s, i, end); // container を出切った → 残りは prose
+      if (depth < 0) return afterContainerExit(s, i, end); // container を出切った → 残りは container 外
       expectValue = false; // 閉じた後は値の直後扱い（次は区切り）
       continue;
     }
@@ -234,15 +250,18 @@ function structuredTailValid(s: string, from: number, end: number): boolean {
   return depth === 0; // 途中切断（未閉 container・depth>0）は破損
 }
 
-// tail が値の終端として妥当か。最初の非空白が構造区切りなら文法検証、そうでなければ prose 安全判定。
-function tailIsSafeContinuation(s: string, from: number, end: number): boolean {
+// tail が値の終端として妥当か。
+// v6.7 P1: **container 内**（`insideContainer`）なら空白後の bare でも必ず構造検証へ回す（空白を prose の逃げ道に
+// しない）。container 外でも、最初の非空白が構造区切りなら構造検証（stray close/継続）、それ以外の純プローズは
+// **quote を含まない純テキストだけ**を安全とする（安全境界を証明できなければ呼び出し側で末尾まで fail-closed）。
+function tailIsSafeContinuation(s: string, from: number, end: number, insideContainer: boolean): boolean {
   let k = from;
   while (k < end && /\s/.test(s[k]!)) k++;
   const firstNonWs = k < end ? s[k]! : '';
-  if (firstNonWs && /[,;:)}\]]/.test(firstNonWs)) {
+  if (insideContainer || (firstNonWs && /[,;:)}\]]/.test(firstNonWs))) {
     return structuredTailValid(s, from, end);
   }
-  return proseTailClean(s, from, end);
+  return proseTailPureText(s, from, end);
 }
 
 // 値領域の終端 index を返す（quote/escape 状態を理解して消費する）。
@@ -260,8 +279,12 @@ function scanValueEnd(s: string, start: number, headerKey: boolean): number {
     // - v6.6 は候補 closer を「後続 tail が正規の次フィールド/配列要素/container 終端/record 終端として解析できる」
     //   場合だけ採用する。曖昧・不正・途中切断・未知 tail は **走査末尾まで fail-closed** で秘密 suffix を漏らさない。
     //   quote balance/parity/次文字/quote 個数/最後の quote 単独 heuristic には依存しない・O(n)・ReDoS なし。
+    // - v6.7 は「値の後の空白/改行」を prose の逃げ道にしない。値が JSON container（`{`/`[`）の内側にある場合、
+    //   空白後の bare token も構造検証へ回し（正規の次 field/array/container 終端だけ許容）、それ以外は末尾まで
+    //   fail-closed。container 外の純プローズは quote を含まない純テキストだけ保持する。
     const q = s[p]!; // 開始引用符文字（" または '）
     const openDepth = p - start; // 開始引用符の直前 backslash 個数（= 実 escape depth）
+    const insideContainer = isInsideJsonContainer(s, p); // 値が `{`/`[` の内側か
     let firstClose = -1;
     for (let k = p + 1; k < s.length; k++) {
       if (s[k] === q && countBackslashesBefore(s, k) === openDepth) {
@@ -274,8 +297,8 @@ function scanValueEnd(s: string, start: number, headerKey: boolean): number {
     // 閉じ引用符の直後に空白/構造区切りを挟まず続く glued token（`"abc"SUFFIXSECRET`）は値へ取り込む。
     let end = firstClose + 1;
     while (end < s.length && !/[\s,;:&)}\]]/.test(s[end]!)) end++;
-    // 残り tail が値の終端として文法的に妥当でなければ、候補 closer を信頼せず末尾まで fail-closed。
-    if (!tailIsSafeContinuation(s, end, s.length)) return s.length;
+    // 残り tail が値の終端として妥当でなければ、候補 closer を信頼せず末尾まで fail-closed。
+    if (!tailIsSafeContinuation(s, end, s.length, insideContainer)) return s.length;
     return end;
   }
 

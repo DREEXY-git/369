@@ -13,6 +13,20 @@ export function AiPortrait({ profile, size = 96 }: { profile: AiCharacterProfile
   const uid = useId().replace(/[:]/g, '');
   const a = profile.appearance;
   const fem = a.genderStyle === 'fem';
+  // v6.7: portrait の視覚 identity を決定論的に表す fingerprint（SVG 描画を駆動する全 appearance 値）。
+  // E2E は getAiCharacter(key).appearance から同じ値を計算して照合できる（SVG 存在だけの合格を廃する）。
+  const portraitFp = [
+    profile.key,
+    a.genderStyle,
+    a.hairStyle,
+    a.hairColor,
+    a.hairShadow,
+    a.skinTone,
+    a.eyeColor,
+    a.suitColor,
+    a.accentColor,
+    a.glasses ? 'glasses' : 'no-glasses',
+  ].join('|');
   const irisId = `iris-${uid}`;
   const bgId = `bg-${uid}`;
   const hairId = `hair-${uid}`;
@@ -189,6 +203,7 @@ export function AiPortrait({ profile, size = 96 }: { profile: AiCharacterProfile
       role="img"
       aria-label={`${profile.fullName}のポートレート`}
       data-testid="ai-portrait"
+      data-portrait-fp={portraitFp}
       style={{ display: 'block' }}
     >
       <defs>

@@ -48,7 +48,7 @@ export default async function CustomerInsightsPage({ params }: { params: Promise
     throw e;
   }
   const customer = await prisma.customer.findFirst({
-    where: { id, tenantId: user.tenantId },
+    where: { id, tenantId: user.tenantId, label: envelope.label },
     include: {
       insights: { orderBy: { createdAt: 'desc' }, take: 1 },
     },

@@ -48,7 +48,9 @@ export default async function EditCustomerPage({ params }: { params: Promise<{ i
     }
     throw e;
   }
-  const customer = await prisma.customer.findFirst({ where: { id, tenantId: user.tenantId } });
+  const customer = await prisma.customer.findFirst({
+    where: { id, tenantId: user.tenantId, label: envelope.label },
+  });
   if (!customer) notFound();
   const canEdit = hasPermission(user, 'customer', 'update');
 

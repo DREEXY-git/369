@@ -4,8 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
+import { assertCanViewConfidential, PolicyDenied } from '@/lib/security/policy';
 import { emitDomainEvent, dispatchDomainEvent } from '@/lib/events';
-import { canAccessLabel } from '@hokko/shared';
 import '@/lib/event-handlers'; // ハンドラ登録（副作用）
 
 export async function createCustomerAction(formData: FormData) {
@@ -58,10 +58,30 @@ export async function updateCustomerAction(formData: FormData) {
   const id = String(formData.get('id') ?? '');
   if (!hasPermission(user, 'customer', 'update')) redirect(`/customers/${id}?denied=1`);
 
-  const existing = await prisma.customer.findFirst({ where: { id, tenantId: user.tenantId } });
+  // WIP1（roadmap61 §8）: ページ側と同じ二段階＋ABAC。判定前に PII を取得せず、
+  // 拒否時は PolicyDecisionLog / DataAccessLog に痕跡が残る（編集は閲覧を内包する・許可表は不変）。
+  const envelope = await prisma.customer.findFirst({
+    where: { id, tenantId: user.tenantId },
+    select: { id: true, label: true, ownerId: true },
+  });
+  if (!envelope) redirect('/customers');
+  try {
+    await assertCanViewConfidential(user, {
+      dataType: 'customer',
+      label: envelope.label as any,
+      entityType: 'Customer',
+      entityId: envelope.id,
+      ownerId: envelope.ownerId,
+      purpose: '顧客情報の更新',
+    });
+  } catch (e) {
+    if (e instanceof PolicyDenied) redirect('/customers?denied=1');
+    throw e;
+  }
+  const existing = await prisma.customer.findFirst({
+    where: { id, tenantId: user.tenantId, label: envelope.label },
+  });
   if (!existing) redirect('/customers');
-  // WIP1（roadmap61）: 閲覧不可 label の顧客は編集も拒否する（編集は閲覧を内包する・label 許可表は既存定義のまま）。
-  if (!canAccessLabel(user.roles, existing.label as any)) redirect('/customers?denied=1');
 
   const name = String(formData.get('name') ?? '').trim() || existing.name;
   const satisfaction = formData.get('satisfaction') ? Number(formData.get('satisfaction')) : null;

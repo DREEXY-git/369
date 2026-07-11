@@ -23,7 +23,23 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
   }
   const sp = await searchParams;
   // 閲覧不可 label の行は DB クエリ段階で除外する（不可視行は内容も件数も表示しない・許可表は labels.ts の既存定義）。
-  const visibleLabels = CONFIDENTIALITY_LABELS.filter((l) => canAccessLabel(user.roles, l));
+  // さらに詳細側の ABAC（shared/policy.ts §7: 非マネージャは高機密ラベルに機密アクセス理由が必要）と
+  // 整合させるため、非マネージャには高機密ラベル行を一覧にも出さない（fail-closed・所有者例外も一覧では出さない）。
+  // 定数は policy.ts §7 の highLabel / MANAGER_ROLES のミラー（shared 非 export のため局所複製・変更時は両方を更新）。
+  const HIGH_LABELS = [
+    'CONFIDENTIAL',
+    'STRICT_SECRET',
+    'HR_CONFIDENTIAL',
+    'FINANCIAL_CONFIDENTIAL',
+    'LEGAL_CONFIDENTIAL',
+    'EXECUTIVE_ONLY',
+  ] as const;
+  const isManagerViewer = (['OWNER', 'EXECUTIVE', 'ADMIN', 'DEPARTMENT_MANAGER'] as const).some((r) =>
+    user.roles.includes(r),
+  );
+  const visibleLabels = CONFIDENTIALITY_LABELS.filter(
+    (l) => canAccessLabel(user.roles, l) && (isManagerViewer || !(HIGH_LABELS as readonly string[]).includes(l)),
+  );
   const customers = await prisma.customer.findMany({
     where: {
       tenantId: user.tenantId,

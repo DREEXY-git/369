@@ -67,3 +67,14 @@ schema.prisma・migrations・seed.ts・rbac.ts・labels.ts（許可表）・poli
 ## 7. 判定
 
 **Gate 全 PASS・STOP 非該当 → 実装フェーズへ続行**（設計/Gate と実装は別 commit・push は人間 GO 後のみ）。
+
+## 8. 追補（push 前敵対的レビューによる訂正と強化・2026-07-11）
+
+3視点（権限順序／PII・AI流出・tenant・Contact／E2E回帰）の独立レビューを実装 commit `e77870c` に対して実施した。**AI流出遮断・tenantId・Contact 参照ゼロは PASS 証明**。以下を push 前に修正した。
+
+- **事実訂正（medium・2視点が独立検出＋自己検出）**: §2/§4 の「seed 顧客は NORMAL」は誤り。**Customer.label の schema default は `CUSTOMER_CONFIDENTIAL`** であり、seed 顧客9件は全て CUSTOMER_CONFIDENTIAL（STAFF/OWNER/ADMIN の全ログインユーザーが閲覧可・policy §7 の highLabel 非該当）。負系 e2e 不能の結論は不変だが、正しい理由は「**拒否を起こす高機密 label の顧客と権限なしログインが seed に存在しない**」である。§4 の該当記述は本追補で上書きする（本文は証跡として保存）。副作用の明記: **READ_ONLY（可視 = NORMAL/INTERNAL のみ）は現 seed では一覧が0件**になる（仕様・fail-closed）。
+- **判定エンジン不一致の解消（medium）**: 一覧は `canAccessLabel` のみ・詳細は `evaluatePolicy` §7（非マネージャ×高機密×理由なし→拒否）のため、**AI_AGENT が CONFIDENTIAL 顧客を一覧でのみ閲覧できる**乖離があった。一覧に fail-closed の高機密除外（非マネージャには policy §7 の highLabel 6種を一覧にも出さない・所有者例外も一覧では出さない）を追加。定数は shared 非 export のため局所ミラー（コメントで両更新を明記）。
+- **update action の対称化（low・2視点検出）**: 判定前フル取得＋拒否無痕跡だった `updateCustomerAction` を、ページ側と同じ **envelope→assertCanViewConfidential→本体取得**へ変更（拒否は PolicyDecisionLog/DataAccessLog に記録される）。
+- **TOCTOU 窓の閉鎖（low）**: 詳細系4経路の二段目取得に `label: envelope.label` を固定し、判定と取得の間の label 変更で旧判定のまま表示される窓を閉じた。
+- **e2e CRITICAL の修正**: 新テスト3の `waitForURL('**/customers/**')` が出発点 `/customers/new` に即時マッチし CI red となる Playwright 仕様（現在 URL が一致すると redirect を待たず解決）を、operations.spec.ts と同型の**負先読み regex＋Promise.all**へ修正。
+- **記録（修正なし・KNOWN）**: 新設拒否分岐の e2e カバレッジはゼロ（seed 凍結による・恒久監視はテスト3の未計測表示のみ）／テスト3の副作用データ「境界テスト株式会社」は後片付けなし（既存 spec への汚染なしを机上全数確認済み）／NORMAL でも `confidential_view` 名義で記録される既存意味論／一覧ページは DataAccessLog なしのまま（変更前からの粒度差・次 WIP 候補）。

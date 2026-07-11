@@ -54,9 +54,9 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     }
     throw e;
   }
-  // 第二段: 判定成功後に本体と関連データを取得する。
+  // 第二段: 判定成功後に本体と関連データを取得する（label を envelope の判定時値に固定し TOCTOU 窓を閉じる）。
   const customer = await prisma.customer.findFirst({
-    where: { id, tenantId: user.tenantId },
+    where: { id, tenantId: user.tenantId, label: envelope.label },
     include: {
       deals: { orderBy: { createdAt: 'desc' } },
       insights: { orderBy: { createdAt: 'desc' }, take: 1 },

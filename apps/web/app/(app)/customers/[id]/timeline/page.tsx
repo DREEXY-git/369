@@ -49,7 +49,7 @@ export default async function CustomerTimelinePage({ params }: { params: Promise
     throw e;
   }
   const customer = await prisma.customer.findFirst({
-    where: { id, tenantId: user.tenantId },
+    where: { id, tenantId: user.tenantId, label: envelope.label },
     include: { timelineEvents: { orderBy: { occurredAt: 'desc' } } },
   });
   if (!customer) notFound();

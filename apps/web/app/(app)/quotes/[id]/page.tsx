@@ -1,11 +1,13 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Table, Th, Td, Badge, Button, Stat } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { formatJpy, formatDate } from '@hokko/shared';
+import { canSeeCustomerLabel } from '@/lib/security/customer-visibility';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,11 +18,28 @@ const STATUS_TONE: Record<string, string> = {
 export default async function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
+  // WIP-4（roadmap65）: 原価・粗利を含む見積詳細は quote:read 配下（値引き承認ルールを含む
+  // STAFF の業務フロー）。ページ基礎権限をデータ取得前に適用する。
+  if (!hasPermission(user, 'quote', 'read')) {
+    return (
+      <AccessDenied
+        title="見積詳細"
+        reason="見積の閲覧には見積の閲覧権限（quote:read）が必要です"
+        breadcrumb={[{ label: '見積', href: '/quotes' }]}
+      />
+    );
+  }
   const quote = await prisma.quote.findFirst({
     where: { id, tenantId: user.tenantId },
-    include: { lineItems: true, deal: { include: { customer: true } } },
+    // 顧客は表示に使う name と可視判定に使う label のみ取得（連絡先等 PII の over-fetch 防止）。
+    include: { lineItems: true, deal: { include: { customer: { select: { name: true, label: true } } } } },
   });
   if (!quote) notFound();
+  // 顧客名は CRM の閲覧境界（WIP1）に従う: customer:read ＋ 可視ラベルのときのみ表示。
+  const customerName =
+    quote.deal?.customer && hasPermission(user, 'customer', 'read') && canSeeCustomerLabel(user.roles, quote.deal.customer.label)
+      ? quote.deal.customer.name
+      : '';
 
   const gm = toNumber(quote.grossMarginRate);
 
@@ -28,7 +47,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
     <div>
       <PageHeader
         title={`${quote.number} ${quote.title}`}
-        description={quote.deal?.customer?.name ?? ''}
+        description={customerName}
         breadcrumb={[{ label: '見積', href: '/quotes' }, { label: quote.number, href: '#' }]}
         action={
           <div className="flex items-center gap-3">

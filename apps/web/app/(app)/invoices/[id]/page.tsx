@@ -28,18 +28,15 @@ const STATUS_TONE: Record<string, string> = {
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
-  const invoice = await prisma.invoice.findFirst({
-    where: { id, tenantId: user.tenantId },
-    include: { lineItems: true, payments: { orderBy: { paidAt: 'desc' } }, customer: true, receivable: true },
-  });
-  if (!invoice) notFound();
-  // ABAC: 請求は財務機密。閲覧可否を判定し機密参照ログを記録。
+  // ABAC: 請求は財務機密。WIP-4（roadmap65）で判定を fetch より前に移動した
+  // （fetch-then-assert の解消・拒否される閲覧者に対しては ID の存在有無も返さない）。
+  // label は固定の FINANCIAL_CONFIDENTIAL のため行の取得なしで判定できる。
   try {
     await assertCanViewConfidential(user, {
       dataType: 'invoice',
       label: 'FINANCIAL_CONFIDENTIAL',
       entityType: 'Invoice',
-      entityId: invoice.id,
+      entityId: id,
       purpose: '請求詳細の閲覧',
     });
   } catch (e) {
@@ -55,6 +52,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     }
     throw e;
   }
+  const invoice = await prisma.invoice.findFirst({
+    where: { id, tenantId: user.tenantId },
+    // 顧客は宛先表示に使う name のみ取得（連絡先等 PII の over-fetch 防止・宛先は請求書の構成要素）。
+    include: { lineItems: true, payments: { orderBy: { paidAt: 'desc' } }, customer: { select: { name: true } }, receivable: true },
+  });
+  if (!invoice) notFound();
   const canUpdate = hasPermission(user, 'invoice', 'update');
   const overdue = isOverdue(invoice.dueDate, invoice.status);
   const outstanding = toNumber(invoice.total) - toNumber(invoice.paidAmount);

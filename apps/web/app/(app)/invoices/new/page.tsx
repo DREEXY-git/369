@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/page-header';
 import { Card, CardContent } from '@/components/ui';
 import { AccessDenied } from '@/components/access-denied';
 import { InvoiceForm } from '@/components/invoices/invoice-form';
+import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,12 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
   }
   const sp = await searchParams;
   const [customers, deals] = await Promise.all([
-    prisma.customer.findMany({ where: { tenantId: user.tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+    // WIP-4（roadmap65）: 顧客ドロップダウンは CRM 一覧（WIP1）と同じ可視ラベル集合でフィルタ。
+    prisma.customer.findMany({
+      where: { tenantId: user.tenantId, label: { in: visibleCustomerLabels(user.roles) } },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+    }),
     prisma.deal.findMany({ where: { tenantId: user.tenantId }, orderBy: { updatedAt: 'desc' }, select: { id: true, title: true }, take: 50 }),
   ]);
   const defaultDue = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);

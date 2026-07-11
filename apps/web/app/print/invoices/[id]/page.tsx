@@ -2,8 +2,10 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireUser } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
+import { assertCanViewConfidential, PolicyDenied } from '@/lib/security/policy';
 import { toNumber } from '@/lib/utils';
 import { PrintButton } from '@/components/print-button';
+import { AccessDenied } from '@/components/access-denied';
 import { formatJpy, formatDate } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
@@ -11,8 +13,31 @@ export const dynamic = 'force-dynamic';
 export default async function InvoicePrintPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
+  // WIP-4（roadmap65）: 印刷画面にも請求詳細（/invoices/[id]）と同じ財務機密 ABAC を
+  // データ取得前に適用する（fetch-then-assert にしない・拒否閲覧者に ID の存在有無も返さない）。
+  try {
+    await assertCanViewConfidential(user, {
+      dataType: 'invoice',
+      label: 'FINANCIAL_CONFIDENTIAL',
+      entityType: 'Invoice',
+      entityId: id,
+      purpose: '請求書の印刷表示',
+    });
+  } catch (e) {
+    if (e instanceof PolicyDenied) {
+      return (
+        <AccessDenied
+          title="請求書の印刷"
+          reason={e.decision.reason}
+          needsReason={e.decision.requiredSensitiveAccessReason}
+        />
+      );
+    }
+    throw e;
+  }
   const [invoice, tenant] = await Promise.all([
-    prisma.invoice.findFirst({ where: { id, tenantId: user.tenantId }, include: { lineItems: true, customer: true } }),
+    // 顧客は宛先表示に使う name のみ取得（連絡先等 PII の over-fetch 防止・宛先は請求書の構成要素）。
+    prisma.invoice.findFirst({ where: { id, tenantId: user.tenantId }, include: { lineItems: true, customer: { select: { name: true } } } }),
     prisma.tenant.findUnique({ where: { id: user.tenantId } }),
   ]);
   if (!invoice) notFound();

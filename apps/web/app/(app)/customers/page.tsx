@@ -5,7 +5,8 @@ import { PageHeader } from '@/components/page-header';
 import { Card, Table, Th, Td, Badge, Button, Input, EmptyState } from '@/components/ui';
 import { LabelBadge } from '@/components/badges';
 import { AccessDenied } from '@/components/access-denied';
-import { formatDate, CONFIDENTIALITY_LABELS, canAccessLabel } from '@hokko/shared';
+import { formatDate } from '@hokko/shared';
+import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,21 +26,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
   // 閲覧不可 label の行は DB クエリ段階で除外する（不可視行は内容も件数も表示しない・許可表は labels.ts の既存定義）。
   // さらに詳細側の ABAC（shared/policy.ts §7: 非マネージャは高機密ラベルに機密アクセス理由が必要）と
   // 整合させるため、非マネージャには高機密ラベル行を一覧にも出さない（fail-closed・所有者例外も一覧では出さない）。
-  // 定数は policy.ts §7 の highLabel / MANAGER_ROLES のミラー（shared 非 export のため局所複製・変更時は両方を更新）。
-  const HIGH_LABELS = [
-    'CONFIDENTIAL',
-    'STRICT_SECRET',
-    'HR_CONFIDENTIAL',
-    'FINANCIAL_CONFIDENTIAL',
-    'LEGAL_CONFIDENTIAL',
-    'EXECUTIVE_ONLY',
-  ] as const;
-  const isManagerViewer = (['OWNER', 'EXECUTIVE', 'ADMIN', 'DEPARTMENT_MANAGER'] as const).some((r) =>
-    user.roles.includes(r),
-  );
-  const visibleLabels = CONFIDENTIALITY_LABELS.filter(
-    (l) => canAccessLabel(user.roles, l) && (isManagerViewer || !(HIGH_LABELS as readonly string[]).includes(l)),
-  );
+  // 判定は lib/security/customer-visibility.ts（WIP-4 で共有ヘルパへ抽出）を正とする。
+  const visibleLabels = visibleCustomerLabels(user.roles);
   const customers = await prisma.customer.findMany({
     where: {
       tenantId: user.tenantId,

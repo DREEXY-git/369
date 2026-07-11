@@ -6,6 +6,7 @@ import { summarizeGrowthEvents, summarizeGrowthEventCounts } from '@/lib/growth'
 import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Stat } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { formatDateTime, formatJpy, isHumanUser, type ControlTowerPriority } from '@hokko/shared';
 import { generateControlTowerNextStepAction } from './actions';
 
@@ -38,6 +39,18 @@ export default async function GrowthControlTowerPage({
   searchParams: Promise<{ denied?: string; blocked?: string }>;
 }) {
   const user = await requireUser();
+  // WIP-3（roadmap64 追補）: /growth・/growth/events と同じページ基礎権限（dashboard:read）を
+  // データ取得前に適用する。ゲートがこの画面だけ緩いと、隣接画面で締めた件数・削減時間・
+  // （EXTERNAL_EXPERT の場合は金額まで）に到達できてしまう非対称が残るため。
+  if (!hasPermission(user, 'dashboard', 'read')) {
+    return (
+      <AccessDenied
+        title="Growth コントロールタワー"
+        reason="コントロールタワーの閲覧にはダッシュボードの閲覧権限（dashboard:read）が必要です"
+        breadcrumb={[{ label: 'Growth OS', href: '/growth' }, { label: 'コントロールタワー', href: '#' }]}
+      />
+    );
+  }
   const sp = await searchParams;
   // 金額（原価・粗利・未回収）は財務閲覧権限が必要。redact はデータ整形層で担保する。
   const canViewFinance = hasPermission(user, 'finance', 'read');

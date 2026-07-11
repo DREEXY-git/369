@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 
 const CAT_LABEL: Record<string, string> = { marketing: 'マーケ', sales: '営業', finance: '財務', dx: 'DX', ai: 'AI', management: '経営', customer: '顧客' };
 
-export default async function GrowthEventsPage({ searchParams }: { searchParams: Promise<{ cat?: string }> }) {
+export default async function GrowthEventsPage({ searchParams }: { searchParams: Promise<{ cat?: string | string[] }> }) {
   const user = await requireUser();
   // WIP-3（roadmap64）: ページ基礎権限を明示（dashboard:read）。
   if (!hasPermission(user, 'dashboard', 'read')) {
@@ -27,7 +27,10 @@ export default async function GrowthEventsPage({ searchParams }: { searchParams:
   // WIP-3: 金額列は finance:read 保持者のみ取得・表示。非財務閲覧者には finance カテゴリの行自体を
   // 取得しない（title 経由の請求・入金情報の露出も遮断）。cat=finance の直接指定も無効化する。
   const canViewFinance = hasPermission(user, 'finance', 'read');
-  const requestedCat = sp.cat && (canViewFinance || sp.cat !== 'finance') ? sp.cat : undefined;
+  // 同キー複数指定（?cat=a&cat=b）で string[] が来ると Prisma の String フィルタで 500 になるため
+  // 先頭要素に正規化する（境界としては throw でも fail-closed だが、明示的に堅牢化）。
+  const rawCat = Array.isArray(sp.cat) ? sp.cat[0] : sp.cat;
+  const requestedCat = rawCat && (canViewFinance || rawCat !== 'finance') ? rawCat : undefined;
   const where = {
     tenantId: user.tenantId,
     ...(requestedCat ? { category: requestedCat } : canViewFinance ? {} : { category: { not: 'finance' } }),
@@ -42,6 +45,10 @@ export default async function GrowthEventsPage({ searchParams }: { searchParams:
       : { id: true, category: true, type: true, title: true, occurredAt: true, timeSavingMinutes: true },
   });
   const canCreate = hasPermission(user, 'marketing', 'create');
+  // WIP-3（roadmap64 追補）: 非財務閲覧者の一覧では finance 行が遮断されるため、finance 種別を
+  // 記録できてしまうと本人の一覧から消えるサイレント消失になる。選択肢から除外し、Server Action
+  // 側（createGrowthEventAction）でも同じ判定で拒否する（読み書きの対称性）。
+  const typeOptions = GROWTH_EVENT_TYPES.filter((t) => canViewFinance || !t.startsWith('finance.'));
 
   return (
     <div>
@@ -57,7 +64,7 @@ export default async function GrowthEventsPage({ searchParams }: { searchParams:
           <CardContent>
             <form action={createGrowthEventAction} className="grid grid-cols-1 gap-2 md:grid-cols-6">
               <Select name="type" defaultValue="management.decision.recorded" className="md:col-span-2">
-                {GROWTH_EVENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                {typeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
               </Select>
               <Input name="title" placeholder="タイトル" className="md:col-span-2" required />
               <Input name="description" placeholder="説明（任意）" />

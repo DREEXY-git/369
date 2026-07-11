@@ -4,13 +4,18 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
-import { emitGrowthEvent, summarizeGrowthEvents } from '@/lib/growth';
-import { isGrowthEventType } from '@hokko/shared';
+import { emitGrowthEvent } from '@/lib/growth';
+import { isGrowthEventType, growthCategoryOf } from '@hokko/shared';
 
 export async function createGrowthEventAction(formData: FormData) {
   const user = await requireUser();
   if (!hasPermission(user, 'marketing', 'create')) redirect('/growth?denied=1');
   const type = String(formData.get('type') ?? 'management.decision.recorded');
+  // WIP-3（roadmap64 追補）: finance カテゴリの行は非財務閲覧者の一覧から遮断されるため、
+  // 記録した本人に見えないサイレント消失を防ぐ（UI の選択肢からも除外・読み書きの対称性）。
+  if (growthCategoryOf(type) === 'finance' && !hasPermission(user, 'finance', 'read')) {
+    redirect('/growth/events?error=type');
+  }
   const title = String(formData.get('title') ?? '').trim();
   if (!title) redirect('/growth/events?error=title');
   await emitGrowthEvent({
@@ -55,8 +60,7 @@ export async function emitGrowthEventFromDomainAction(formData: FormData) {
   redirect('/growth/events');
 }
 
-/** 成長イベントの集計を返す（呼び出し可能なアクション）。 */
-export async function summarizeGrowthEventsAction(sinceDays = 30) {
-  const user = await requireUser();
-  return summarizeGrowthEvents(user.tenantId, sinceDays);
-}
+// WIP-3（roadmap64 追補）: summarizeGrowthEventsAction は削除した。
+// 'use server' モジュールの export は権限検査なしで呼べる HTTP エンドポイントになるため、
+// 金額込み集計（totalRevenueImpact/totalCostSaving/finance 件数）を requireUser のみで
+// 返す未使用の裏口だった。集計はページの RSC（finance:read 分岐）でのみ行う。

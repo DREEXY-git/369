@@ -4,6 +4,7 @@ import { prisma, writeDataAccess } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Stat, Badge, Select, Button, EmptyState } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { formatJpy, formatDateTime, dxMonetaryImpact, type Difficulty } from '@hokko/shared';
 import { updateDXOpportunityStatusAction, recordDXImpactAction } from '../../actions';
 
@@ -15,6 +16,16 @@ export default async function OpportunityDetailPage({ params, searchParams }: { 
   const { id } = await params;
   const sp = await searchParams;
   const user = await requireUser();
+  // WIP-3（roadmap64 追補）: 推定金額は担当者入力のドメインデータ。データ取得前にページ基礎権限を適用。
+  if (!hasPermission(user, 'marketing', 'read')) {
+    return (
+      <AccessDenied
+        title="DX改善機会"
+        reason="DX改善機会の閲覧にはマーケティングの閲覧権限（marketing:read）が必要です"
+        breadcrumb={[{ label: 'DX OS', href: '/dx' }, { label: '改善機会', href: '/dx/opportunities' }]}
+      />
+    );
+  }
   const o = await prisma.dXOpportunity.findFirst({ where: { id, tenantId: user.tenantId } });
   if (!o) notFound();
   await writeDataAccess({ tenantId: user.tenantId, actorId: user.userId, entityType: 'DXOpportunity', entityId: o.id, label: 'INTERNAL', action: 'read', purpose: 'DX改善機会の閲覧' });

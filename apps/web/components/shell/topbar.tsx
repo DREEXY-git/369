@@ -49,17 +49,19 @@ export function Topbar({
       <div className="flex-1 md:hidden" />
 
       {buildInfo ? (
+        // v6.2: desktop/mobile 両方で表示（OWNER/ADMIN のみ・非機密メタ）。mobile は dot＋short SHA のコンパクト表示で重なりを避ける。
         <span
-          className="hidden items-center gap-1 rounded-md border border-border bg-secondary/60 px-2 py-1 text-[10px] font-medium text-muted-foreground sm:inline-flex"
+          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-secondary/60 px-1.5 py-1 text-[10px] font-medium text-muted-foreground"
           title={`配信ビルド: ${buildInfo.env}${buildInfo.branch ? ` / ${buildInfo.branch}` : ''} / ${buildInfo.shortSha}（この情報は非機密です）`}
           data-testid="build-info"
         >
           <span
-            className={`inline-block h-1.5 w-1.5 rounded-full ${
+            className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${
               buildInfo.env === 'production' ? 'bg-emerald-500' : 'bg-amber-500'
             }`}
           />
-          {buildInfo.label}
+          <span className="hidden sm:inline">{buildInfo.label}</span>
+          <span className="sm:hidden">{buildInfo.shortSha}</span>
         </span>
       ) : null}
 

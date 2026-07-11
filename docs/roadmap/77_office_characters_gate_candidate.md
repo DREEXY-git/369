@@ -49,3 +49,16 @@
 - [x] Draft PR #9 作成（merge しない・統合順は #3→#4→#5→#6→#9 想定）
 
 → **Stream D（キャラクター作り込み v1）クローズ**
+
+## 5. v5.8 追補（Codex独立レビュー反映・2026-07-11）
+
+Codex 固定 SHA レビュー（52d00d8・Stream D 固有 Critical 0/High 0）の Medium/Low を反映:
+
+- **Medium（CI視覚証拠）**: 初期表示で最初の可視 AI 社員を自動選択（ユーザー選択は上書きしない）→
+  desktop screenshot にプロフィールが写る。加えて desktop/mobile とも**選択後プロフィール全体の
+  要素単位 screenshot**（`ai-office-desktop-profile.png` / `ai-office-mobile-profile.png`）を artifact 化。
+- **Medium（初期不可視）**: 上記の自動選択で解消（空の詳細パネルを第一印象にしない）。
+- **Low（emoji依存）**: DOM は Lucide アイコン（8状態マップ）、Canvas ネームプレートは決定論的な
+  色付き丸＋文字ラベルへ変更（Unicode emoji を全廃）。
+- **Low（小さい本文）**: プロフィール主要本文を 12px（text-xs）へ・注記類は 11px へ。二つ名の
+  truncate を撤去し、e2e で**横方向 overflow ゼロを DOM 実測**（文字切れの証拠化）。

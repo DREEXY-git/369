@@ -20,3 +20,9 @@
 - artifact: e2e-screenshots-29151401460（desktop/mobile PNG・retention 3日）。blob URL は sandbox proxy で
   取得不可のため、CI 上の見た目確認はピクセル検査（背景乖離>200・色数>12・コンソールエラー0）で代替。
 - Draft PR #9（merge しない）。
+
+## 追補2（v5.8・2026-07-11）
+
+- stream-c（v5.8 反映済み）を merge 取り込み後、Codex レビューの Stream D 残課題
+  （初期選択・プロフィール screenshot・emoji 依存・本文サイズ・文字切れ検証）を反映（roadmap77 §5）。
+- CI 結果は本追補末尾および PR #9 本文で更新。

@@ -49,3 +49,12 @@ Control Tower に read-only セクション**「成果と削減時間（Growth E
 ## 6. 判定
 
 **Gate 全 PASS・STOP 非該当 → 実装フェーズへ続行**。
+
+## 7. 追補（push 前独立レビューによる修正・2026-07-11）
+
+2視点（redaction/PII/集計精度・E2E回帰/レイアウト）の独立レビューを実装 commit `662e745` に対して実施。**tenantId・select 4列・金額の RSC 分岐内限定・副作用ゼロ・既存85件との文言/strict-mode 衝突なし（バイト単位照合）は PASS 証明**。以下を push 前に修正した。
+
+- **medium: finance 件数の算術復元を遮断** — 伏せ字（—）方式は total −他カテゴリ和で件数が復元でき、バッジの存在自体が finance イベント発生を開示していた。非財務閲覧者には **finance カテゴリを件数集計（7日/30日 total・カテゴリ列挙）から完全に除外**し、方針文（「財務カテゴリのイベントは財務閲覧権限のある人の集計にのみ含まれます」）を明示する方式へ変更。
+- **low: 負値・計測済み0の「未計測」誤表示を解消** — `> 0` 判定を `=== 0` に変更し、負値（operations.ts の粗利 emit で実データ発現あり得る損失合計）は formatJpy で表示する。
+- **low: CEO 側の分岐退行監視を追加** — 社長テストに権限案内文言の toHaveCount(0) を追加（分岐が壊れて両方描画される退行を両面から検知）。
+- 記録（修正なし）: timeSaving は HOURLY_LABOR_COST による円換算推定が可能だが、実 costSaving/revenueImpact とは独立フィールドで自己申告集計と明記済みのため不変条件非抵触と判断／Control Tower ページ自体の resource 権限ゲート不在（READ_ONLY/EXTERNAL も到達可能）は既存挙動・次 WIP 候補。

@@ -78,6 +78,15 @@ export default async function GrowthControlTowerPage({
     summarizeGrowthEvents(user.tenantId, 7),
     summarizeGrowthEvents(user.tenantId, 30),
   ]);
+  // 非財務閲覧者には finance カテゴリを件数集計から完全に除外する（roadmap62 §8: 伏せ字表示だと
+  // total −他カテゴリ和で件数が算術復元でき、バッジの存在自体が finance イベントの発生を開示するため）。
+  const financeCount7 = growth7.byCategory['finance'] ?? 0;
+  const financeCount30 = growth30.byCategory['finance'] ?? 0;
+  const shownTotal7 = canViewFinance ? growth7.total : growth7.total - financeCount7;
+  const shownTotal30 = canViewFinance ? growth30.total : growth30.total - financeCount30;
+  const shownCategories = Object.entries(growth30.byCategory).filter(
+    ([cat]) => canViewFinance || cat !== 'finance',
+  );
 
   return (
     <div className="animate-fade-in">
@@ -204,18 +213,17 @@ export default async function GrowthControlTowerPage({
             集計期間: 直近7日 / 直近30日。既存の成長イベント台帳の read-only 集計で、イベントの発火・変更・外部送信は行いません。
           </p>
           <div data-testid="ct-growth-counts">
-            イベント件数: 直近7日 <span className="font-bold tabular-nums">{growth7.total}</span> 件 ／ 直近30日{' '}
-            <span className="font-bold tabular-nums">{growth30.total}</span> 件
-            {growth30.total === 0 ? (
+            イベント件数: 直近7日 <span className="font-bold tabular-nums">{shownTotal7}</span> 件 ／ 直近30日{' '}
+            <span className="font-bold tabular-nums">{shownTotal30}</span> 件
+            {shownTotal30 === 0 ? (
               <span className="ml-2 text-xs text-muted-foreground">未計測（イベントなし・データ不足）</span>
             ) : null}
           </div>
-          {growth30.total > 0 ? (
+          {shownTotal30 > 0 ? (
             <div className="flex flex-wrap gap-1.5 text-xs">
-              {Object.entries(growth30.byCategory).map(([cat, n]) => (
+              {shownCategories.map(([cat, n]) => (
                 <Badge key={cat} tone="slate">
-                  {GROWTH_CATEGORY_LABEL[cat] ?? cat}:{' '}
-                  {cat === 'finance' && !canViewFinance ? '—' : `${n} 件`}
+                  {GROWTH_CATEGORY_LABEL[cat] ?? cat}: {n} 件
                 </Badge>
               ))}
             </div>
@@ -224,21 +232,23 @@ export default async function GrowthControlTowerPage({
             <div data-testid="ct-growth-money">
               売上効果（30日合計）:{' '}
               <span className="font-bold tabular-nums">
-                {growth30.totalRevenueImpact > 0 ? formatJpy(growth30.totalRevenueImpact) : '未計測'}
+                {growth30.totalRevenueImpact === 0 ? '未計測' : formatJpy(growth30.totalRevenueImpact)}
               </span>
               <span className="mx-2">／</span>
               コスト削減（30日合計）:{' '}
               <span className="font-bold tabular-nums">
-                {growth30.totalCostSaving > 0 ? formatJpy(growth30.totalCostSaving) : '未計測'}
+                {growth30.totalCostSaving === 0 ? '未計測' : formatJpy(growth30.totalCostSaving)}
               </span>
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">金額の集計は財務閲覧権限のある人にのみ表示されます。</p>
+            <p className="text-xs text-muted-foreground">
+              金額の集計は財務閲覧権限のある人にのみ表示されます。財務カテゴリのイベントは財務閲覧権限のある人の集計にのみ含まれます。
+            </p>
           )}
           <div>
             削減時間（30日合計）:{' '}
             <span className="font-bold tabular-nums">
-              {growth30.totalTimeSavingMinutes > 0 ? `${growth30.totalTimeSavingMinutes} 分` : '未計測'}
+              {growth30.totalTimeSavingMinutes === 0 ? '未計測' : `${growth30.totalTimeSavingMinutes} 分`}
             </span>
             <span className="ml-2 text-[11px] text-muted-foreground">
               AI・自動化の自己申告値を含む集計です（検証済みの実績ではありません）。

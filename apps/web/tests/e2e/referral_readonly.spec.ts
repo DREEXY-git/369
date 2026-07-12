@@ -1,4 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { prisma } from '@hokko/db';
 import { REFERRAL_PR_DISCLOSURE } from '@hokko/shared';
 
@@ -7,11 +9,15 @@ import { REFERRAL_PR_DISCLOSURE } from '@hokko/shared';
 // fixture は本テストが作る合成データのみ・afterAll で fixture だけを削除する。
 
 const FIXTURE_CUSTOMER = 'C22テスト製作所（fixture）';
+// v7.2 R2（Codex CHANGE_REQUEST_V72_C22 P2-2）: 別 tenant の実在顧客（sentinel 名）— 非開示を実 fixture で証明。
+const FOREIGN_CUSTOMER_SENTINEL = 'C22-FOREIGN-TENANT-CUSTOMER-SENTINEL-V74';
 // worker 並列（repeat-each 含む）で beforeAll が同時実行されても衝突しないよう worker ごとに一意化。
 const PARTNER_EMAIL = `partner-c22-${process.pid}-${Date.now()}@ikezaki.local`;
 
 let tenantId = '';
 let customerId = '';
+let foreignTenantId = '';
+let foreignCustomerId = '';
 const fixtureUserIds: string[] = [];
 
 async function login(page: Page, email: string) {
@@ -52,12 +58,33 @@ test.describe('C22 紹介・リファラル read-only（v7.2 Lane B）', () => {
     });
     fixtureUserIds.push(partner.id);
     await prisma.userRole.create({ data: { tenantId, userId: partner.id, roleId: partnerRole.id } });
+
+    // P2-2: 別 tenant の実在顧客（候補条件を満たす成約実績あり）— 非開示・非漏洩を実 fixture で検証する。
+    const ft = await prisma.tenant.create({ data: { name: `c22-foreign-${process.pid}-${Date.now()}` } });
+    foreignTenantId = ft.id;
+    const foreignCustomer = await prisma.customer.create({
+      data: {
+        tenantId: foreignTenantId, name: FOREIGN_CUSTOMER_SENTINEL, rank: 'A', status: 'active',
+        satisfaction: 95, churnRisk: 5, lastContactAt: new Date(), label: 'INTERNAL',
+      },
+    });
+    foreignCustomerId = foreignCustomer.id;
+    await prisma.deal.create({
+      data: { tenantId: foreignTenantId, customerId: foreignCustomerId, title: 'foreign 成約', stage: 'CONTRACT', amount: 200000 },
+    });
   });
 
   test.afterAll(async () => {
     await prisma.dataAccessLog.deleteMany({ where: { tenantId, entityId: customerId } });
+    // P2-3: 一覧閲覧の metadata-only 監査（entityType='ReferralAnalysis'）も片付ける。
+    await prisma.dataAccessLog.deleteMany({ where: { tenantId, entityType: 'ReferralAnalysis' } });
     await prisma.deal.deleteMany({ where: { tenantId, customerId } });
     await prisma.customer.deleteMany({ where: { id: customerId } });
+    if (foreignCustomerId) {
+      await prisma.deal.deleteMany({ where: { tenantId: foreignTenantId, customerId: foreignCustomerId } });
+      await prisma.customer.deleteMany({ where: { id: foreignCustomerId } });
+    }
+    if (foreignTenantId) await prisma.tenant.deleteMany({ where: { id: foreignTenantId } });
     if (fixtureUserIds.length) {
       await prisma.userRole.deleteMany({ where: { userId: { in: fixtureUserIds } } });
       await prisma.user.deleteMany({ where: { id: { in: fixtureUserIds } } });
@@ -160,5 +187,58 @@ test.describe('C22 紹介・リファラル read-only（v7.2 Lane B）', () => {
     await page.goto(`/growth/referral?preview=${customerId}`);
     await page.getByTestId('referral-channel-board').screenshot({ path: 'test-results/c22-referral-channels-desktop.png' });
     await page.getByTestId('referral-preview').screenshot({ path: 'test-results/c22-referral-preview-desktop.png' });
+  });
+
+  test('P2-1: 顧客名は取得段階でゲートされる（select は name: canReadCustomerNames・詳細 link も同権限で遮断）', async ({ page }) => {
+    // 現状の組込み human role は marketing:read と customer:read を必ず同時付与するため（rbac: RESOURCES/
+    // STAFF_RESOURCES）、両者を分離した runtime role は存在しない。取得段階ゲートは将来/誤設定 role への
+    // 多重防御であり、ここではソース上の取得段階ゲート（描画時の伏字ではなく DB 取得の条件化）と、
+    // customer:read 保持者（ceo）で実名・詳細 link が出る肯定経路で担保する。
+    const src = readFileSync(resolve(dirname(test.info().file), '../../app/(app)/growth/referral/page.tsx'), 'utf8');
+    expect(src, 'name は取得段階で customer:read に条件化されている').toContain('name: canReadCustomerNames');
+    expect(src, '無条件 name: true で取得していない').not.toMatch(/name:\s*true/);
+    expect(src, '顧客詳細 link は showCustomerLink でゲート').toContain('showCustomerLink');
+    // 肯定経路: customer:read 保持者は実名と詳細 link が見える。
+    await login(page, 'ceo@ikezaki.local');
+    await page.goto('/growth/referral');
+    const row = page.getByTestId(`referral-candidate-${customerId}`);
+    await expect(row).toContainText(FIXTURE_CUSTOMER);
+    await expect(row.getByTestId(`referral-customer-link-${customerId}`)).toHaveCount(1);
+  });
+
+  test('P2-2: 別 tenant の実在顧客は候補にも DOM にも出ず、DataAccessLog にも残らない（sentinel 0）', async ({ page }) => {
+    await login(page, 'ceo@ikezaki.local');
+    await page.goto('/growth/referral');
+    await expect(page.getByTestId(`referral-candidate-${customerId}`)).toBeVisible(); // 自 tenant 候補は出る
+    // 別 tenant 顧客の sentinel 名・候補行・詳細 link はどこにも出ない。
+    const content = await page.content();
+    expect(content, 'foreign 顧客名 sentinel が露出').not.toContain(FOREIGN_CUSTOMER_SENTINEL);
+    await expect(page.getByTestId(`referral-candidate-${foreignCustomerId}`)).toHaveCount(0);
+    await expect(page.locator(`a[href="/customers/${foreignCustomerId}"]`)).toHaveCount(0);
+    // 別 tenant 顧客 id でプレビューを要求しても notfound（存在シグナルなし）で、機密参照監査も残らない。
+    await page.goto(`/growth/referral?preview=${foreignCustomerId}`);
+    await expect(page.getByTestId('referral-preview-notfound')).toBeVisible();
+    await expect(page.getByTestId('referral-preview')).toHaveCount(0);
+    expect(await prisma.dataAccessLog.count({ where: { entityId: foreignCustomerId } })).toBe(0);
+  });
+
+  test('P2-3: 候補一覧の閲覧は metadata-only で監査される（名前・sentinel を含まない・件数と field のみ）', async ({ page }) => {
+    // 監査の存在を確実にするため直前の ReferralAnalysis ログを消してから1回閲覧する。
+    await prisma.dataAccessLog.deleteMany({ where: { tenantId, entityType: 'ReferralAnalysis' } });
+    await login(page, 'ceo@ikezaki.local');
+    await page.goto('/growth/referral');
+    await expect(page.getByTestId(`referral-candidate-${customerId}`)).toBeVisible();
+    const ceo = await prisma.user.findFirst({ where: { tenantId, email: 'ceo@ikezaki.local' }, select: { id: true } });
+    const logs = await prisma.dataAccessLog.findMany({
+      where: { tenantId, entityType: 'ReferralAnalysis', actorId: ceo!.id, purpose: 'referral_candidate_list' },
+    });
+    expect(logs.length).toBeGreaterThanOrEqual(1);
+    for (const log of logs) {
+      const json = JSON.stringify(log);
+      expect(json, '一覧監査に顧客名が複製されている').not.toContain(FIXTURE_CUSTOMER);
+      expect(json, '一覧監査に foreign sentinel が入っている').not.toContain(FOREIGN_CUSTOMER_SENTINEL);
+      expect(json).toMatch(/scanned|candidates/); // 件数メタ
+      expect(json).toContain('churnRisk'); // どの機密 field を読んだかのメタ（値ではなく field 名）
+    }
   });
 });

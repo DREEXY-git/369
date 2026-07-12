@@ -46,11 +46,13 @@ export default async function ReferralPage({
   const canReadCustomerNames = hasPermission(user, 'customer', 'read');
 
   // tenant スコープ＋可視ラベル（fail-closed）で最小 select（連絡先・住所・notes は取得しない）。
+  // v7.2 R2（Codex CHANGE_REQUEST_V72_C22 P2-1）: 顧客名は取得段階で customer:read 保持者のみに限定する
+  // （描画時に伏せるのではなく DB から取得しない）。marketing:read だけでは name を新規開示しない。
   const customers = await prisma.customer.findMany({
     where: { tenantId: user.tenantId, label: { in: visibleCustomerLabels(user.roles) } },
     select: {
       id: true,
-      name: true,
+      name: canReadCustomerNames, // 取得段階ゲート（false のとき DB は name を返さない）
       rank: true,
       status: true,
       satisfaction: true,
@@ -63,8 +65,9 @@ export default async function ReferralPage({
     take: 50,
   });
   const now = new Date();
+  const NAME_REDACTED = '（顧客名は customer:read 権限で表示）';
   const classified = customers.map((c) => ({
-    name: c.name,
+    name: canReadCustomerNames ? ((c as { name?: string }).name ?? NAME_REDACTED) : NAME_REDACTED,
     label: c.label,
     result: classifyReferralSource(
       {
@@ -83,6 +86,26 @@ export default async function ReferralPage({
     .filter((c) => c.result.eligible)
     .sort((a, b) => b.result.score - a.result.score)
     .slice(0, 8);
+
+  // v7.2 R2（Codex CHANGE_REQUEST_V72_C22 P2-3）: 候補一覧は satisfaction / churnRisk / 成約実績（機密射影）を
+  // 読んで理由・注意表示に使うため、一覧閲覧自体を metadata-only で監査する（名前・本文・sentinel は入れない）。
+  if (customers.length > 0) {
+    await writeDataAccess({
+      tenantId: user.tenantId,
+      actorId: user.userId,
+      actorType: 'user',
+      entityType: 'ReferralAnalysis',
+      action: 'read',
+      label: 'INTERNAL',
+      purpose: 'referral_candidate_list',
+      metadata: {
+        scanned: customers.length,
+        candidates: candidates.length,
+        fields: ['rank', 'status', 'satisfaction', 'churnRisk', 'wonDeals'],
+        namesDisclosed: canReadCustomerNames,
+      },
+    });
+  }
 
   // 下書きプレビュー（内部専用・read-only・外部送信不可）。生成は人間のみ（AI ロールは拒否）。
   let preview: { customerId: string; displayName: string; channel: 'referral' | 'business_network'; draft: { subject: string; body: string } } | null = null;
@@ -112,7 +135,7 @@ export default async function ReferralPage({
         });
         preview = {
           customerId: hit.result.customerId,
-          displayName: canReadCustomerNames ? hit.name : '（顧客名は customer:read 権限で表示）',
+          displayName: hit.name, // 取得段階で redaction 済み（customer:read 保持者のみ実名）
           channel: hit.result.suggestedChannel,
           draft: buildReferralDraft(hit.result.suggestedChannel),
         };
@@ -186,9 +209,10 @@ export default async function ReferralPage({
             candidates.map(({ name, result }) => (
               <CandidateRow
                 key={result.customerId}
-                name={canReadCustomerNames ? name : '（顧客名は customer:read 権限で表示）'}
+                name={name}
                 candidate={result}
                 showPreviewLink={!user.isAi}
+                showCustomerLink={canReadCustomerNames}
               />
             ))
           )}
@@ -233,10 +257,13 @@ function CandidateRow({
   name,
   candidate,
   showPreviewLink,
+  showCustomerLink,
 }: {
   name: string;
   candidate: ReferralCandidate;
   showPreviewLink: boolean;
+  /** 顧客詳細（PII を含む画面）への導線は customer:read 保持者のみ（P2-1・取得段階遮断と一致）。 */
+  showCustomerLink: boolean;
 }) {
   return (
     <div className="rounded-md border p-3" id={`candidate-${candidate.customerId}`} data-testid={`referral-candidate-${candidate.customerId}`}>
@@ -260,9 +287,11 @@ function CandidateRow({
         </ul>
       ) : null}
       <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
-        <Link href={`/customers/${candidate.customerId}`} className="text-blue-700 underline" data-testid={`referral-customer-link-${candidate.customerId}`}>
-          顧客詳細を開く
-        </Link>
+        {showCustomerLink ? (
+          <Link href={`/customers/${candidate.customerId}`} className="text-blue-700 underline" data-testid={`referral-customer-link-${candidate.customerId}`}>
+            顧客詳細を開く
+          </Link>
+        ) : null}
         {showPreviewLink ? (
           <Link
             href={`/growth/referral?preview=${candidate.customerId}#draft-preview`}

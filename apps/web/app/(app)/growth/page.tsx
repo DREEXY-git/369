@@ -87,7 +87,13 @@ export default async function GrowthDashboardPage() {
       <PageHeader
         title="Growth OS — 成長ダッシュボード"
         description="会社で起きた出来事を、売上・利益・生産性・DX効果に接続して可視化します（直近30日）。"
-        action={<Link href="/growth/events"><Button variant="outline">成長イベント台帳</Button></Link>}
+        action={
+          <div className="flex gap-2">
+            {/* C22 read-only 縦切り（v7.2 Lane B）: NAV 67 契約は変更せず、Growth ダッシュボードから deep link で導線を張る。 */}
+            <Link href="/growth/referral"><Button variant="outline" data-testid="growth-referral-link">紹介・リファラル分析</Button></Link>
+            <Link href="/growth/events"><Button variant="outline">成長イベント台帳</Button></Link>
+          </div>
+        }
       />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

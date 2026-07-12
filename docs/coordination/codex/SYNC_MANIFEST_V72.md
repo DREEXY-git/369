@@ -1,7 +1,7 @@
 # 369 OS Codex Sync Manifest V72
 
 - 日付: 2026-07-13 JST
-- Release Path: `HUMAN_PREVIEW_VERIFIED` / RC監査待ち
+- Release Path: `HUMAN_PREVIEW_VERIFIED` / RC `CHANGES_REQUIRED`
 - C19: `CHANGES_REQUIRED / HOLD`
 - Phase 4: `HUMAN_PREVIEW_VERIFIED / EVIDENCE_GAP`
 - app repository: `DREEXY-git/369`
@@ -14,9 +14,15 @@
 |---|---|---|---|
 | app main | `main` | `ffd586b8cd87ec407aad6ecd3e0ea4394aee1978` | unchanged / Production HOLD |
 | Phase 3 base | PR #14 | `ba01244ae2fb6b75e1ae2b9a718ba4e629a54425` | Draft |
-| Release Path / C21 | PR #18 | `fa04e7405cf3ab6cb56f329804fc778dde6470b0` | HUMAN_PREVIEW_VERIFIED / RC監査待ち |
+| Release Path / C21 | PR #18 | `fa04e7405cf3ab6cb56f329804fc778dde6470b0` | HUMAN_PREVIEW_VERIFIED / RC R2待ち |
 | C19 | PR #22 | `13793171a8439477f4d8bc08822f2875043b5475` | P2 HOLD |
 | Phase 4 | PR #20 | `9080df1d4cafcee225775003700b219ac0522d64` | HUMAN_PREVIEW_VERIFIED / Evidence Gap |
+| RC | PR #29 | `96172e5d2eec623a514970992ff1afef9d2613a4` | RELEASE HOLD |
+| C22 | PR #23 | `9209ef856523ae2e10a303849dc13a088e1f426c` | CHANGES_REQUIRED |
+| Control Plane | PR #25 | `c28b9bf5eb0f43a54b55890d24bc95ed10ed218d` | CHANGES_REQUIRED |
+| Workflow Dry Run | PR #26 | `45bde82bc24b61ddcc76de74d2a4c8400468f6c0` | CHANGES_REQUIRED |
+| Regression | PR #27 | `bc8fbef0899485c79e4fcd4e98c3e528e8d07f98` | code accepted / evidence pending |
+| Fit-Gap candidate | PR #28 | `a8685afc420ef7570abecafee4941efd564b998c` | canonical HOLD |
 | prior Codex Evidence | PR #21 | `7a2f6fad98673adb4199acd9d8986290b590db52` | stale predecessor |
 | vault main | `main` | `0812634ec443abf966819d2cf6b10e73efb3a94a` | unchanged |
 | prior vault sync | PR #3 | `a9f09041f1c9ced19f4dcfe438fd42ac69ede3b8` | Draft predecessor |
@@ -43,6 +49,13 @@
 - PR #18 Human Preview: `4951939581`
 - PR #20 Human Preview: `4951939636`
 - Human Preview限定GO: `4951939700`
+- RC change request: `4951965231`
+- PR #18 regression propagation request: `4951965691`
+- C22 change request: `4951991026`
+- Control Plane change request: `4951990981`
+- Workflow change request: `4951991086`
+- Regression code review: `4951991149`
+- Fit-Gap evidence request: `4951991212`
 
 ## 同期Gate
 
@@ -56,8 +69,9 @@
 
 - C19の並行冪等性とServer Action全体retry。
 - CI上の実Redis、production worker registry、stalled recovery、実requeue。
-- C22、AI Inbox、Execution Receipt、Workflow Dry Runの固定実装head。
-- app RC、app main、Production。
+- RCの768px回帰、exact-head CI/artifact、R2 Human Preview。
+- C22、AI Inbox/Execution Receipt、Workflow Dry RunのP2とexact-head CI。
+- app main、Production。
 - `CREDENTIAL_ROTATION_REQUIRED`の人間確認。
 
 ## Link state

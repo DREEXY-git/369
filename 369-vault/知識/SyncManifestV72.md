@@ -6,12 +6,16 @@
 - PR #18: `fa04e7405cf3ab6cb56f329804fc778dde6470b0`
 - PR #22: `13793171a8439477f4d8bc08822f2875043b5475`
 - PR #20: `9080df1d4cafcee225775003700b219ac0522d64`
+- RC #29: `96172e5d2eec623a514970992ff1afef9d2613a4`
+- PR #23: `9209ef856523ae2e10a303849dc13a088e1f426c`
+- PR #25: `c28b9bf5eb0f43a54b55890d24bc95ed10ed218d`
+- PR #26: `45bde82bc24b61ddcc76de74d2a4c8400468f6c0`
 - vault main: `0812634ec443abf966819d2cf6b10e73efb3a94a`
 - `SYNC_COMPLETE=false`
 
 ## 判定
 
-- Release Path: `HUMAN_PREVIEW_VERIFIED` / RC監査待ち
+- Release Path: `HUMAN_PREVIEW_VERIFIED` / RC `CHANGES_REQUIRED`
 - C19: `CHANGES_REQUIRED / HOLD`
 - Phase 4: `HUMAN_PREVIEW_VERIFIED / EVIDENCE_GAP`
 
@@ -24,7 +28,8 @@
 ## mainを止める条件
 
 - C19並行冪等性P2。
-- RC ancestry、機能消失、Preview lineage未監査。
+- RCの768px回帰、exact-head CI/artifact、R2 Preview未確認。
+- C22、Control Plane、WorkflowのP2未解消。
 - CI実Redis、production worker、stalled recovery未確認。
 - credential失効・ローテーションの人間確認待ち。
 

@@ -26,9 +26,14 @@
 |---|---|---|
 | app main | `ffd586b8cd87ec407aad6ecd3e0ea4394aee1978` | 現行main。V72 Draft未統合 |
 | Phase 3 base | PR #14 `ba01244...` | Draft |
-| Release Path / C21 | PR #18 `fa04e74...` | `HUMAN_PREVIEW_VERIFIED` / RC監査待ち |
+| Release Path / C21 | PR #18 `fa04e74...` | `HUMAN_PREVIEW_VERIFIED` / RC R2待ち |
 | C19 | PR #22 `1379317...` | `CI_VERIFIED / CHANGES_REQUIRED` |
 | Phase 4 | PR #20 `9080df1...` | `HUMAN_PREVIEW_VERIFIED / EVIDENCE_GAP` |
+| RC #29 | `96172e5...` | `CHANGES_REQUIRED / RELEASE HOLD`。768px topbar回帰とexact-head CI不足 |
+| C22 | PR #23 `9209ef8...` | `DRAFT_IMPLEMENTED / CHANGES_REQUIRED` |
+| Phase 4 Control Plane | PR #25 `c28b9bf...` | `DRAFT_IMPLEMENTED / CHANGES_REQUIRED` |
+| Workflow Dry Run | PR #26 `45bde82...` | `DRAFT_IMPLEMENTED / CHANGES_REQUIRED` |
+| Regression hardening | PR #27 `bc8fbef...` | `CODE_DIFF_ACCEPTED / EVIDENCE_GAP` |
 | Codex Evidence | `codex/v72-max-autonomous-reaudit` | Matrix・Evidence同期branch |
 | vault main | `0812634...` | V72未統合 |
 
@@ -38,16 +43,15 @@
 
 | Phase / 機能群 | 実装 | CI | Codex | Preview | main / Production | 現在の意味 |
 |---|---|---|---|---|---|---|
-| Phase 3 Growth Engine v0 | `DRAFT_IMPLEMENTED` | `CI_VERIFIED` | `CODEX_VERIFIED` | `HUMAN_PREVIEW_VERIFIED` | HOLD | 管制塔、read-only分析、AI下書き、安全境界のv0。全Growth Channel完成ではない |
-| Phase 3.5 C21 SEO/Content | `DRAFT_IMPLEMENTED` | 472 unit / 146 E2E | `CODEX_VERIFIED` | `HUMAN_PREVIEW_VERIFIED`（mobile/NAV/AI UI範囲） | HOLD | 内部review-only承認まで。DB意味論はCI/Codex証拠。CMS公開・外部送信・実LLMなし |
+| Phase 3 Growth Engine v0 | `DRAFT_IMPLEMENTED` | `CI_VERIFIED` | `CODEX_VERIFIED` | `HUMAN_PREVIEW_VERIFIED` | RC HOLD | v0本体は限定確認済み。RCに768px回帰が残り、全Growth Channel完成ではない |
+| Phase 3.5 C21 SEO/Content | `DRAFT_IMPLEMENTED` | 472 unit / 146 E2E | `CODEX_VERIFIED` | `HUMAN_PREVIEW_VERIFIED`（mobile/NAV/AI UI範囲） | RC HOLD | PR #27修正の限定伝播、PR #18 exact-head CI、RC R2が必要。CMS公開等なし |
 | Phase 3.5 C19 Ads | `DRAFT_IMPLEMENTED` | 481 unit / 158 E2E | `CHANGES_REQUIRED` | 旧DB Gateのみ | HOLD | read-only、AI下書き、内部承認。並行冪等性P2が残る |
-| Phase 3.5 C22 Referral | `ROADMAP_ONLY` | なし | 未監査 | なし | HOLD | 外部紹介送信を持たない最小Draftから着手予定 |
+| Phase 3.5 C22 Referral | `DRAFT_IMPLEMENTED` | exact-head Actions未確認 | `CHANGES_REQUIRED` | なし | HOLD | read-only候補/下書きは存在。PII取得段階、tenant実在ID、一覧監査が不足 |
 | Phase 4 AI社員可視化 | `DRAFT_IMPLEMENTED` | `CI_VERIFIED` | `CODEX_VERIFIED` | `HUMAN_PREVIEW_VERIFIED` | HOLD | 8名、一覧、詳細、3D、canonical profile/state |
 | Phase 4 Human Gate | `DRAFT_IMPLEMENTED` | 493 unit / 159 E2E | `CODEX_VERIFIED` | `HUMAN_PREVIEW_VERIFIED` | HOLD | approve後QUEUED/再開待ちと成果未記録をPreview確認。stale/AI拒否/6表rollbackはCI/Codex証拠 |
 | Phase 4 実行再開 | `DRAFT_IMPLEMENTED` | ローカルBullMQ 9/9 | `EVIDENCE_GAP` | なし | HOLD | CI実Redis、production worker、stalled recovery、実requeueが未証明 |
-| AI Inbox | `ROADMAP_ONLY` | なし | 未監査 | なし | HOLD | read-only集約から段階着手 |
-| Execution Receipt | `ROADMAP_ONLY` | なし | 未監査 | なし | HOLD | 実行結果と監査証拠を結ぶreceipt |
-| Workflow Dry Run | `ROADMAP_ONLY` | なし | 未監査 | なし | HOLD | 外部作用なしの事前シミュレーション |
+| AI Inbox / Execution Receipt | `DRAFT_IMPLEMENTED` | exact-head Actions未確認 | `CHANGES_REQUIRED` | なし | HOLD | tenant逆参照、未決定receipt、payload/DataAccess最小化が不足 |
+| Workflow Dry Run | `DRAFT_IMPLEMENTED` | exact-head Actions未確認 | `CHANGES_REQUIRED` | なし | HOLD | 未知危険操作をcompletedにするfail-openとGET URL残存が未解消 |
 
 ## 4. 4軸ロードマップ対応
 
@@ -86,9 +90,9 @@ Function ID単位のV72詳細分類は`COMPETITOR_FIT_GAP_V72.md`を正とする
 
 ## 6. 次の3 WIP
 
-1. **C19冪等性クローズ**: DB一意性またはCAS、並行実PG、Action全体retry、固定SHA再監査。
-2. **RC独立監査**: PR #14＋PR #18限定RCのancestry、競合、機能消失、CI、artifact、Preview lineageを再監査。
-3. **Phase 4実行証拠**: CI実Redis、approved run requeue、worker restart/stalled recovery、Execution Receipt、固有画面artifact。
+1. **RC R2**: PR #27のtopbar修正と回帰testだけをPR #18へ伝播し、exact-head CI/artifact、RC再構築、768px Preview。
+2. **独立lane P2クローズ**: C19冪等性、C22取得段階PII、Control Plane tenant/receipt、Workflow fail-closedを各branchで修正。
+3. **Phase 4実行証拠**: CI実Redis、approved run requeue、worker restart/stalled recovery、固有画面artifact。
 
 C22、AI Inbox、Workflow Dry Run、競合fit-gapは、上記を妨げない別branchで外部作用なしのDraftまで並行可能。
 
@@ -106,9 +110,11 @@ C22、AI Inbox、Workflow Dry Run、競合fit-gapは、上記を妨げない別b
 
 ## 8. 残存リスク
 
+- RC 768px topbar回帰とexact-head CI/artifact不足。
 - C19並行冪等性P2。
+- C22の取得段階PII/tenant/監査、Control Planeのtenant/receipt、Workflowのfail-open。
 - BullMQ/workerの本番相当証拠不足。
-- PR #14＋PR #18限定RC未受領・未監査。
+- PR #14＋PR #18限定RCは受領したが`CHANGES_REQUIRED`。
 - main/Production未統合。
 - 完全fit-gap未作成。
 - credential失効確認待ち。

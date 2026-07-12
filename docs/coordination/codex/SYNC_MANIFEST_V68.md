@@ -31,6 +31,7 @@
 - Phase 3.5 review: PR #18 comment `4950392835` / inline review `4679634147`。
 - Phase 3.5 CI: run `29184338987`、unit 452 / E2E 130 / failed 0。
 - Phase 3.5 artifact: ID `8257542428`、16 PNG、digest `sha256:c15647b8359a1eb735fec870986d895b879e0dc2bbee17b15e421e69d720a2fd`。
+- PR #14 thread snapshot: 27 total / 10 resolved / 17 unresolved / 9 active / 8 outdated-unresolved。activeはGrammar P1のみ。
 
 ## V68 files
 

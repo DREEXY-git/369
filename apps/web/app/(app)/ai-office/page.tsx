@@ -71,7 +71,15 @@ export default async function AiOfficePage({
       <PageHeader
         title="3D バーチャルオフィス（AI社員・read-only）"
         description="AI社員の稼働・人間の作業・成果を証拠から可視化します。この画面から実行・承認・削除は行えません。"
-        action={<Badge tone="slate">データ基準: {generatedAtLabel} UTC</Badge>}
+        action={
+          <div className="flex items-center gap-2">
+            {/* Phase 4 Control Plane（v7.2 Lane C）: NAV 67 契約は変更せず deep link で導線を張る。 */}
+            <Link href="/ai-control" className="text-sm text-blue-700 underline" data-testid="ai-office-control-link">
+              AI Control Plane
+            </Link>
+            <Badge tone="slate">データ基準: {generatedAtLabel} UTC</Badge>
+          </div>
+        }
       />
 
       {/* タブ（サーバー側で内容を切替・リンク遷移のみ） */}

@@ -127,12 +127,12 @@ function proseTailPureText(s: string, from: number, end: number): boolean {
   return true;
 }
 
-// 位置 p（値の開始引用符）が JSON container（`{`/`[`）の内側にあるか。前置文字列を string-aware に走査し、
-// 未閉の `{`/`[` があれば container 内。これにより「container 内で値の後に空白＋bare」を prose と誤認せず
-// **構造検証**へ回す。escaped JSON では string 追跡が完全ではないが、先頭 `{`/`[` で depth>0 になるため
-// 「container 内」判定は保守的に成立する（誤って prose 化しない）。O(p)・線形。
-function isInsideJsonContainer(s: string, p: number): boolean {
-  let depth = 0;
+// 位置 p（値の開始引用符）までの前置文字列を string-aware に走査し、未閉 container（`{`/`[`）の
+// **スタック**を返す（top が値の直属 container）。これで tail 検証が object と array を区別できる。
+// escaped JSON では string 追跡が完全ではないが、先頭の生 `{`/`[` は積まれるため「container 内」判定は
+// 保守側で成立し（誤って prose 化しない）、tail 側で `\` を検出したら fail-closed になる。O(p)・線形。
+function buildContainerStack(s: string, p: number): string[] {
+  const stack: string[] = [];
   let inStr = false;
   let q = '';
   for (let i = 0; i < p; i++) {
@@ -150,12 +150,10 @@ function isInsideJsonContainer(s: string, p: number): boolean {
       q = c;
       continue;
     }
-    if (c === '{' || c === '[') depth++;
-    else if (c === '}' || c === ']') {
-      if (depth > 0) depth--;
-    }
+    if (c === '{' || c === '[') stack.push(c);
+    else if (c === '}' || c === ']') stack.pop();
   }
-  return depth > 0;
+  return stack;
 }
 
 // bare token が JSON プリミティブ（number / true / false / null）か。これ以外の裸トークンは
@@ -180,88 +178,150 @@ function consumeQuotedString(s: string, i: number, end: number): number {
 }
 
 // container を出切った後（top-level を超えた）残りの安全判定。直後が glued な非区切り（bare/quote/backslash）は
-// 偽装の疑い（`}O0F144S64`）→ 破損。それ以外は container 外＝prose として `tailIsSafeContinuation` に委譲する
-// （さらに構造が続けば構造検証、純プローズなら quote 無しのみ許容）。
+// 偽装の疑い（`}O0F144S64`）→ 破損。それ以外は container 外＝quote を含まない純プローズのみ保持。
 function afterContainerExit(s: string, from: number, end: number): boolean {
   if (from < end) {
     const c = s[from]!;
     if (!/[\s,;:)}\]]/.test(c)) return false; // 例: `}O0F144S64` のような glued 継続は不正
   }
-  return tailIsSafeContinuation(s, from, end, false);
+  return proseTailPureText(s, from, end);
 }
 
-// 構造 tail（値の閉じ引用符直後）を bounded state machine で**文法的に**検証する。
-// v6.6 P1 修正: quote 数の均衡だけを信頼する（`,O0F144S64"x"` を健全と誤判定する）規則を廃止し、
-// 候補 closer は後続 tail が「正規の次フィールド / 配列要素 / container 終端 / record 終端」として
-// 解析できる場合だけ採用する。曖昧・不正・途中切断・未知 tail は false（＝末尾まで fail-closed）。
-// 状態: expectValue=false（EXPECT_SEP・値の直後）/ true（EXPECT_VALUE・区切りの直後）。depth は
-// 値を含む container を 0 とし、出切ったら残りを prose として扱う。O(n)・ReDoS なし・文字列固有パッチなし。
-function structuredTailValid(s: string, from: number, end: number): boolean {
+// v6.8 Grammar P1: mask した値の直後の tail を、**container stack 付き bounded single-pass parser**で
+// JSON 文法として検証する。object は KEY→COLON→VALUE→COMMA_OR_END、array は VALUE→COMMA_OR_END を区別し、
+// object の comma 後を array 同様の値位置として受理する v6.7 の誤りを塞ぐ（`,"secret"}` = key 無し value を拒否）。
+// - 開始状態: 値を直属 container（stack top）の中で「値を出した直後」= AFTER_VALUE。
+// - stack が空になった（値を含む container を全部閉じた）残りは container 外＝prose（`afterContainerExit`）。
+// - 文法を確定できない字（構造内の裸 `\`・値位置でない token・key 位置の非 string 等）は false ＝末尾まで fail-closed。
+// O(n)・8KB 走査上限（呼び出し側で担保）・ReDoS/再帰なし・文字列固有パッチなし。
+function grammarTailValid(s: string, from: number, end: number, initialStack: string[]): boolean {
+  const stack = initialStack.slice();
   let i = from;
-  let depth = 0;
-  let expectValue = false; // 値の直後から開始（次は区切り/container 終端のはず）
+  // AFTER_VALUE | OBJ_KEY | OBJ_COLON | VALUE
+  let mode: 'AFTER_VALUE' | 'OBJ_KEY' | 'OBJ_COLON' | 'VALUE' = 'AFTER_VALUE';
+  const skipWs = () => {
+    while (i < end) {
+      const c = s[i]!;
+      if (c === ' ' || c === '\t' || c === '\n' || c === '\r') i++;
+      else break;
+    }
+  };
   while (i < end) {
+    skipWs();
+    if (i >= end) break;
     const c = s[i]!;
-    if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
-      i++;
-      continue;
+    if (c === '\\') return false; // 構造内の裸 backslash（escaped quote 偽装終端）= 破損
+
+    if (mode === 'AFTER_VALUE') {
+      if (stack.length === 0) return afterContainerExit(s, i, end); // 全 container を閉じ切った → prose
+      const top = stack[stack.length - 1]!;
+      if (top === '{') {
+        if (c === ',') {
+          i++;
+          mode = 'OBJ_KEY';
+          continue;
+        }
+        if (c === '}') {
+          stack.pop();
+          i++;
+          // container を閉じ切った直後（skipWs 前）に prose 委譲＝`} then...` の空白は OK・`}glued` は不正。
+          if (stack.length === 0) return afterContainerExit(s, i, end);
+          mode = 'AFTER_VALUE';
+          continue;
+        }
+        return false;
+      }
+      // array
+      if (c === ',') {
+        i++;
+        mode = 'VALUE';
+        continue;
+      }
+      if (c === ']') {
+        stack.pop();
+        i++;
+        if (stack.length === 0) return afterContainerExit(s, i, end);
+        mode = 'AFTER_VALUE';
+        continue;
+      }
+      return false;
     }
-    if (c === '\\') return false; // 構造内の裸 backslash（escaped quote 偽装終端含む）は破損
-    if (c === ',') {
-      if (expectValue) return false; // `,,` 等・値位置に区切り
-      expectValue = true;
-      i++;
-      continue;
+
+    if (mode === 'OBJ_KEY') {
+      if (c === '"' || c === "'") {
+        const r = consumeQuotedString(s, i, end);
+        if (r < 0) return false;
+        i = r;
+        mode = 'OBJ_COLON';
+        continue;
+      }
+      if (c === '}') {
+        // 末尾 comma 許容（`{"a":1,}`）＝ 空/末尾で閉じる。
+        stack.pop();
+        i++;
+        if (stack.length === 0) return afterContainerExit(s, i, end);
+        mode = 'AFTER_VALUE';
+        continue;
+      }
+      return false; // object の key は quoted string 必須（bare/`{`/`[`/number は不可）
     }
-    if (c === ':' || c === ';') {
-      expectValue = true; // key:value / 文の区切り（lenient に値期待へ）
-      i++;
-      continue;
+
+    if (mode === 'OBJ_COLON') {
+      if (c === ':') {
+        i++;
+        mode = 'VALUE';
+        continue;
+      }
+      return false;
     }
-    if (c === '{' || c === '[' || c === '(') {
-      depth++;
-      expectValue = true;
-      i++;
-      continue;
-    }
-    if (c === '}' || c === ']' || c === ')') {
-      depth--;
-      i++;
-      if (depth < 0) return afterContainerExit(s, i, end); // container を出切った → 残りは container 外
-      expectValue = false; // 閉じた後は値の直後扱い（次は区切り）
-      continue;
-    }
+
+    // mode === 'VALUE'
     if (c === '"' || c === "'") {
-      if (!expectValue) return false; // 値位置でないのに string（値の隣接）= 破損
       const r = consumeQuotedString(s, i, end);
-      if (r < 0) return false; // 未閉
+      if (r < 0) return false;
       i = r;
-      expectValue = false;
+      mode = 'AFTER_VALUE';
       continue;
     }
-    // bare token
-    if (!expectValue) return false; // 値位置でない bare = 破損
+    if (c === '{') {
+      stack.push('{');
+      i++;
+      mode = 'OBJ_KEY'; // 直後 `}` は OBJ_KEY で空 object として許容
+      continue;
+    }
+    if (c === '[') {
+      stack.push('[');
+      i++;
+      mode = 'VALUE'; // 直後 `]` は下の array-close で空 array として許容
+      continue;
+    }
+    if (c === ']') {
+      // 空 array（`[]`）または末尾 comma（`[1,]`）。array 内でのみ有効。
+      if (stack.length > 0 && stack[stack.length - 1] === '[') {
+        stack.pop();
+        i++;
+        if (stack.length === 0) return afterContainerExit(s, i, end);
+        mode = 'AFTER_VALUE';
+        continue;
+      }
+      return false;
+    }
+    // bare token（値位置）: JSON プリミティブ（number/true/false/null）だけ許容。
     let j = i;
     while (j < end && !/[\s,;:{}[\]()"'\\]/.test(s[j]!)) j++;
-    if (!isJsonPrimitiveToken(s.slice(i, j))) return false; // 非プリミティブ bare = 秘密の疑い
+    if (j === i || !isJsonPrimitiveToken(s.slice(i, j))) return false;
     i = j;
-    expectValue = false;
+    mode = 'AFTER_VALUE';
   }
-  return depth === 0; // 途中切断（未閉 container・depth>0）は破損
+  // 走査終了: 未閉 container（stack 残）や値/key/colon 待ちのまま終端 → 途中切断＝破損。
+  return stack.length === 0 && mode === 'AFTER_VALUE';
 }
 
-// tail が値の終端として妥当か。
-// v6.7 P1: **container 内**（`insideContainer`）なら空白後の bare でも必ず構造検証へ回す（空白を prose の逃げ道に
-// しない）。container 外でも、最初の非空白が構造区切りなら構造検証（stray close/継続）、それ以外の純プローズは
-// **quote を含まない純テキストだけ**を安全とする（安全境界を証明できなければ呼び出し側で末尾まで fail-closed）。
-function tailIsSafeContinuation(s: string, from: number, end: number, insideContainer: boolean): boolean {
-  let k = from;
-  while (k < end && /\s/.test(s[k]!)) k++;
-  const firstNonWs = k < end ? s[k]! : '';
-  if (insideContainer || (firstNonWs && /[,;:)}\]]/.test(firstNonWs))) {
-    return structuredTailValid(s, from, end);
-  }
-  return proseTailPureText(s, from, end);
+// tail が値の終端として妥当か。stack 空（container 外）は quote 無し純プローズのみ、
+// container 内は grammar parser で文法検証（object/array 区別）。
+function tailIsSafeContinuation(s: string, from: number, end: number, stack: string[]): boolean {
+  if (stack.length === 0) return proseTailPureText(s, from, end);
+  return grammarTailValid(s, from, end, stack);
 }
 
 // 値領域の終端 index を返す（quote/escape 状態を理解して消費する）。
@@ -279,12 +339,13 @@ function scanValueEnd(s: string, start: number, headerKey: boolean): number {
     // - v6.6 は候補 closer を「後続 tail が正規の次フィールド/配列要素/container 終端/record 終端として解析できる」
     //   場合だけ採用する。曖昧・不正・途中切断・未知 tail は **走査末尾まで fail-closed** で秘密 suffix を漏らさない。
     //   quote balance/parity/次文字/quote 個数/最後の quote 単独 heuristic には依存しない・O(n)・ReDoS なし。
-    // - v6.7 は「値の後の空白/改行」を prose の逃げ道にしない。値が JSON container（`{`/`[`）の内側にある場合、
-    //   空白後の bare token も構造検証へ回し（正規の次 field/array/container 終端だけ許容）、それ以外は末尾まで
-    //   fail-closed。container 外の純プローズは quote を含まない純テキストだけ保持する。
+    // - v6.7 は「値の後の空白/改行」を prose の逃げ道にしない。
+    // - v6.8 Grammar P1: 値の直属 container（`{`/`[`）の**スタック**を前置から求め、tail を object/array 区別の
+    //   grammar parser で検証する。object の comma 後は KEY→COLON→VALUE を要求し、key 無しの quoted/nested/array
+    //   value（`,"secret"}` / `,{...}` / `,[...]`）を拒否＝末尾まで fail-closed。
     const q = s[p]!; // 開始引用符文字（" または '）
     const openDepth = p - start; // 開始引用符の直前 backslash 個数（= 実 escape depth）
-    const insideContainer = isInsideJsonContainer(s, p); // 値が `{`/`[` の内側か
+    const containerStack = buildContainerStack(s, p); // 値の直属 container スタック（top が直属）
     let firstClose = -1;
     for (let k = p + 1; k < s.length; k++) {
       if (s[k] === q && countBackslashesBefore(s, k) === openDepth) {
@@ -297,8 +358,8 @@ function scanValueEnd(s: string, start: number, headerKey: boolean): number {
     // 閉じ引用符の直後に空白/構造区切りを挟まず続く glued token（`"abc"SUFFIXSECRET`）は値へ取り込む。
     let end = firstClose + 1;
     while (end < s.length && !/[\s,;:&)}\]]/.test(s[end]!)) end++;
-    // 残り tail が値の終端として妥当でなければ、候補 closer を信頼せず末尾まで fail-closed。
-    if (!tailIsSafeContinuation(s, end, s.length, insideContainer)) return s.length;
+    // 残り tail が値の終端として文法的に妥当でなければ、候補 closer を信頼せず末尾まで fail-closed。
+    if (!tailIsSafeContinuation(s, end, s.length, containerStack)) return s.length;
     return end;
   }
 

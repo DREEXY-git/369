@@ -294,6 +294,50 @@ describe('runWithAgentLifecycle（v5.8 hardening）', () => {
     expect(inputs.length).toBeGreaterThanOrEqual(24);
   });
 
+  it('v6.8 P1: object の keyless value（`,"secret"}` 等）が、保存値・再throw・Action要約の3経路で 0 残存', async () => {
+    // object-comma 後を array 同様の値位置として受理していた漏洩クラスを worker 経路で網羅する。
+    const SENTINEL = 'O0F144S68';
+    const INNER = 'INNERSECRET68';
+    const KEYS = ['password', 'token', 'authorization', 'session'];
+    const mk = (k: string): string[] => [
+      `upstream {"${k}":"${INNER}","${SENTINEL}"} boom`,
+      `upstream {"${k}":"${INNER}",${SENTINEL}} boom`,
+      `upstream {"${k}":"${INNER}",{"x":"${SENTINEL}"}} boom`,
+      `upstream {"${k}":"${INNER}",["${SENTINEL}"]} boom`,
+      `upstream {"${k}":"${INNER}" "${SENTINEL}"} boom`,
+    ];
+    const inputs = KEYS.flatMap(mk);
+
+    let i = 0;
+    for (const input of inputs) {
+      const { db, runs, actions } = makeDb();
+      await expect(
+        runWithAgentLifecycle({ ...params, task: `v68-save-${i}` }, async () => {
+          throw new Error(input);
+        }, db),
+      ).rejects.toThrow(/agent lifecycle job failed/);
+      expect(runs[0]!.status).toBe('FAILED');
+      for (const sec of [SENTINEL, INNER]) {
+        expect(runs[0]!.error, `保存値に残存: ${JSON.stringify(runs[0]!.error)}`).not.toContain(sec);
+        for (const a of actions as { data: { summary: string } }[]) {
+          expect(a.data.summary, `Action要約に残存: ${a.data.summary}`).not.toContain(sec);
+        }
+      }
+      try {
+        await runWithAgentLifecycle({ ...params, task: `v68-rethrow-${i}` }, async () => {
+          throw new Error(input);
+        }, db);
+        expect.unreachable('should throw');
+      } catch (e) {
+        for (const sec of [SENTINEL, INNER]) {
+          expect(String(e), `再throwに残存: ${String(e)}`).not.toContain(sec);
+        }
+      }
+      i += 1;
+    }
+    expect(inputs.length).toBeGreaterThanOrEqual(20);
+  });
+
   it('二重 Run 防止: 新鮮な RUNNING が既存なら実行せず skip する', async () => {
     const { db } = makeDb({
       preexisting: [

@@ -165,6 +165,7 @@
 
 ## Codex独立QA・同期
 
+- [[CodexV69独立再監査]] — V69固定headのGrammar、transaction、artifact、Preview、Phase Gateの独立本監査。
 - [[CodexV69先行監査]] — V69修正前headのGrammar 4経路、Phase 3.5 transaction、CI、Preview lineageの先行監査。
 - [[SyncManifestV69]] — app/vault/main/PreviewのV69同期状態と固定head受領後のGate。
 - [[CodexV68独立再監査]] — V68固定headの4経路Grammar P1、CI、artifact、Phase Gateの独立再監査。

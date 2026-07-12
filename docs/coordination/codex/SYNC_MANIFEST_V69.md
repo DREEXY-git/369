@@ -1,7 +1,7 @@
 # 369 OS Codex Sync Manifest V69
 
 - 日付: 2026-07-12 JST
-- 状態: `PREAUDIT_SYNCED / CHANGES_REQUIRED / FIXED_HEAD_WAITING`
+- 状態: `FIXED_HEAD_REAUDITED / CHANGES_REQUIRED / HOLD`
 - app repository: `DREEXY-git/369`
 - independent vault repository: `DREEXY-git/369-vault`
 - `SYNC_COMPLETE`: false
@@ -11,36 +11,39 @@
 | 対象 | ref / PR | SHA | 状態 |
 |---|---|---|---|
 | app main | `main` | `ffd586b8cd87ec407aad6ecd3e0ea4394aee1978` | unchanged / Production HOLD |
-| Claude app | PR #14 | `3d808a7f9ea00214fa257f8b35013ecfa8c32744` | Draft / Grammar P1 active |
-| Phase 3.5 | PR #18 | `ae15c3a0ff679345a4af5c4a2518054bf58a0d9c` | Draft / transaction blockers active |
-| Codex Evidence | PR #19 | `00747d250b74801492d9b10522c4eb8a521af774` | V69 preaudit更新前 |
+| Claude app | PR #14 | `ba01244ae2fb6b75e1ae2b9a718ba4e629a54425` | Grammar P1 closed / mobile P2 active |
+| Phase 3.5 | PR #18 | `dd54ce94ee31fc1f57244d770b31fc6df5819f3c` | P1 closed / DB Evidence Gap active |
+| Codex Evidence | PR #19 | `f3705c776ddc678dabf824cc51b6a4d14320719e` | V69本監査更新前 |
 | vault main | `main` | `0812634ec443abf966819d2cf6b10e73efb3a94a` | unchanged / PASS待ち |
-| vault sync | PR #3 | `fb6ca051325505f781be4ea243807617256c17b6` | V69 preaudit更新前 |
+| vault sync | PR #3 | `7589980925ddc130446787328b5a51f969f387b4` | V69本監査更新前 |
 
 ## Evidence binding
 
 ### PR #14
 
-- audit: `docs/coordination/codex/V69_PREAUDIT_2026-07-12.md`。
-- workflow run: `29182878065`。
-- unit: 444 / 0。
+- audit: `docs/coordination/codex/V69_INDEPENDENT_REAUDIT_2026-07-12.md`。
+- workflow run: `29185927436`。
+- unit: 452 / 0。
 - E2E: 127 / 0。
-- artifact: ID `8257060233`、16 PNG、2,028,563 bytes。
-- artifact digest: `sha256:88b21f8f5b7a1ece3993bfa873f43d84c4f615f78cfa3a7724932e0cb849e456`。
-- independent oracle: 1,687 total / 1,680 malformed / 7 positive。
-- leaks: direct 318、FAILED保存318、rethrow 318、Action要約318。
-- positive regressions: 0。
-- thread snapshot: 27 total / 10 resolved / 17 unresolved / 9 active / 8 outdated-unresolved。
+- artifact: ID `8258046874`、16 PNG、2,312,739 bytes。
+- artifact digest: `sha256:c1e84b006a06c67ffd888cfe8f0efd4ba05caa5aaad7baf72b114e70f2dcdf04`。
+- independent oracle: 1,687 total、4経路leak 0、positive regression 0。
+- legacy thread oracle: malformed 25 x 4経路leak 0、positive 5 / 5。
+- related local unit: 110 / 110。
+- threads: 27 total / 27 resolved / 0 unresolved。
+- remaining: mobile topbar P2、Human Preview。
 
 ### PR #18
 
-- workflow run: `29184338987`。
-- unit: 452 / 0。
-- E2E: 130 / 0。
-- artifact: ID `8257542428`、16 PNG、2,028,333 bytes。
-- artifact digest: `sha256:c15647b8359a1eb735fec870986d895b879e0dc2bbee17b15e421e69d720a2fd`。
-- blockers: transaction原子性、`user.isAi`明示拒否、asset更新件数、競合・途中失敗・cross-tenant証拠。
-- thread snapshot: 4 total / 0 resolved / 4 active。
+- workflow run: `29186179985`。
+- unit: 472 / 0。
+- E2E: 131 / 0。
+- artifact: ID `8258122858`、16 PNG、2,312,840 bytes。
+- artifact digest: `sha256:ed0e42dddcacb419cd467f8d5a21edd974df21c6a6acde5c3da75e23a4d47156`。
+- repository transaction contract test: 12 / 12。
+- Codex stateful transaction oracle: 11 / 11。
+- threads: 4 total / 3 resolved / 1 unresolved active。
+- remaining: 実Prisma/PostgreSQL並行・rollback Evidence Gap、継承mobile topbar P2、Human Preview。
 
 ### GitHub handoff
 
@@ -48,55 +51,79 @@
 - PR #18 `CODEX_ACK_P35_V69 + READ_ONLY_WORK_CLAIM`: `4950488067`。
 - PR #14 `CODEX_PREAUDIT_V69_GRAMMAR`: `4950499571`。
 - PR #18 `CODEX_PREAUDIT_P35_V69`: `4950501121`。
-- PR #14 `HUMAN_PREVIEW_REQUIRED_V69`: `4950491885`。
-- PR #18 `HUMAN_PREVIEW_REQUIRED_P35_V69`: `4950491929`。
+- PR #14 mobile topbar `CODEX_CHANGE_REQUEST_V69`: `4950700665`。
+- PR #18 `CODEX_REAUDIT_RESULT_P35_V69`: `4950701358`。
+- PR #19 V69 preaudit Evidence: `4950607898`。
+- vault PR #3 V69 preaudit sync: `4950608347`。
 
 ## Preview candidates
 
 | 対象 | Preview URL | Inspector | 判定 |
 |---|---|---|---|
-| PR #14 | `https://369-web-git-claude-full-recovery-v61-dreexy-gits-projects.vercel.app` | `https://vercel.com/dreexy-gits-projects/369-web/HfGQUFFB39LdYqUTjQRe49ZekWaU` | `HUMAN_PREVIEW_REQUIRED_V69` |
-| PR #18 | `https://369-web-git-claude-p35-approval-bridges-v1-dreexy-gits-projects.vercel.app` | `https://vercel.com/dreexy-gits-projects/369-web/Ek25xZ282Tom2hksugaoYZZ1NqCz` | `HUMAN_PREVIEW_REQUIRED_P35_V69` |
+| PR #14 | `https://369-web-git-claude-full-recovery-v61-dreexy-gits-projects.vercel.app` | `https://vercel.com/dreexy-gits-projects/369-web/4i7ZMnAvsv5MBroYdqZW2fjVAcsi` | `HUMAN_PREVIEW_REQUIRED_V69` |
+| PR #18 | `https://369-web-git-claude-p35-approval-bridges-v1-dreexy-gits-projects.vercel.app` | `https://vercel.com/dreexy-gits-projects/369-web/2eaqtBPxaZfXUx5DuDg3uB2dLHGK` | `HUMAN_PREVIEW_REQUIRED_P35_V69` |
 
-Vercel AuthenticationでLoginへ遷移したため、Codexは認証を迂回していない。botのReady表示と更新時刻だけでは`gitCommitSha`またはapp tree一致を証明できず、`PREVIEW_VERIFIED`へ格上げしない。
+Vercel AuthenticationでLoginへ遷移したため、Codexは認証を迂回していない。bot Readyと更新時刻だけでは`gitCommitSha`またはapp tree一致を証明できず、`PREVIEW_VERIFIED`へ格上げしない。
 
 ## V69 files
 
 app Evidence PR #19:
 
+- `docs/function-master/FUNCTION_IMPLEMENTATION_EVIDENCE_V1.md`
 - `docs/coordination/codex/V69_PREAUDIT_2026-07-12.md`
+- `docs/coordination/codex/V69_INDEPENDENT_REAUDIT_2026-07-12.md`
 - `docs/coordination/codex/SYNC_MANIFEST_V69.md`
 - `369-vault/知識/CodexV69先行監査.md`
+- `369-vault/知識/CodexV69独立再監査.md`
 - `369-vault/知識/SyncManifestV69.md`
 - `369-vault/index.md`
 
 independent vault PR #3:
 
 - `知識/CodexV69先行監査.md`
+- `知識/CodexV69独立再監査.md`
 - `知識/SyncManifestV69.md`
 - `index.md`
 
+## Function Evidence
+
+- existing Function IDへの新規接続: 9件。
+- 既存Evidence更新: 4件。
+- `UNMAPPED_CANDIDATE`: 1件。
+- 新規正式ID: 0。
+- main / Preview / Production格上げ: 0。
+- Matrix V3: 未作成。
+
+## Integration dry-run
+
+- order: `PR #14 fixed → PR #18 fixed → Codex Evidence`。
+- `ba01244` is ancestor of `dd54ce9`。
+- PR #18とCodex Evidence `f3705c`のmerge-base: `3d808a7`。
+- left / right commits: 9 / 3。
+- duplicate patches: 0。
+- `git merge-tree --write-tree dd54ce9 f3705c`: conflict 0、candidate tree `c6d26b536e01d0c0fb5241174d7dc88e66449001`。
+- blocker残存のため実merge・RC作成なし。
+
 ## Sync gates
 
-1. V69先行監査をapp Evidence Draftとvault Draftへ鏡像同期する。
-2. `CLAUDE_FIXED_V69`と`CLAUDE_P35_FIXED_V69`を別SHAで受領する。
-3. Grammar 4経路oracleとPhase 3.5 transaction oracleを再実行する。
+1. V69本監査とFunction Evidenceをapp Evidence Draftとvault Draftへ鏡像同期する。
+2. mobile topbar P2をClaude Codeが別SHAで修正する。
+3. 実Prisma/PostgreSQLの並行transaction証拠を追加する。
 4. exact-head CI本文、artifact、threadを再監査する。
 5. 人間が正規Vercelログイン後にPreview lineageとread-only画面を確認する。
-6. PASS時だけMatrix V3を作り、Evidenceを既存Function IDへ保守的に接続する。
-7. app/vault mirror hash、links、orphans、secret scan、commit graphを一致させる。
+6. PASS時だけMatrix V3を作る。
+7. app/vault mirror hash、links、orphans、secret scan、commit graphを再一致させる。
 8. app PASS後だけvault PRを通常merge commitでvault mainへ統合する。
 9. app main、Production、schema、Secrets、外部接続、実LLM、課金は人間Gateに残す。
 
 ## Link classification
 
-- V68の56件/54件は、Obsidianのbasename解決を確定せず数えた保守的な候補baselineである。
-- V69 semantic scanはapp鏡像199 Markdownファイル、独立vault 202 Markdownファイルを検査した。
-- app鏡像: Obsidian解決324 occurrence、説明用false-positive 2、要人間判断2、明白修復0。
-- 独立vault: Obsidian解決324 occurrence、説明用false-positive 2、要人間判断0、明白修復0。
+- V69 final semantic scanはapp鏡像200 Markdownファイル、独立vault 203 Markdownファイルを検査した。
+- app鏡像: Obsidian解決325 occurrence、説明用false-positive 2、要人間判断2、明白修復0。
+- 独立vault: Obsidian解決325 occurrence、説明用false-positive 2、要人間判断0、明白修復0。
 - appの要人間判断は2ファイルから参照される同一タイトル`残存欠陥クローズと統合v59`で、正本ノート不在のため変更しない。
-- V69新規2ノートと両indexリンクは解決する。
-- 曖昧な本文リンクと`.obsidian/**`は変更していない。
+- V69ノートと両indexリンクは解決を必須とする。
+- 曖昧な本文リンクと`.obsidian/**`は変更しない。
 - 全体broken link 0とは宣言しない。
 
 ## Credential state
@@ -105,12 +132,10 @@ remoteはcredential-free HTTPS URLである。過去credentialの値は読まな
 
 ## Current declaration
 
-- app Evidence: V69 preauditをPR #19へ同期中。
-- independent vault: V69 preauditをPR #3へ同期中。
-- PR #14: `CHANGES_REQUIRED / FIXED_HEAD_WAITING`。
-- PR #18: `CHANGES_REQUIRED / FIXED_HEAD_WAITING`。
-- Matrix V3 / RC / vault main / app main / Production: HOLD。
+- PR #14: Grammar P1 closed / mobile topbar P2 active。
+- PR #18: P1 closed / DB Evidence Gap active。
 - Preview: human authentication pending。
+- Matrix V3 / RC / vault main / app main / Production: HOLD。
 - `SYNC_COMPLETE`: false。
 
 「完全同期」「脆弱性ゼロ」「完全無欠」は宣言しない。

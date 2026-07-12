@@ -162,3 +162,8 @@
 - 監査記録: `369/docs/audit/*`。
 - ロードマップ: `369/docs/roadmap/*`（長期構想・Phase 2・Feature Registry・各種Matrix）。
 - 利用量一覧: `369/docs/audit/usage_event_emit_matrix.md`。
+
+## Codex独立QA・同期
+
+- [[CodexV68独立再監査]] — V68固定headの4経路Grammar P1、CI、artifact、Phase Gateの独立再監査。
+- [[SyncManifestV68]] — app/vault/main/履歴のV68同期状態と再開Gate。

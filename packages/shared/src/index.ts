@@ -37,3 +37,5 @@ export * from './ai-characters';
 // 注: './webhook' は node:crypto を使うため barrel に含めない（client汚染防止）。
 //     サーバ/ワーカーは '@hokko/shared/webhook' から直接 import する。
 export * from './referral';
+export * from './control-plane';
+export * from './workflow-dryrun';

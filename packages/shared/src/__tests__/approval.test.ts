@@ -49,4 +49,9 @@ describe('requiresApproval — dangerous actions', () => {
     expect(requiresApproval('content_review')).toBe(true);
     expect(requiresApproval('ad_suggestion_review')).toBe(true);
   });
+
+  // Phase 4 安全実行 Bridge（roadmap82）: AI 承認ゲートの判断は常に人間（AI は自己承認しない）。
+  it('ai_run_resume always requires human approval', () => {
+    expect(requiresApproval('ai_run_resume')).toBe(true);
+  });
 });

@@ -605,3 +605,86 @@ describe('maskRunError v6.8（object/array 文法・keyless value を fail-close
     }
   });
 });
+
+// v6.9 Grammar P1 完全クローズ: trailing comma・非 strict number・mismatched/underflow/extra closer・
+// array 内 sensitive key 構文（Codex 10 mutation・threads r3565804348/r3565805875/r3565808689/
+// r3565808693/r3565825674/r3565863141-150）。comma 後の key/value は必須（OR_END と REQUIRED を分離）。
+describe('maskRunError v6.9（trailing comma・strict number・closer kind/underflow/extra・array 内 key）', () => {
+  const TAIL = 'CODEXTAIL68SECRET';
+  const INNER = 'INNERSECRET68';
+  const noLeak = (input: string, secrets: string[] = [TAIL, INNER], maxLen = 8000) => {
+    const out = maskRunError(input, maxLen);
+    for (const sec of secrets) {
+      expect(out, `leaked ${sec} in ${JSON.stringify(out)}`).not.toContain(sec);
+    }
+    return out;
+  };
+
+  it('trailing comma（object/nested/array）は終端として受理せず末尾まで fail-closed', () => {
+    noLeak(`{"password":"${INNER}",} ${TAIL}`);
+    noLeak(`{"a":{"password":"${INNER}",}} ${TAIL}`);
+    noLeak(`[{"password":"${INNER}"},] ${TAIL}`);
+    noLeak(`{"password":"${INNER}",} PREV68MIDV68POST`, [INNER, 'PREV68MIDV68POST']);
+    noLeak(`{"password":"${INNER}","x":"y",} ${TAIL}`); // 2 field 目の後の trailing comma
+  });
+
+  it('leading zero number（01/-01）は JSON number として受理せず fail-closed', () => {
+    noLeak(`{"password":"${INNER}","x":01} ${TAIL}`);
+    noLeak(`{"password":"${INNER}","x":-01} ${TAIL}`);
+    noLeak(`{"password":"${INNER}","x":007} ${TAIL}`);
+    noLeak(`{"password":"${INNER}","x":1.} ${TAIL}`); // 小数点のみも不正
+    noLeak(`{"password":"${INNER}","x":+1} ${TAIL}`); // 先頭 + も不正
+  });
+
+  it('mismatched/underflow closer は prefix 段階で fail-closed（種類確認あり）', () => {
+    noLeak(`[{]"password":"${INNER}"] ${TAIL}`); // { を ] で閉じる prefix
+    noLeak(`[}"password":"${INNER}"} ${TAIL}`); // [ を } で閉じる prefix
+    noLeak(`}}{"password":"${INNER}"} ${TAIL}`); // 空 stack への close（underflow）
+    noLeak(`]{"password":"${INNER}"} ${TAIL}`);
+  });
+
+  it('array 内の sensitive key 構文（["password":...]）は object context でないため fail-closed', () => {
+    noLeak(`["password":"${INNER}"] ${TAIL}`);
+    noLeak(`["password":"${INNER}","${TAIL}"]`);
+    noLeak(`["password":"${INNER}","suffix"]`, [INNER, 'suffix']);
+    noLeak(`{"a":["password":"${INNER}","${TAIL}"]}`); // nested array 内
+  });
+
+  it('container を閉じ切った後の余分な }/] は prose として許容せず fail-closed', () => {
+    noLeak(`{"password":"${INNER}"}} ${TAIL}`);
+    noLeak(`{"password":"${INNER}"}] ${TAIL}`);
+    noLeak(`{"password":"${INNER}"} } ${TAIL}`); // 空白を挟んだ余剰 closer
+    noLeak(`{"password":"${INNER}"} ok } ${TAIL}`); // prose 途中の closer も安全境界を証明できない
+  });
+
+  it('positive oracle: strict number の正規値・空 container・複数 field・container 後 prose を保持', () => {
+    const keep: [string, RegExp, string][] = [
+      ['{"password":"abc","x":0}', /"x":0\}/, 'abc'],
+      ['{"password":"abc","x":-10.5e+2}', /"x":-10\.5e\+2\}/, 'abc'],
+      ['{"password":"abc","x":10}', /"x":10\}/, 'abc'],
+      ['{"password":"abc","x":{}}', /"x":\{\}\}/, 'abc'],
+      ['{"password":"abc","x":[]}', /"x":\[\]\}/, 'abc'],
+      ['{"password":"abc","username":"bob"}', /"username":"bob"/, 'abc'],
+      ['{"password":"abc"} then connected ok', /then connected ok/, 'abc'],
+      ['{"a":[{"password":"abc"},{"b":"c"}]}', /"b":"c"/, 'abc'], // array 内の正規 object 列
+    ];
+    for (const [input, re, secret] of keep) {
+      const out = maskRunError(input, 500);
+      expect(out, `保持されず ${out}`).toMatch(re);
+      expect(out, `秘密残存 ${out}`).not.toContain(secret);
+      expect(out).toContain('[masked]');
+    }
+  });
+
+  it('旧回帰: v6.8 keyless value・v6.7 whitespace・unclosed・100KB を維持', () => {
+    noLeak(`{"password":"${INNER}","O0F144S68"}`, [INNER, 'O0F144S68']);
+    noLeak(`{"password":"${INNER}" "O0F144S68"}`, [INNER, 'O0F144S68']);
+    noLeak(`{"password":"${INNER}","x`, [INNER]);
+    const big = `{"password":"${'a'.repeat(40000)}",} ${TAIL}`;
+    const started = performance.now();
+    const out = maskRunError(big, 200);
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(out).not.toContain(TAIL);
+    expect(out.length).toBeLessThanOrEqual(201);
+  });
+});

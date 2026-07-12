@@ -119,19 +119,24 @@ function countBackslashesBefore(s: string, i: number): number {
 // 「quote を含まない純テキストだけ」を安全とみなす（＝安全境界を証明できる範囲のみ保持）。
 // 引用符（生・escaped 問わず）が現れたら prose では安全境界を証明できない → 呼び出し側で末尾まで fail-closed。
 // これで v6.6 で残った「値の後に空白＋任意 bare token＋balanced quote」の漏洩（`"abc" O0F144S66"x"`）を塞ぐ。
+// v6.9: 余分な構造 closer（`}`/`]`）も prose として許容しない（`{"password":"x"}} SECRET` の余剰 closer 拒否・
+// thread r3565808693）。開き括弧は prose 中に普通に現れる（関数表記等）ため対象外＝安全側は closer のみ。
 function proseTailPureText(s: string, from: number, end: number): boolean {
   for (let i = from; i < end; i++) {
     const c = s[i]!;
     if (c === '"' || c === "'") return false;
+    if (c === '}' || c === ']') return false;
   }
   return true;
 }
 
 // 位置 p（値の開始引用符）までの前置文字列を string-aware に走査し、未閉 container（`{`/`[`）の
-// **スタック**を返す（top が値の直属 container）。これで tail 検証が object と array を区別できる。
-// escaped JSON では string 追跡が完全ではないが、先頭の生 `{`/`[` は積まれるため「container 内」判定は
-// 保守側で成立し（誤って prose 化しない）、tail 側で `\` を検出したら fail-closed になる。O(p)・線形。
-function buildContainerStack(s: string, p: number): string[] {
+// **スタック**と**構文妥当性**を返す（top が値の直属 container）。これで tail 検証が object と array を区別できる。
+// v6.9（thread r3565808689）: closer は種類確認付きで pop する。`{` を `]` で閉じる mismatch・空 stack への
+// close（underflow）は prefix が既に壊れている＝スタックを信頼できない → valid=false（呼び出し側で末尾まで
+// fail-closed）。escaped JSON では string 追跡が完全ではないが、先頭の生 `{`/`[` は積まれるため「container 内」
+// 判定は保守側で成立し（誤って prose 化しない）、tail 側で `\` を検出したら fail-closed になる。O(p)・線形。
+function buildContainerStack(s: string, p: number): { stack: string[]; valid: boolean } {
   const stack: string[] = [];
   let inStr = false;
   let q = '';
@@ -151,15 +156,21 @@ function buildContainerStack(s: string, p: number): string[] {
       continue;
     }
     if (c === '{' || c === '[') stack.push(c);
-    else if (c === '}' || c === ']') stack.pop();
+    else if (c === '}') {
+      if (stack.pop() !== '{') return { stack, valid: false }; // mismatch / underflow
+    } else if (c === ']') {
+      if (stack.pop() !== '[') return { stack, valid: false }; // mismatch / underflow
+    }
   }
-  return stack;
+  return { stack, valid: true };
 }
 
 // bare token が JSON プリミティブ（number / true / false / null）か。これ以外の裸トークンは
 // 秘密の疑いとして構造 tail では拒否する（`O0F144S64` のような英数字混在を通さない）。
+// v6.9（thread r3565805875）: number は strict JSON grammar（leading zero 禁止＝`01`/`-01`/`007` 拒否・
+// `+1`/`1.`/`.5` 拒否）。正規の `0`/`-10.5e+2` は受理する。
 function isJsonPrimitiveToken(t: string): boolean {
-  return t === 'true' || t === 'false' || t === 'null' || /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(t);
+  return t === 'true' || t === 'false' || t === 'null' || /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(t);
 }
 
 // 開始引用符 s[i]=q から対応する閉じ引用符（even-backslash）まで消費し、閉じの次 index を返す。未閉なら -1。
@@ -178,27 +189,38 @@ function consumeQuotedString(s: string, i: number, end: number): number {
 }
 
 // container を出切った後（top-level を超えた）残りの安全判定。直後が glued な非区切り（bare/quote/backslash）は
-// 偽装の疑い（`}O0F144S64`）→ 破損。それ以外は container 外＝quote を含まない純プローズのみ保持。
+// 偽装の疑い（`}O0F144S64`）→ 破損。それ以外は container 外＝quote も余剰 closer も含まない純プローズのみ保持。
+// v6.9（thread r3565808693）: 余分な `}`/`]` を安全な prose 開始文字に含めない（glue set から除外）。
+// 余剰 closer は proseTailPureText 側でも全域拒否される（`} } SECRET` のような空白挟みも fail-closed）。
 function afterContainerExit(s: string, from: number, end: number): boolean {
   if (from < end) {
     const c = s[from]!;
-    if (!/[\s,;:)}\]]/.test(c)) return false; // 例: `}O0F144S64` のような glued 継続は不正
+    if (!/[\s,;:)]/.test(c)) return false; // 例: `}O0F144S64`・`}}` のような glued 継続/余剰 closer は不正
   }
   return proseTailPureText(s, from, end);
 }
 
-// v6.8 Grammar P1: mask した値の直後の tail を、**container stack 付き bounded single-pass parser**で
-// JSON 文法として検証する。object は KEY→COLON→VALUE→COMMA_OR_END、array は VALUE→COMMA_OR_END を区別し、
-// object の comma 後を array 同様の値位置として受理する v6.7 の誤りを塞ぐ（`,"secret"}` = key 無し value を拒否）。
+// v6.8 Grammar P1 → v6.9 完全クローズ: mask した値の直後の tail を、**container stack 付き bounded
+// single-pass parser**で JSON 文法として検証する。object は KEY→COLON→VALUE→COMMA_OR_END、array は
+// VALUE→COMMA_OR_END を区別する。v6.9（threads r3565804348/r3565863141）: 「container 開始直後」と
+// 「comma 直後」を別 state に分離し、comma 後は必ず key+colon+value（object）/ value（array）を要求する
+// ＝ trailing comma（`{"a":1,}` / `[1,]`）を終端として受理しない。
 // - 開始状態: 値を直属 container（stack top）の中で「値を出した直後」= AFTER_VALUE。
 // - stack が空になった（値を含む container を全部閉じた）残りは container 外＝prose（`afterContainerExit`）。
 // - 文法を確定できない字（構造内の裸 `\`・値位置でない token・key 位置の非 string 等）は false ＝末尾まで fail-closed。
 // O(n)・8KB 走査上限（呼び出し側で担保）・ReDoS/再帰なし・文字列固有パッチなし。
+type TailMode =
+  | 'AFTER_VALUE'
+  | 'OBJ_KEY_OR_END' // object 開始直後: key または `}`（空 object）
+  | 'OBJ_KEY_REQUIRED' // object の comma 直後: key 必須（`}` = trailing comma → 拒否）
+  | 'OBJ_COLON'
+  | 'VALUE_OR_END' // array 開始直後: value または `]`（空 array）
+  | 'VALUE_REQUIRED'; // comma/colon 直後: value 必須（closer = trailing comma → 拒否）
+
 function grammarTailValid(s: string, from: number, end: number, initialStack: string[]): boolean {
   const stack = initialStack.slice();
   let i = from;
-  // AFTER_VALUE | OBJ_KEY | OBJ_COLON | VALUE
-  let mode: 'AFTER_VALUE' | 'OBJ_KEY' | 'OBJ_COLON' | 'VALUE' = 'AFTER_VALUE';
+  let mode: TailMode = 'AFTER_VALUE';
   const skipWs = () => {
     while (i < end) {
       const c = s[i]!;
@@ -218,7 +240,7 @@ function grammarTailValid(s: string, from: number, end: number, initialStack: st
       if (top === '{') {
         if (c === ',') {
           i++;
-          mode = 'OBJ_KEY';
+          mode = 'OBJ_KEY_REQUIRED'; // comma 後の key は必須（trailing comma 拒否）
           continue;
         }
         if (c === '}') {
@@ -234,7 +256,7 @@ function grammarTailValid(s: string, from: number, end: number, initialStack: st
       // array
       if (c === ',') {
         i++;
-        mode = 'VALUE';
+        mode = 'VALUE_REQUIRED'; // comma 後の value は必須（trailing comma 拒否）
         continue;
       }
       if (c === ']') {
@@ -247,7 +269,7 @@ function grammarTailValid(s: string, from: number, end: number, initialStack: st
       return false;
     }
 
-    if (mode === 'OBJ_KEY') {
+    if (mode === 'OBJ_KEY_OR_END' || mode === 'OBJ_KEY_REQUIRED') {
       if (c === '"' || c === "'") {
         const r = consumeQuotedString(s, i, end);
         if (r < 0) return false;
@@ -255,8 +277,8 @@ function grammarTailValid(s: string, from: number, end: number, initialStack: st
         mode = 'OBJ_COLON';
         continue;
       }
-      if (c === '}') {
-        // 末尾 comma 許容（`{"a":1,}`）＝ 空/末尾で閉じる。
+      if (c === '}' && mode === 'OBJ_KEY_OR_END') {
+        // 空 object（`{}`）のみ許容。comma 直後（OBJ_KEY_REQUIRED）の `}` = trailing comma → 拒否。
         stack.pop();
         i++;
         if (stack.length === 0) return afterContainerExit(s, i, end);
@@ -269,13 +291,13 @@ function grammarTailValid(s: string, from: number, end: number, initialStack: st
     if (mode === 'OBJ_COLON') {
       if (c === ':') {
         i++;
-        mode = 'VALUE';
+        mode = 'VALUE_REQUIRED';
         continue;
       }
       return false;
     }
 
-    // mode === 'VALUE'
+    // mode === 'VALUE_OR_END' | 'VALUE_REQUIRED'
     if (c === '"' || c === "'") {
       const r = consumeQuotedString(s, i, end);
       if (r < 0) return false;
@@ -286,18 +308,18 @@ function grammarTailValid(s: string, from: number, end: number, initialStack: st
     if (c === '{') {
       stack.push('{');
       i++;
-      mode = 'OBJ_KEY'; // 直後 `}` は OBJ_KEY で空 object として許容
+      mode = 'OBJ_KEY_OR_END'; // 直後 `}` は空 object として許容
       continue;
     }
     if (c === '[') {
       stack.push('[');
       i++;
-      mode = 'VALUE'; // 直後 `]` は下の array-close で空 array として許容
+      mode = 'VALUE_OR_END'; // 直後 `]` は空 array として許容
       continue;
     }
     if (c === ']') {
-      // 空 array（`[]`）または末尾 comma（`[1,]`）。array 内でのみ有効。
-      if (stack.length > 0 && stack[stack.length - 1] === '[') {
+      // 空 array（`[]`）のみ許容（VALUE_OR_END）。comma 直後（VALUE_REQUIRED）の `]` = trailing comma → 拒否。
+      if (mode === 'VALUE_OR_END' && stack.length > 0 && stack[stack.length - 1] === '[') {
         stack.pop();
         i++;
         if (stack.length === 0) return afterContainerExit(s, i, end);
@@ -306,7 +328,7 @@ function grammarTailValid(s: string, from: number, end: number, initialStack: st
       }
       return false;
     }
-    // bare token（値位置）: JSON プリミティブ（number/true/false/null）だけ許容。
+    // bare token（値位置）: strict JSON プリミティブ（number/true/false/null）だけ許容。
     let j = i;
     while (j < end && !/[\s,;:{}[\]()"'\\]/.test(s[j]!)) j++;
     if (j === i || !isJsonPrimitiveToken(s.slice(i, j))) return false;
@@ -345,7 +367,14 @@ function scanValueEnd(s: string, start: number, headerKey: boolean): number {
     //   value（`,"secret"}` / `,{...}` / `,[...]`）を拒否＝末尾まで fail-closed。
     const q = s[p]!; // 開始引用符文字（" または '）
     const openDepth = p - start; // 開始引用符の直前 backslash 個数（= 実 escape depth）
-    const containerStack = buildContainerStack(s, p); // 値の直属 container スタック（top が直属）
+    const ctx = buildContainerStack(s, p); // 値の直属 container スタック（top が直属）＋prefix 構文妥当性
+    // v6.9（thread r3565808689）: prefix が既に不正（mismatched closer / underflow）なら stack を信頼できない
+    // → 構造検証不能＝末尾まで fail-closed。tail だけ直しても prefix mutation が抜けるため scanner 全体で拒否。
+    if (!ctx.valid) return s.length;
+    // v6.9（thread r3565825674）: sensitive key が array の値位置に直接現れる構文（`["password":"abc",...]`）は
+    // JSON として不正（key:value は object field のみ）→ tail を通常 array 要素として信頼せず末尾まで fail-closed。
+    if (ctx.stack.length > 0 && ctx.stack[ctx.stack.length - 1] === '[') return s.length;
+    const containerStack = ctx.stack;
     let firstClose = -1;
     for (let k = p + 1; k < s.length; k++) {
       if (s[k] === q && countBackslashesBefore(s, k) === openDepth) {

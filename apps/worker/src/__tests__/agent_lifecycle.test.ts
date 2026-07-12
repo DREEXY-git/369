@@ -338,6 +338,56 @@ describe('runWithAgentLifecycle（v5.8 hardening）', () => {
     expect(inputs.length).toBeGreaterThanOrEqual(20);
   });
 
+  it('v6.9 P1: trailing comma・非strict number・mismatched/underflow/extra closer・array内keyが3経路で0残存', async () => {
+    // Codex 10 mutation（threads r3565804348/r3565805875/r3565808689/r3565808693/r3565825674/r3565863141-150）
+    // を worker の保存値・再throw・Action要約で網羅する（direct は shared unit 側）。
+    const TAIL = 'CODEXTAIL68SECRET';
+    const INNER = 'INNERSECRET68';
+    const KEYS = ['password', 'token', 'authorization', 'session'];
+    const mk = (k: string): string[] => [
+      `upstream {"${k}":"${INNER}",} ${TAIL} boom`, // object trailing comma
+      `upstream {"a":{"${k}":"${INNER}",}} ${TAIL} boom`, // nested object trailing comma
+      `upstream [{"${k}":"${INNER}"},] ${TAIL} boom`, // array trailing comma
+      `upstream {"${k}":"${INNER}","x":01} ${TAIL} boom`, // leading zero number
+      `upstream {"${k}":"${INNER}","x":-01} ${TAIL} boom`,
+      `upstream [{]"${k}":"${INNER}"] ${TAIL} boom`, // mismatched closer prefix
+      `upstream }}{"${k}":"${INNER}"} ${TAIL} boom`, // underflow closer prefix
+      `upstream {"${k}":"${INNER}"}} ${TAIL} boom`, // extra closer after exit
+      `upstream ["${k}":"${INNER}","${TAIL}"] boom`, // array 内 sensitive key 構文
+      `upstream {"${k}":"${INNER}",} PREV68MIDV68POST boom`,
+    ];
+    const inputs = KEYS.flatMap(mk);
+
+    let i = 0;
+    for (const input of inputs) {
+      const { db, runs, actions } = makeDb();
+      await expect(
+        runWithAgentLifecycle({ ...params, task: `v69-save-${i}` }, async () => {
+          throw new Error(input);
+        }, db),
+      ).rejects.toThrow(/agent lifecycle job failed/);
+      expect(runs[0]!.status).toBe('FAILED');
+      for (const sec of [TAIL, INNER, 'PREV68MIDV68POST']) {
+        expect(runs[0]!.error, `保存値に残存: ${JSON.stringify(runs[0]!.error)}`).not.toContain(sec);
+        for (const a of actions as { data: { summary: string } }[]) {
+          expect(a.data.summary, `Action要約に残存: ${a.data.summary}`).not.toContain(sec);
+        }
+      }
+      try {
+        await runWithAgentLifecycle({ ...params, task: `v69-rethrow-${i}` }, async () => {
+          throw new Error(input);
+        }, db);
+        expect.unreachable('should throw');
+      } catch (e) {
+        for (const sec of [TAIL, INNER, 'PREV68MIDV68POST']) {
+          expect(String(e), `再throwに残存: ${String(e)}`).not.toContain(sec);
+        }
+      }
+      i += 1;
+    }
+    expect(inputs.length).toBeGreaterThanOrEqual(40);
+  });
+
   it('二重 Run 防止: 新鮮な RUNNING が既存なら実行せず skip する', async () => {
     const { db } = makeDb({
       preexisting: [

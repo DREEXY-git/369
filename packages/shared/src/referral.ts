@@ -1,0 +1,151 @@
+// C22 Growth Channels — 紹介・リファラルの read-only 分析（v7.2 Lane B・roadmap76/83 §4・schema-free）。
+// 既存 Customer/Deal の射影データから「紹介元候補」を決定論的に導出する純ロジック。
+// **候補の算出まで**であり、確定・報酬・外部送信・公開は一切行わない（人間 Gate・封印中）。
+// PII 最小化: 本モジュールは顧客名・連絡先を受け取らず、参照 id と非 PII の実測値だけで判定する。
+// 下書き（Fake）はプレースホルダ差し込み方式で、本文へ実名を複製しない。
+
+/** 紹介系4チャネル。外部運用（配布・招待・報酬支払）はすべて封印中（人間 Gate）。 */
+export const REFERRAL_CHANNELS = [
+  {
+    key: 'referral',
+    label: '顧客紹介',
+    description: '既存顧客からの紹介。候補分析と下書きまで（依頼送信は既存 outreach 承認経路のみ）。',
+    dataSource: 'internal' as const, // 既存 Customer/Deal から候補を導出できる
+  },
+  {
+    key: 'affiliate',
+    label: 'アフィリエイト',
+    description: '成果報酬型の外部パートナー。外部連携が封印中のため対象データなし。',
+    dataSource: 'external' as const, // 外部データが必要＝現時点で候補 0 が正しい表示
+  },
+  {
+    key: 'creator',
+    label: 'クリエイター協業',
+    description: 'インフルエンサー/制作者との協業。外部連携が封印中のため対象データなし。',
+    dataSource: 'external' as const,
+  },
+  {
+    key: 'business_network',
+    label: 'ビジネスネットワーク',
+    description: '取引実績の厚い顧客との相互紹介網。候補分析まで（合意・契約は人間）。',
+    dataSource: 'internal' as const,
+  },
+] as const;
+
+export type ReferralChannelKey = (typeof REFERRAL_CHANNELS)[number]['key'];
+
+/** 紹介元候補判定の入力（PII を含まない射影のみ・名前や連絡先は渡さない）。 */
+export interface ReferralSourceInput {
+  /** Customer.id（参照のみ）。 */
+  customerId: string;
+  rank: string; // A/B/C/D
+  status: string; // active など
+  satisfaction: number | null; // 0-100・null は未計測
+  churnRisk: number | null; // 0-100・null は未計測
+  /** WON stage の Deal 件数（実測）。 */
+  wonDeals: number;
+  lastContactAt: Date | null;
+}
+
+export interface ReferralCandidate {
+  customerId: string;
+  eligible: boolean;
+  /** 0-100 の決定論スコア（同一入力→同一出力）。 */
+  score: number;
+  /** 候補根拠（実測由来のみ・推測 ROI や架空成果を含まない）。 */
+  reasons: string[];
+  /** 人間が慎重判断すべきフラグ（自動 BAN・自動除外はしない）。 */
+  cautionFlags: string[];
+  /** 推奨チャネル（internal データで判定できる referral / business_network のみ）。 */
+  suggestedChannel: Extract<ReferralChannelKey, 'referral' | 'business_network'>;
+}
+
+const RECENT_CONTACT_MS = 90 * 24 * 60 * 60 * 1000;
+
+/**
+ * 紹介元候補の決定論判定。
+ * - 取引実績（WON deal）が 1 件以上あることが前提（実績のない顧客へ紹介依頼はしない）。
+ * - satisfaction/churnRisk が未計測（null）の場合は加点も減点もせず「未計測」を明示する
+ *   （計測なしを 0 や高評価と混同しない・outcome-evidence と同じ規律）。
+ */
+export function classifyReferralSource(input: ReferralSourceInput, now: Date): ReferralCandidate {
+  const reasons: string[] = [];
+  const cautionFlags: string[] = [];
+  let score = 0;
+
+  if (input.wonDeals >= 1) {
+    score += 40;
+    reasons.push(`成約実績 ${input.wonDeals} 件（実測）`);
+  }
+  if (input.rank === 'A') {
+    score += 25;
+    reasons.push('顧客ランク A');
+  } else if (input.rank === 'B') {
+    score += 15;
+    reasons.push('顧客ランク B');
+  }
+  if (input.satisfaction == null) {
+    cautionFlags.push('満足度は未計測（実測なし・推測しない）');
+  } else if (input.satisfaction >= 70) {
+    score += 20;
+    reasons.push(`満足度 ${input.satisfaction}（実測）`);
+  }
+  if (input.churnRisk != null && input.churnRisk >= 70) {
+    cautionFlags.push(`解約リスク ${input.churnRisk}（紹介依頼は慎重に・人間判断）`);
+  }
+  if (input.lastContactAt && now.getTime() - input.lastContactAt.getTime() <= RECENT_CONTACT_MS) {
+    score += 15;
+    reasons.push('直近90日以内に接触あり');
+  } else {
+    cautionFlags.push('最終接触が90日以上前または記録なし');
+  }
+  if (input.status !== 'active') {
+    cautionFlags.push(`顧客ステータスが ${input.status}（active ではない）`);
+  }
+
+  const eligible = input.status === 'active' && input.wonDeals >= 1 && score >= 40;
+  // 実績が厚い（成約2件以上かつランクA）場合のみ相互紹介網の候補・それ以外は通常の顧客紹介。
+  const suggestedChannel = input.wonDeals >= 2 && input.rank === 'A' ? 'business_network' : 'referral';
+  return { customerId: input.customerId, eligible, score: Math.min(100, score), reasons, cautionFlags, suggestedChannel };
+}
+
+/** ステマ防止の関係性明示（PR 表記）。下書きから削除できない固定文言（roadmap76 §3）。 */
+export const REFERRAL_PR_DISCLOSURE =
+  '【PR・関係性の明示】本紹介により紹介者へ特典が発生する場合があります。';
+
+/** 報酬に関する注記（AI は税務を断定助言しない・roadmap76 §3）。 */
+export const REFERRAL_REWARD_TAX_NOTE =
+  '報酬・特典は候補の算出までです。確定は人間の承認が必要で、税務上の取扱いは専門家への確認が必要です。';
+
+/** 下書き内の差し込みプレースホルダ（本文へ実名・連絡先を複製しない）。 */
+export const REFERRAL_NAME_PLACEHOLDER = '{お客様名}';
+export const REFERRAL_COMPANY_PLACEHOLDER = '{自社名}';
+
+export interface ReferralDraft {
+  subject: string;
+  body: string;
+}
+
+/**
+ * 紹介依頼文の決定論的 Fake 下書き（内部プレビュー専用・外部送信不可）。
+ * - 実名・連絡先は受け取らず、プレースホルダのみで組み立てる（PII 非複製）。
+ * - PR 表記（REFERRAL_PR_DISCLOSURE）は入力に関わらず必ず末尾に付与され、削除経路がない。
+ * - channel により文面を切り替えるが、外部作用（送信・公開・報酬）は一切発生しない。
+ */
+export function buildReferralDraft(channel: Extract<ReferralChannelKey, 'referral' | 'business_network'>): ReferralDraft {
+  const subject =
+    channel === 'business_network'
+      ? `${REFERRAL_NAME_PLACEHOLDER}さま｜相互のお取引先ご紹介のご相談`
+      : `${REFERRAL_NAME_PLACEHOLDER}さま｜お知り合いのご紹介のお願い`;
+  const intro =
+    channel === 'business_network'
+      ? `いつも${REFERRAL_COMPANY_PLACEHOLDER}をお引き立ていただきありがとうございます。\n貴社とのお取引実績を踏まえ、相互にお取引先をご紹介し合える関係づくりについてご相談させてください。`
+      : `いつも${REFERRAL_COMPANY_PLACEHOLDER}をご利用いただきありがとうございます。\nもし当社のサービスがお役に立てそうなお知り合いがいらっしゃいましたら、ご紹介いただけますと幸いです。`;
+  const body = [
+    intro,
+    'ご紹介にあたって、被紹介者さまへの事前の同意確認をお願いしております（同意のない連絡先へは当社から連絡いたしません）。',
+    REFERRAL_REWARD_TAX_NOTE,
+    REFERRAL_PR_DISCLOSURE,
+  ].join('\n\n');
+  return { subject, body };
+}

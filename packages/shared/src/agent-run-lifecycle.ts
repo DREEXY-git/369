@@ -11,8 +11,10 @@ export type RunLifecycleStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' |
 export const RUN_TRANSITIONS: Record<RunLifecycleStatus, readonly RunLifecycleStatus[]> = {
   QUEUED: ['RUNNING', 'FAILED'],
   RUNNING: ['SUCCEEDED', 'FAILED', 'NEEDS_APPROVAL'],
-  // 承認後の再開は RUNNING、却下は FAILED（人間の判断を経由。AI が承認/却下することはない）。
-  NEEDS_APPROVAL: ['RUNNING', 'FAILED'],
+  // 却下は FAILED、worker による再開実行は RUNNING（人間の判断を経由。AI が承認/却下することはない）。
+  // v7.0 R2（Codex P2-3 comment 4951050657）: 人間の approve は QUEUED（承認済み・再開待ち）へ戻す。
+  // 実行証拠なしに SUCCEEDED を成果として記録しない（実 queue 再投入・実行は P4Q Gate の worker 側）。
+  NEEDS_APPROVAL: ['RUNNING', 'FAILED', 'QUEUED'],
   SUCCEEDED: [],
   FAILED: [],
 };
@@ -73,6 +75,30 @@ export function isStaleActiveRun(
   if (run.status !== 'RUNNING' && run.status !== 'QUEUED') return false;
   if (!run.startedAt) return true;
   return now.getTime() - run.startedAt.getTime() > staleThresholdMs;
+}
+
+/** 承認ゲートがこの時間を超えて判断されない場合、stale（文脈が古い）扱い＝人間の明示再確認が必要。 */
+export const GATE_DECISION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * AI 承認ゲート判断前の stale 判定の単一正本（v7.0 R2・Codex P2-2 comment 4951050657）。
+ * 承認（approve）は「人間の判断時点で文脈が新鮮」であることを前提にするため、次を stale とする:
+ * - gate.createdAt が null（fail-closed: 新鮮と断定できない）
+ * - gate.createdAt が maxAgeMs より古い（判断待ちが長すぎ、run の入力・状況が古い可能性）
+ * - 対象 run が NEEDS_APPROVAL なのに startedAt が null（実行系譜を断定できない・fail-closed）
+ * stale な gate の approve は自動では通さず、人間の明示的な再確認（confirmStale）を要求する。
+ * reject は常に安全側（終了）なので stale 判定の対象外（呼び出し側の方針）。
+ */
+export function isStaleApprovalGate(
+  gate: { createdAt: Date | null },
+  run: { status: RunLifecycleStatus; startedAt: Date | null } | null,
+  now: Date,
+  maxAgeMs: number = GATE_DECISION_MAX_AGE_MS,
+): boolean {
+  if (!gate.createdAt) return true;
+  if (now.getTime() - gate.createdAt.getTime() > maxAgeMs) return true;
+  if (run && run.status === 'NEEDS_APPROVAL' && !run.startedAt) return true;
+  return false;
 }
 
 /** @deprecated v6.2: `isStaleActiveRun` へ統一（RUNNING/QUEUED・null=stale）。後方互換のため残置。 */

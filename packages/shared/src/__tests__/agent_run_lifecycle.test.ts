@@ -6,6 +6,8 @@ import {
   maskRunError,
   isStaleActiveRun,
   STALE_RUNNING_MS,
+  isStaleApprovalGate,
+  GATE_DECISION_MAX_AGE_MS,
 } from '../agent-run-lifecycle';
 
 describe('canTransitionRun（許可表・terminal 保護）', () => {
@@ -23,6 +25,12 @@ describe('canTransitionRun（許可表・terminal 保護）', () => {
     expect(canTransitionRun('FAILED', 'RUNNING')).toBe(false);
     expect(canTransitionRun('FAILED', 'QUEUED')).toBe(false);
   });
+  // v7.0 R2（Codex P2-3）: 人間の approve は QUEUED（承認済み・再開待ち）。実行なしの SUCCEEDED 化を許さない。
+  it('NEEDS_APPROVAL→QUEUED（承認済み・再開待ち）は許可・QUEUED→NEEDS_APPROVAL は不可', () => {
+    expect(canTransitionRun('NEEDS_APPROVAL', 'QUEUED')).toBe(true);
+    expect(canTransitionRun('QUEUED', 'NEEDS_APPROVAL')).toBe(false);
+  });
+
   it('NEEDS_APPROVAL→SUCCEEDED の直接遷移は不可（承認後は必ず RUNNING を経由）', () => {
     expect(canTransitionRun('NEEDS_APPROVAL', 'SUCCEEDED')).toBe(false);
   });
@@ -686,5 +694,31 @@ describe('maskRunError v6.9（trailing comma・strict number・closer kind/under
     expect(performance.now() - started).toBeLessThan(1000);
     expect(out).not.toContain(TAIL);
     expect(out.length).toBeLessThanOrEqual(201);
+  });
+});
+
+// v7.0 R2（Codex P2-2 comment 4951050657）: AI 承認ゲート判断前の stale 規約（単一正本）。
+describe('isStaleApprovalGate（表形式）', () => {
+  const now = new Date('2026-07-12T12:00:00Z');
+  const fresh = new Date(now.getTime() - 60 * 60 * 1000); // 1h 前
+  const overAge = new Date(now.getTime() - GATE_DECISION_MAX_AGE_MS - 1);
+  const exactAge = new Date(now.getTime() - GATE_DECISION_MAX_AGE_MS); // 閾値ちょうど（> 判定＝stale ではない）
+  const run = (status: 'NEEDS_APPROVAL' | 'RUNNING', startedAt: Date | null) => ({ status, startedAt } as const);
+
+  it.each([
+    ['fresh gate + fresh NEEDS_APPROVAL run', fresh, run('NEEDS_APPROVAL', fresh), false],
+    ['gate createdAt が閾値超 → stale', overAge, run('NEEDS_APPROVAL', fresh), true],
+    ['gate createdAt が閾値ちょうど → stale ではない（> 判定）', exactAge, run('NEEDS_APPROVAL', fresh), false],
+    ['gate createdAt null → fail-closed で stale', null, run('NEEDS_APPROVAL', fresh), true],
+    ['NEEDS_APPROVAL run の startedAt null → fail-closed で stale', fresh, run('NEEDS_APPROVAL', null), true],
+    ['run が NEEDS_APPROVAL 以外なら startedAt null でも stale 条件に該当しない', fresh, run('RUNNING', null), false],
+    ['孤立 gate（run null）は createdAt だけで判定・fresh なら stale ではない', fresh, null, false],
+    ['孤立 gate（run null）でも createdAt が古ければ stale', overAge, null, true],
+  ] as const)('%s', (_name, createdAt, runRow, expected) => {
+    expect(isStaleApprovalGate({ createdAt }, runRow, now)).toBe(expected);
+  });
+
+  it('maxAgeMs は上書き可能（短い閾値で stale になる）', () => {
+    expect(isStaleApprovalGate({ createdAt: fresh }, null, now, 30 * 60 * 1000)).toBe(true);
   });
 });

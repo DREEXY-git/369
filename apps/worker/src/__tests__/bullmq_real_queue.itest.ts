@@ -283,4 +283,61 @@ describe('BullMQ 実 queue 証拠（loopback Redis・v7.0 Lane P4Q）', () => {
     expect(runs[0]!.status).toBe('SUCCEEDED');
     expect(await queue.getWaitingCount()).toBe(0);
   });
+
+  it('稼働 worker の停止→再起動: 停止中の job は処理されず、再起動した新 worker が処理する（v7.0 R2）', async () => {
+    // Codex comment 4951050657: 「worker 不在からの初回起動」ではなく、実際に処理実績のある worker を
+    // close() で停止 → 停止中 enqueue → 別 instance の worker を再起動、の順で検証する。
+    const { db, runs, setCtx } = makeDb();
+    const { queue, entry } = await makeQueue('q-stop-restart');
+    const processor = async (job: Job) => {
+      setCtx({ tenantId: job.data.tenantId, task: job.data.task });
+      return runWithAgentLifecycle(
+        { tenantId: job.data.tenantId, agentKey: 'chief_of_staff', task: job.data.task, summary: 't' },
+        async () => ({ ok: true }),
+        db,
+      );
+    };
+    // 1) worker A が 1 件処理（処理実績を作る）。
+    const workerA = startWorker(entry, 'q-stop-restart', processor);
+    await queue.add('j', { tenantId: 't1', task: 'sr-task-1' }, { jobId: 'sr-1' });
+    await waitFinal(workerA, 'sr-1', 'completed');
+    expect(runs.filter((r) => r.status === 'SUCCEEDED')).toHaveLength(1);
+    // 2) worker A を停止。停止中に enqueue した job は処理されない（waiting のまま）。
+    await workerA.close();
+    await queue.add('j', { tenantId: 't1', task: 'sr-task-2' }, { jobId: 'sr-2' });
+    await new Promise((r) => setTimeout(r, 500));
+    expect(await queue.getWaitingCount()).toBe(1);
+    expect(runs).toHaveLength(1); // 停止中は run が増えない
+    // 3) 新 instance の worker B を再起動 → 停止中の job が処理され整合する。
+    const workerB = startWorker(entry, 'q-stop-restart', processor);
+    await waitFinal(workerB, 'sr-2', 'completed');
+    expect(runs).toHaveLength(2);
+    expect(runs.every((r) => r.status === 'SUCCEEDED')).toBe(true);
+    expect(await queue.getWaitingCount()).toBe(0);
+  });
+
+  it('job data allowlist: enqueue payload は {tenantId, task} のみ・raw Redis の job data に秘密形状 0（v7.0 R2）', async () => {
+    // Codex comment 4951050657: error sentinel だけでなく「job data に秘密を投入しない」規約を証拠化する。
+    // 許可キーは tenantId / task のみ（prompt 本文・PII・credential を queue へ載せない契約）。
+    const ALLOWED_KEYS = ['tenantId', 'task'];
+    const { queue } = await makeQueue('q-allow');
+    await queue.add('j', { tenantId: 't1', task: 'allow-task-1' }, { jobId: 'allow-1' });
+    await queue.add('j', { tenantId: 't2', task: 'allow-task-2' }, { jobId: 'allow-2' });
+    const keys = await connection.keys(`${PREFIX}:q-allow:*`);
+    let inspectedJobs = 0;
+    for (const key of keys) {
+      if ((await connection.type(key)) !== 'hash') continue;
+      const hash = await connection.hgetall(key);
+      if (!hash.data) continue; // job hash 以外（meta 等）は対象外
+      inspectedJobs += 1;
+      const data = JSON.parse(hash.data) as Record<string, unknown>;
+      expect(Object.keys(data).sort(), `job ${key} のキーが allowlist 外`).toEqual([...ALLOWED_KEYS].sort());
+      // 値にも秘密形状（password/token/key=value/Bearer 等）が含まれない。
+      const flat = JSON.stringify(data);
+      for (const pat of [/password/i, /bearer\s+/i, /api[_-]?key/i, /secret/i, /authorization/i]) {
+        expect(flat, `job ${key} data に秘密形状`).not.toMatch(pat);
+      }
+    }
+    expect(inspectedJobs).toBeGreaterThanOrEqual(2); // 検査が空振りしていない
+  });
 });

@@ -21,6 +21,8 @@ export async function decideAiGateAction(formData: FormData) {
   const gateId = String(formData.get('gateId') ?? '').trim();
   const decision = String(formData.get('decision') ?? '');
   const note = String(formData.get('note') ?? '');
+  // v7.0 R2（Codex P2-2）: stale gate（24h 超・fail-closed）の承認は人間の明示再確認 checkbox が必須。
+  const confirmStale = String(formData.get('confirmStale') ?? '') === '1';
   if (!/^[a-z0-9]{20,40}$/i.test(gateId) || (decision !== 'approve' && decision !== 'reject')) {
     redirect('/approvals?error=input');
   }
@@ -34,6 +36,7 @@ export async function decideAiGateAction(formData: FormData) {
       decidedById: user.userId,
       note,
       actorIsAi: user.isAi,
+      confirmStale,
     });
   } catch {
     // run 消失/terminal/競合 → 全体 rollback 済み（gate は PENDING のまま）。
@@ -43,6 +46,7 @@ export async function decideAiGateAction(formData: FormData) {
   revalidatePath('/approvals');
   revalidatePath('/ai-office');
   if (r.outcome === 'forbidden') redirect('/approvals?denied=1');
+  if (r.outcome === 'stale') redirect('/approvals?error=stale_gate'); // 何も変更していない（再確認が必要）
   redirect('/approvals');
 }
 

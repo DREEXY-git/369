@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
@@ -12,8 +13,11 @@ import {
   CHANNEL_DATA_STATE_LABEL,
   channelDataState,
   summarizeAdsMetrics,
+  canRequestSuggestionApproval,
+  suggestionApprovalLabel,
 } from '@hokko/shared';
 import { generateAdsImprovementDraftAction } from '../actions';
+import { requestAdSuggestionApprovalAction } from './actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +34,7 @@ interface AdsDraftOutput {
   nextHumanChecks?: string[];
 }
 
-export default async function AdsReadModelPage({ searchParams }: { searchParams: Promise<{ generated?: string; blocked?: string; denied?: string }> }) {
+export default async function AdsReadModelPage({ searchParams }: { searchParams: Promise<{ generated?: string; blocked?: string; denied?: string; requested?: string; already?: string; error?: string; highlight?: string }> }) {
   const user = await requireUser();
   // ページ基礎権限: marketing:read（データ取得前・外部ロール/AI_ASSISTANT を遮断）。
   if (!hasPermission(user, 'marketing', 'read')) {
@@ -46,7 +50,10 @@ export default async function AdsReadModelPage({ searchParams }: { searchParams:
   const t = user.tenantId;
   const canGenerate = hasPermission(user, 'marketing', 'create') && !user.isAi;
 
-  const [campaigns, drafts] = await Promise.all([
+  // C19 承認ブリッジ（roadmap83 案A）: 申請は marketing:update かつ人間のみ。
+  const canRequest = hasPermission(user, 'marketing', 'update') && !user.isAi;
+
+  const [campaigns, drafts, suggestions] = await Promise.all([
     prisma.marketingCampaign.findMany({
       where: { tenantId: t },
       include: { metrics: true },
@@ -57,6 +64,12 @@ export default async function AdsReadModelPage({ searchParams }: { searchParams:
       orderBy: { createdAt: 'desc' },
       take: 5,
       select: { id: true, entityId: true, output: true, confidence: true, createdAt: true },
+    }),
+    prisma.marketingSuggestion.findMany({
+      where: { tenantId: t },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: { id: true, title: true, detail: true, approvalStatus: true, createdAt: true },
     }),
   ]);
 
@@ -103,6 +116,10 @@ export default async function AdsReadModelPage({ searchParams }: { searchParams:
       {sp.generated ? <div className="mb-3 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">改善案の下書きを生成しました（実行はされません）。</div> : null}
       {sp.blocked ? <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">入力の安全検査により生成を中止しました（AI 安全ログに記録済み）。</div> : null}
       {sp.denied ? <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">この操作を行う権限がありません。</div> : null}
+      {sp.requested ? <div className="mb-3 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800" data-testid="suggestion-requested-banner">承認申請を作成しました。<a href="/approvals" className="underline">承認待ち一覧</a>で人間が承認/却下できます（広告の実変更・外部送信は伴いません）。</div> : null}
+      {sp.already ? <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">この改善案は既に承認申請中または承認済みです（重複申請は作成されません）。</div> : null}
+      {sp.error === 'notfound' ? <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">対象の改善案が見つかりません。</div> : null}
+      {sp.error === 'input' ? <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">入力が不正です。</div> : null}
 
       <Card className="mb-4">
         <CardHeader><CardTitle>チャネル状態盤</CardTitle></CardHeader>
@@ -160,6 +177,13 @@ export default async function AdsReadModelPage({ searchParams }: { searchParams:
                         {canGenerate ? (
                           <form action={generateAdsImprovementDraftAction}>
                             <input type="hidden" name="campaignId" value={c.id} />
+                            {/* 冪等キー = MarketingSuggestion の決定的 PK（render ごとに発行）。同一フォームの
+                                再送信（二重クリック/ブラウザ再送/並行）は DB の PK unique 制約で 1 件に収束する。 */}
+                            <input
+                              type="hidden"
+                              name="idempotencyKey"
+                              value={`c${randomUUID().replace(/-/g, '').slice(0, 24)}`}
+                            />
                             <Button type="submit" variant="outline" data-testid="ads-generate-draft">下書きを生成</Button>
                           </form>
                         ) : (
@@ -175,7 +199,52 @@ export default async function AdsReadModelPage({ searchParams }: { searchParams:
         </CardContent>
       </Card>
 
-      <Card>
+      <Card data-testid="suggestion-review-card">
+        <CardHeader><CardTitle>改善案の承認（review-only・実行はされません）</CardTitle></CardHeader>
+        <CardContent>
+          <p className="mb-2 text-xs text-muted-foreground">
+            生成された改善案を人間レビューへ提出できます。承認しても広告の実変更・予算変更・出稿・外部送信は
+            一切行われません（社内の承認状態のみ・roadmap83 案A）。
+          </p>
+          {suggestions.length === 0 ? (
+            <EmptyState title="改善案はまだありません" hint="下の「下書きを生成」で作成すると、ここに承認申請できる改善案が並びます。" />
+          ) : (
+            <div className="space-y-2">
+              {suggestions.map((s) => (
+                <div
+                  key={s.id}
+                  id={`suggestion-${s.id}`}
+                  className={`rounded-md border p-3 ${sp.highlight === s.id ? 'bg-amber-50' : ''}`}
+                  data-testid={`ads-suggestion-${s.id}`}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">{s.title}</span>
+                    <Badge
+                      tone={s.approvalStatus === 'approved' ? 'green' : s.approvalStatus === 'pending' ? 'amber' : s.approvalStatus === 'rejected' ? 'red' : 'slate'}
+                      data-testid={`suggestion-approval-status-${s.id}`}
+                    >
+                      {suggestionApprovalLabel(s.approvalStatus)}
+                    </Badge>
+                    <span className="ml-auto text-xs text-muted-foreground">{formatDateTime(s.createdAt)}</span>
+                  </div>
+                  {s.detail ? <div className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">{s.detail.slice(0, 300)}</div> : null}
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {canRequest && canRequestSuggestionApproval(s.approvalStatus) ? (
+                      <form action={requestAdSuggestionApprovalAction}>
+                        <input type="hidden" name="suggestionId" value={s.id} />
+                        <Button type="submit" data-testid={`suggestion-request-approval-${s.id}`}>承認申請</Button>
+                      </form>
+                    ) : null}
+                    <a href="/approvals" className="text-[11px] text-blue-700 underline">承認一覧へ</a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="mb-4">
         <CardHeader><CardTitle>AI 改善案の下書き（最新5件・実行はされません）</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           {drafts.length === 0 ? (

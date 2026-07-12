@@ -1701,9 +1701,13 @@ model MarketingSuggestion {
   tenantId  String
   title     String
   detail    String   @default("")
+  // C19 承認ブリッジ（roadmap83 案A・人間承認済み 2026-07-12）: none | pending | approved | rejected。
+  // none/rejected → pending の条件付き updateMany（CAS）が原子的な重複申請防止の正本（C21 と同型）。
+  approvalStatus String @default("none")
   createdAt DateTime @default(now())
 
   @@index([tenantId])
+  @@index([tenantId, approvalStatus])
 }
 
 // ============================ 会議・録音・議事録 ==============================

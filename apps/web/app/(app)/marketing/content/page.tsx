@@ -4,8 +4,9 @@ import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, Input, Table, Th, Td, EmptyState } from '@/components/ui';
 import { AccessDenied } from '@/components/access-denied';
-import { formatDateTime, diagnoseSeoContent, findDuplicateTitles, detectForbiddenClaims } from '@hokko/shared';
+import { formatDateTime, diagnoseSeoContent, findDuplicateTitles, detectForbiddenClaims, canRequestContentApproval, contentApprovalLabel } from '@hokko/shared';
 import { generateSeoBriefDraftAction } from '../actions';
+import { requestContentApprovalAction } from './actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +26,7 @@ interface SeoBriefOutput {
   nextHumanChecks?: string[];
 }
 
-export default async function ContentSeoPage({ searchParams }: { searchParams: Promise<{ generated?: string; blocked?: string; denied?: string; error?: string }> }) {
+export default async function ContentSeoPage({ searchParams }: { searchParams: Promise<{ generated?: string; blocked?: string; denied?: string; error?: string; requested?: string; already?: string; highlight?: string }> }) {
   const user = await requireUser();
   if (!hasPermission(user, 'marketing', 'read')) {
     return (
@@ -39,6 +40,8 @@ export default async function ContentSeoPage({ searchParams }: { searchParams: P
   const sp = await searchParams;
   const t = user.tenantId;
   const canGenerate = hasPermission(user, 'marketing', 'create') && !user.isAi;
+  // 承認申請は marketing:update かつ人間のみ（AI は申請しない）。roadmap81 §2.1。
+  const canRequest = hasPermission(user, 'marketing', 'update') && !user.isAi;
 
   const [articles, briefs] = await Promise.all([
     prisma.contentAsset.findMany({
@@ -83,6 +86,10 @@ export default async function ContentSeoPage({ searchParams }: { searchParams: P
       {sp.blocked ? <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">入力の安全検査により生成を中止しました（AI 安全ログに記録済み）。</div> : null}
       {sp.denied ? <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">この操作を行う権限がありません。</div> : null}
       {sp.error === 'keyword' ? <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">キーワードを入力してください。</div> : null}
+      {sp.requested ? <div className="mb-3 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800" data-testid="content-requested-banner">承認申請を作成しました。<a href="/approvals" className="underline">承認待ち一覧</a>で人間が承認/却下できます（公開・外部送信は伴いません）。</div> : null}
+      {sp.already ? <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">この下書きは既に承認申請中または承認済みです（重複申請は作成されません）。</div> : null}
+      {sp.error === 'notfound' ? <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">対象の下書きが見つかりません。</div> : null}
+      {sp.error === 'input' ? <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">入力が不正です。</div> : null}
 
       {canGenerate ? (
         <Card className="mb-4">
@@ -176,7 +183,7 @@ export default async function ContentSeoPage({ searchParams }: { searchParams: P
             <EmptyState title="記事・LP の記録がありません" hint="AI資産の生成（マーケ資産）で article/lp を作成すると診断されます。" />
           ) : (
             <Table>
-              <thead><tr><Th>タイトル</Th><Th>種別</Th><Th>状態</Th><Th>診断（read-only）</Th></tr></thead>
+              <thead><tr><Th>タイトル</Th><Th>種別</Th><Th>状態</Th><Th>承認（review-only）</Th><Th>診断（read-only）</Th></tr></thead>
               <tbody>
                 {articles.map((a) => {
                   const findings = diagnoseSeoContent({ title: a.title, body: a.body });
@@ -184,10 +191,27 @@ export default async function ContentSeoPage({ searchParams }: { searchParams: P
                     findings.push({ code: 'duplicate-title', severity: 'warn', message: '同一タイトルの記事があります（重複コンテンツ候補）。' });
                   }
                   return (
-                    <tr key={a.id}>
+                    <tr key={a.id} id={`content-${a.id}`} className={sp.highlight === a.id ? 'bg-amber-50' : undefined}>
                       <Td className="text-xs font-medium">{a.title}</Td>
                       <Td className="text-xs">{a.type}</Td>
                       <Td><Badge tone={a.approvalStatus === 'approved' ? 'green' : 'slate'}>{a.status}</Badge></Td>
+                      <Td>
+                        <div className="flex flex-col items-start gap-1">
+                          <Badge
+                            tone={a.approvalStatus === 'approved' ? 'green' : a.approvalStatus === 'pending' ? 'amber' : a.approvalStatus === 'rejected' ? 'red' : 'slate'}
+                            data-testid={`content-approval-status-${a.id}`}
+                          >
+                            {contentApprovalLabel(a.approvalStatus)}
+                          </Badge>
+                          {canRequest && canRequestContentApproval(a.status) ? (
+                            <form action={requestContentApprovalAction}>
+                              <input type="hidden" name="contentAssetId" value={a.id} />
+                              <Button type="submit" data-testid={`content-request-approval-${a.id}`}>承認申請</Button>
+                            </form>
+                          ) : null}
+                          <a href="/approvals" className="text-[11px] text-blue-700 underline">承認一覧へ</a>
+                        </div>
+                      </Td>
                       <Td>
                         {findings.length === 0 ? (
                           <span className="text-xs text-emerald-700">指摘なし</span>

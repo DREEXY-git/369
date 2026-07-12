@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
 import { recordUsageEvent } from '@/lib/usage-events';
-import { isSuppressed } from '@hokko/shared';
+import { isSuppressed, contentStatusOnDecision } from '@hokko/shared';
 import { getEmailProvider, isExternalSendEnabled } from '@hokko/integrations';
 
 export async function decideApprovalAction(formData: FormData) {
@@ -22,10 +22,13 @@ export async function decideApprovalAction(formData: FormData) {
   if (!approval) redirect('/approvals');
 
   const status = decision === 'approve' ? 'APPROVED' : 'REJECTED';
-  await prisma.approvalRequest.update({
-    where: { id: approvalId },
+  // 決定は原子的 CAS（PENDING のときのみ→決定）。二重 submit / 同時決定は count===0 で弾き、
+  // 副作用（送信・状態遷移）は CAS の勝者だけが実行する＝1回だけ反映（冪等）。
+  const decided = await prisma.approvalRequest.updateMany({
+    where: { id: approvalId, tenantId: user.tenantId, status: 'PENDING' },
     data: { status, decidedById: user.userId, decidedAt: new Date(), decisionNote: note },
   });
+  if (decided.count === 0) redirect('/approvals'); // 既に決定済み（別 submit が反映済み）。
 
   // 承認対象が営業メール送信の場合の処理（送信ゲート）
   if (approval.type === 'outreach_send' && approval.entityId) {
@@ -112,6 +115,15 @@ export async function decideApprovalAction(formData: FormData) {
         await prisma.outreachDraft.update({ where: { id: draft.id }, data: { status: 'REJECTED' } });
       }
     }
+  }
+
+  // Phase 3.5 承認ブリッジ（roadmap81 §2.2）: コンテンツ下書きの review-only 決定。
+  // 状態遷移＋監査のみ。公開・CMS 投稿・外部送信・実 LLM・課金の呼び出しは一切追加しない（外部作用ゼロ）。
+  if (approval.type === 'content_review' && approval.entityId) {
+    await prisma.contentAsset.updateMany({
+      where: { id: approval.entityId, tenantId: user.tenantId, status: 'pending_approval' },
+      data: contentStatusOnDecision(decision === 'approve' ? 'approve' : 'reject'),
+    });
   }
 
   await writeAudit({

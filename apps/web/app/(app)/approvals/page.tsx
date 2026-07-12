@@ -18,6 +18,7 @@ const TYPE_LABEL: Record<string, string> = {
   contract_sign: '契約締結',
   payment_execute: '支払実行',
   content_review: 'コンテンツ承認（review-only）',
+  ad_suggestion_review: '広告改善案の承認（review-only）',
 };
 
 export default async function ApprovalsPage() {
@@ -75,6 +76,17 @@ export default async function ApprovalsPage() {
                       data-testid={`approval-content-deeplink-${a.entityId}`}
                     >
                       元の下書きを開く（/marketing/content）
+                    </a>
+                  </div>
+                ) : null}
+                {a.type === 'ad_suggestion_review' && a.entityId ? (
+                  <div className="mt-1 text-xs">
+                    <a
+                      href={`/marketing/ads?highlight=${a.entityId}#suggestion-${a.entityId}`}
+                      className="text-blue-700 underline"
+                      data-testid={`approval-suggestion-deeplink-${a.entityId}`}
+                    >
+                      元の改善案を開く（/marketing/ads）
                     </a>
                   </div>
                 ) : null}

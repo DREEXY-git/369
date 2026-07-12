@@ -29,6 +29,7 @@ export * from './customer-pain-access';
 export * from './ads';
 export * from './content-seo';
 export * from './content-approval';
+export * from './suggestion-approval';
 export * from './ai-workforce';
 export * from './agent-run-lifecycle';
 export * from './outcome-evidence';

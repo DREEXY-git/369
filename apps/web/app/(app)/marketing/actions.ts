@@ -232,6 +232,22 @@ export async function generateAdsImprovementDraftAction(formData: FormData) {
     },
   });
   if (result.blocked) redirect('/marketing/ads?blocked=1');
+  // C19 承認ブリッジ（roadmap83 案A）: 生成した改善案を MarketingSuggestion として実体化する
+  // （approvalStatus='none' で作成 → 人間が /marketing/ads から承認申請できる）。実行・出稿は封印のまま。
+  if (result.aiOutputId) {
+    const out = await prisma.aIOutput.findFirst({
+      where: { id: result.aiOutputId, tenantId: user.tenantId },
+      select: { output: true },
+    });
+    const o = (out?.output ?? {}) as { title?: string; recommendations?: string[] };
+    await prisma.marketingSuggestion.create({
+      data: {
+        tenantId: user.tenantId,
+        title: `広告改善案: ${campaign!.name}｜${o.title ?? '改善案'}`.slice(0, 180),
+        detail: (o.recommendations ?? []).join('\n').slice(0, 2000),
+      },
+    });
+  }
   await writeAudit({
     tenantId: user.tenantId,
     actorId: user.userId,

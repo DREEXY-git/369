@@ -34,7 +34,15 @@ export default async function AiControlPlanePage() {
       <PageHeader
         title="AI Control Plane（read-only）"
         description="AI社員の判断待ち・再開待ち・実行結果を証拠から1画面に集約します。この画面から実行・承認・削除はできません（判断は /approvals・詳細は各AI社員ページ）。"
-        action={<Link href="/ai-office" className="text-sm text-blue-700 underline">3D オフィスへ</Link>}
+        action={
+          <div className="flex items-center gap-3">
+            {/* Workflow Dry Run（v7.2 Lane D）: NAV 67 契約は変更せず deep link で導線を張る。 */}
+            <Link href="/workflows" className="text-sm text-blue-700 underline" data-testid="cp-workflows-link">
+              ワークフロー設計（Dry Run）
+            </Link>
+            <Link href="/ai-office" className="text-sm text-blue-700 underline">3D オフィスへ</Link>
+          </div>
+        }
       />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5" data-testid="cp-summary">

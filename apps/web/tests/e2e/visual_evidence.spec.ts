@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { captureFullNav } from './capture';
 
 // v6.2 WIP-6 視覚証拠。CI artifact に明示名の PNG を保存し、画像だけでなく DOM 実測（横 overflow・
 // canvas 非blank・build badge の role 別表示・選択 agent 一致）も残す。対象は seed の DEMO データのみ。
@@ -26,7 +27,11 @@ test('OWNER desktop: NAV 全体・AI社員一覧/詳細・3D選択の証拠＋bu
   await page.goto('/dashboard');
   await expect(page.getByTestId('build-info')).toBeVisible();
   await expectNoHorizontalOverflow(page);
-  await page.locator('aside').screenshot({ path: 'test-results/nav-owner-desktop-full.png' });
+  // v6.9 WIP-3: 内部 overflow scroll に隠れた導線が写らない問題を、viewport 拡大＋隠れゼロ assert で解消。
+  // 67 導線すべてが1枚の artifact に写る（DOM 件数と内部 scroll 残ゼロを機械検証してから撮影）。
+  const aside = page.locator('aside');
+  await expect(aside.getByRole('link')).toHaveCount(67);
+  await captureFullNav(page, aside, aside.locator('nav'), 'test-results/nav-owner-desktop-full.png');
 
   // AI社員 一覧。
   await page.goto('/ai-agents');
@@ -69,9 +74,12 @@ test('OWNER mobile: NAV ドロワー・AI社員一覧/詳細・3D選択の証拠
   await page.goto('/dashboard');
   await expect(page.getByTestId('build-info')).toBeVisible(); // mobile でも OWNER に表示
   await page.getByRole('button', { name: 'メニューを開く' }).click();
-  await expect(page.getByTestId('mobile-nav-drawer')).toBeVisible();
+  const drawer = page.getByTestId('mobile-nav-drawer');
+  await expect(drawer).toBeVisible();
   await expectNoHorizontalOverflow(page);
-  await page.getByTestId('mobile-nav-drawer').screenshot({ path: 'test-results/nav-owner-mobile-full.png' });
+  // v6.9 WIP-3: drawer も 67 導線を内部 scroll 隠れゼロで1枚に撮影（機械検証付き）。
+  await expect(drawer.getByRole('link')).toHaveCount(67);
+  await captureFullNav(page, drawer, drawer.locator('nav'), 'test-results/nav-owner-mobile-full.png');
   await page.keyboard.press('Escape');
 
   await page.goto('/ai-agents');

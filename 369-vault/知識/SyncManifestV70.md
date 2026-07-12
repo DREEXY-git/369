@@ -28,7 +28,8 @@
 - 実Previewでは`NOT_REPRODUCED`。
 - V70 artifactでは320/360/390/430pxのBell、avatar、logout、build badgeが画面内に収まる。
 - mobile ThemeToggleが削除され、別のrelease-blocking P2となった。
-- 新head `c8b6065...`のHuman Preview lineageは未確認。
+- 新head `c8b6065...`は人間がVercel Previewのbuild badge一致と画面OKを確認。Productionではなく、テーマ実操作は未確認。
+- 同じ人間GateでC19 schema案Aの別branch Draft実装と使い捨て/CI DB検証までGO。本番migration適用は別承認。
 
 ## V70 handoff
 
@@ -57,7 +58,7 @@
 
 - Phase 3: V69 fixed / Human Preview received / main HOLD。
 - C21: V70 exact CIと実PostgreSQL 12件green / 独立監査CHANGES_REQUIRED。
-- C19: schema Gate。
+- C19: schema案AのDraft実装まで人間GO / remote固定head待ち / 本番migration HOLD。
 - C22: roadmap only。
 - Phase 4: visualization evidence received / execution bridge途中head / real queue Evidence Gap。
 - Matrix V3 / RC / vault main / app main / Production: HOLD。

@@ -15,7 +15,7 @@
 | C22 | `2884949ceb7a018fa7dc4a27ae5d04b2f829a965` | source CI/Human Preview/main統合済み。追加P2 2件 |
 | C19 | `e3c410cdbc3fae7f43fac978ef9ff037ba8cd505` | `CHANGES_REQUIRED`、独立lane |
 | Phase 4 | PR #20/#25/#26 | Human Gate限定証拠、Control Plane/Workflow/実queue Gap |
-| vault main | `0517997b386ffdb82034c7d3bbc57e5a0062a30f` | P3-R01まで同期済み。post-release追補中 |
+| vault main | `de81c0ae72948c78290dd9ac23e81532a47a5b5b` | post-release HOLD監査を履歴付きで同期済み |
 
 最新独立判定は`POST_RELEASE_CHANGES_REQUIRED`です。mainへ入った事実は保持しますが、P2 3件のfix-forward完了までPhase 3/3.5完成へ格上げしません。
 

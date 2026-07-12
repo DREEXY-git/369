@@ -38,7 +38,7 @@
 | Workflow Dry Run | PR #26 `45bde82...` | `DRAFT_IMPLEMENTED / CHANGES_REQUIRED` |
 | Regression hardening | PR #27 `bc8fbef...` | `CODE_DIFF_ACCEPTED / EVIDENCE_GAP` |
 | Codex Evidence | `codex/v74-phase-completion-gate` | V74 WIP監査・Matrix・Evidence同期branch |
-| vault main | `0517997b386ffdb82034c7d3bbc57e5a0062a30f` | P3-R01まで同期済み。post-release再監査同期を次commitで追補 |
+| vault main | `de81c0ae72948c78290dd9ac23e81532a47a5b5b` | post-release HOLD監査を履歴付きで同期済み |
 
 PR #14/#18はRC #32を経てmainへ統合済みで、C22もPR #33経由でmainへ入った。今後はP2 3件を専用fix-forward laneで閉じ、C19とPhase 4は各Gateを満たすまで別laneを維持する。
 

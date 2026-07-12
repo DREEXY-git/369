@@ -98,3 +98,28 @@
 
 ## 10. 安全宣言
 「脆弱性ゼロ」「完全無欠」「全機能完成」は宣言しない。本 Gate は設計固定のみで、コード・schema・migration・外部作用は一切含まない。
+
+## 11. 実装サイクル結果（2026-07-12・本 branch で §2/§3 を実装へ移した結果）
+
+> §1-§10 は docs-only Gate。§11 はそれを実装へ移した結果の追記（C21 完了・C19 停止）。
+
+### 11.1 C21 SEO/Content = 実装完了（review-only・原子的な重複 PENDING 防止あり）
+- `content_review` を `ApprovalAction` union へ追加。`packages/shared/src/content-approval.ts` に状態機械の純ロジック（`canRequestContentApproval`/`contentStatusOnRequest`/`contentStatusOnDecision`/`contentApprovalLabel`）＋unit 7件。
+- `apps/web/app/(app)/marketing/content/actions.ts` 新規 `requestContentApprovalAction`: 認証→`marketing:update` かつ人間→cuid 検証→tenant scoped 取得→**`ContentAsset.status`(draft/rejected→pending_approval) の条件付き `updateMany`** を原子的ガードにし、CAS の勝者だけが `ApprovalRequest(content_review)` を作成（メタのみ payload）→`writeDataAccess`（メタのみ）。
+- `decideApprovalAction`: 決定を PENDING 限定 CAS 化（冪等・二重 submit 防止・既存 outreach 二重送信も封鎖）＋`content_review` 分岐で `ContentAsset` を approved/rejected（**社内状態のみ・外部作用ゼロ**）。UI（申請ボタン/バッジ/`?highlight`/deep link 往復）・E2E（approve/reject/deep link/重複なし/AI 非表示）を追加。
+- ローカル: unit 452/0・typecheck 0・lint 0・build 0・Company Brain safety 0・diff-check/secret clean。
+
+### 11.2 C19 広告改善案 = 停止（`SCHEMA_CHANGE_APPROVAL_REQUIRED`）
+実装時に §1 の「C19 も既存 schema のみで成立」という結論を、**重複 PENDING の原子的防止**の観点で精査した結果、既存 schema のままでは C21 と同じ強度の原子性を満たせないため、本サイクルでは **C19 を実装せず停止**する。
+
+- **根拠（実測）**:
+  - C21 は `ContentAsset.status`（既存の可変列）への条件付き `updateMany`（draft/rejected→pending_approval）で原子的重複防止が成立（行ロックで直列化される単一 UPDATE。`executeApprovedAction` の `updateMany({where:{id,executedAt:null}})` と同種の CAS）。
+  - C19 の `MarketingSuggestion` は `id/tenantId/title/detail/createdAt` のみで**可変な status 列を持たない**（§1 が「列を足さず ApprovalRequest から導出」を選択）。かつ `ApprovalRequest` には `(tenantId,entityType,entityId,status)` の **unique 制約が存在しない**（`@@index([tenantId,status])` 等のみ）。
+  - よって C19 の重複防止は `findFirst(PENDING)`→`create` の **check-then-create（TOCTOU）**に留まり、同時申請で 2 件目の PENDING を原子的に防げない。決定論的 PK id で塞ぐ案は「却下後の再申請可（§3 の C21 同一規約）」と両立しない。
+- **必要な schema 変更（本 Gate 外・人間承認要）**:
+  - 案A: `MarketingSuggestion.approvalStatus`（none/pending/approved/rejected）を追加し、C21 と同型の status CAS を適用。
+  - 案B: `ApprovalRequest` の「同一 entity の PENDING は1件」を強制する部分 unique index（Prisma schema では表現困難＝raw migration 要）。
+- いずれも migration を伴うため、指令の停止条件に従い **`SCHEMA_CHANGE_APPROVAL_REQUIRED`** として停止。C19 は「完成」と主張しない。人間が案A/B のいずれかを承認したら、C21 と同型の薄い縦切りで別サイクル実装する。
+
+### 11.3 まとめ
+実装可能かつ原子性を満たす **C21 のみを縦切りで完了**。C19 は既存 schema では原子的重複防止が不可能なため `SCHEMA_CHANGE_APPROVAL_REQUIRED` で停止（§7/§8 の C22・Phase5 と同じ扱い）。外部作用（公開/CMS/送信/実LLM/課金/自動実行）はゼロ。main/Production/DB/Secrets/migration/seed は非接触。

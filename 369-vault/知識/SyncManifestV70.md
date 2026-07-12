@@ -13,11 +13,11 @@
 | app main | `main` | `ffd586b8cd87ec407aad6ecd3e0ea4394aee1978` | unchanged / Production HOLD |
 | Claude Phase 3 | PR #14 | `ba01244ae2fb6b75e1ae2b9a718ba4e629a54425` | V69 fixed / Human Preview received |
 | Claude Phase 3.5 | PR #18 | `c8b60651d058b867ba7ad5e07662d75a7f4f1947` | V70 fixed / CHANGES_REQUIRED |
-| Claude Phase 3.5 C19 | PR #22 | `21ccfafe07f3bbfdc2c74a9934ee04c672a3cec6` | CI_VERIFIED / CHANGES_REQUIRED / DB Gate HOLD |
+| Claude Phase 3.5 C19 | PR #22 | `21ccfafe07f3bbfdc2c74a9934ee04c672a3cec6` | CI_VERIFIED / Human DB Gate confirmed / CHANGES_REQUIRED |
 | Claude Phase 4 | `claude/p4-human-gate-resume-v1` | `ddfcffefc9e458a002636551e1e42bb5a898c374` | 途中head / preauditのみ |
-| Codex Evidence | PR #21 | `90d2c55ed71dddc52ab8afd09357e402524bb487`（C19更新前） | V70再監査と台帳同期 |
+| Codex Evidence | PR #21 | `f02eba4181ef63caf82a3c5641b55da78f43db45`（Human Gate更新前） | V70再監査と台帳同期 |
 | vault main | `main` | `0812634ec443abf966819d2cf6b10e73efb3a94a` | unchanged / PASS待ち |
-| vault sync | PR #3 | `8c9439fb006ddf8514e7eb947d45c873e1acb3f8`（C19更新前） | Draft / main未統合 |
+| vault sync | PR #3 | `c4e263ba3bd607cc3be71fb4a680d76fa07c849a`（Human Gate更新前） | Draft / main未統合 |
 
 ## Human Preview evidence
 
@@ -31,7 +31,7 @@
 - mobile ThemeToggleが削除され、別のrelease-blocking P2となった。
 - 新head `c8b6065...`は人間がVercel Previewのbuild badge一致と画面OKを確認。Productionではなく、テーマ実操作は未確認。
 - 同じ人間GateでC19 schema案Aの別branch Draft実装と使い捨て/CI DB検証までGO。本番migration適用は別承認。
-- C19 fixed headのVercel statusはReadyだが、Preview buildでDB setupをskipしたか隔離DBへ適用したか未証明。Production verifiedではない。
+- ownerがC19 fixed headのReady、branch、SHA、`SKIP_DB_SETUP=1`によるmigrate/seed skip、Preview DB分離、Secrets非共有を確認。Preview DB境界HIGHは解消したが、Production verified・本番migration承認ではない。
 
 ## V70 handoff
 
@@ -44,6 +44,7 @@
 - PR #22 `CLAUDE_C19_READY_V70`: comment `4951160864`、fixed head `21ccfafe...`。
 - C19 exact CI: run `29192290614`、unit 477 / E2E 154、artifact `8259933170`、digest `b9f8fd1492a5697c5101f6649eec6d818183a747ef725e024ddc364d352005eb`。
 - C19 fixed review `4680088936`、`CODEX_C19_REVIEW_RESULT_V70`: comment `4951281950`。
+- `HUMAN_C19_PREVIEW_DB_GATE_CONFIRMED_V70`: comment `4951368358`。
 - Codex編集範囲: Function Evidence、Codex監査文書、Codex Obsidian鏡像、独立vault Codexノート/indexのみ。
 
 ## Release gates
@@ -59,13 +60,12 @@
 9. Release PASS後だけvault PRを通常merge commitでvault mainへ統合する。
 10. app main、Production、schema、本番DB/Redis、Secrets、外部接続、実LLM、課金は人間Gateに残す。
 11. C19は生成＋監査の原子性/冪等性、全表rollback再取得、decision Audit/title sentinel、C19画面artifactを補完する。
-12. Vercel build logでC19 Previewの`SKIP_DB_SETUP=1`またはProduction分離DBを人間が確認する。
 
 ## Current declaration
 
 - Phase 3: V69 fixed / Human Preview received / main HOLD。
 - C21: V70 exact CIと実PostgreSQL 12件green / 独立監査CHANGES_REQUIRED。
-- C19: PR #22 fixed headをCI/コード監査済み / CHANGES_REQUIRED / Preview DB境界・本番migration HOLD。
+- C19: PR #22 fixed headをCI/コード監査済み / Preview DB Gate確認済み / CHANGES_REQUIRED / 本番migration HOLD。
 - C22: roadmap only。
 - Phase 4: visualization evidence received / execution bridge途中head / real queue Evidence Gap。
 - Matrix V3 / RC / vault main / app main / Production: HOLD。

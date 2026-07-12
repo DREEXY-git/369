@@ -546,3 +546,62 @@ describe('maskRunError v6.7（値後 whitespace/LF の malformed tail・containe
     expect(out).not.toContain('\n');
   });
 });
+
+// v6.8 Grammar P1: mask 値の直後 tail を container stack 付き grammar parser（object=KEY/COLON/VALUE、
+// array=VALUE を区別）で検証。object の comma 後を array 同様の値位置として受理する v6.7 の誤りを塞ぐ。
+describe('maskRunError v6.8（object/array 文法・keyless value を fail-closed）', () => {
+  const SENTINEL = 'O0F144S68';
+  const noLeak = (input: string, maxLen = 8000) => {
+    const out = maskRunError(input, maxLen);
+    expect(out, `leaked in ${JSON.stringify(out)}`).not.toContain(SENTINEL);
+    return out;
+  };
+
+  it('object の keyless value（quoted/bare/object/array）は fail-closed', () => {
+    noLeak(`{"password":"abc","${SENTINEL}"}`); // key 無し quoted
+    noLeak(`{"password":"abc",${SENTINEL}}`); // key 無し bare
+    noLeak(`{"password":"abc",{"x":"${SENTINEL}"}}`); // key 無し nested object
+    noLeak(`{"password":"abc",["${SENTINEL}"]}`); // key 無し array
+    noLeak(`{"password":"abc","k"}`.replace('"k"', `"${SENTINEL}"`)); // key without colon
+    noLeak(`{"password":"abc","k":}`.replace('"k"', `"${SENTINEL}"`)); // colon without value（key 名側 sentinel）
+    noLeak(`{"password":"abc",,${SENTINEL}}`); // 二重 comma
+  });
+
+  it('空白/tab/LF/CRLF・混在 quote/backslash・nested・複数機密 key・unclosed でも sentinel 0', () => {
+    for (const sep of [' ', '\t', '\n', '\r\n', '  ']) noLeak(`{"password":"abc",${sep}"${SENTINEL}"}`);
+    noLeak(`{"token":"abc","password":"x","${SENTINEL}"}`); // 複数機密 key
+    noLeak(`{"a":{"password":"abc","${SENTINEL}"}}`); // nested object 内
+    noLeak(`{"password":"abc\\",${SENTINEL}}`); // 混在 backslash depth
+    noLeak(`{"password":"abc","${SENTINEL}`); // unclosed
+    noLeak(`{"password":"abc" "${SENTINEL}"}`); // 値後 space + keyless（v6.7 回帰も兼ねる）
+  });
+
+  it('maxLen 200/8000 と 100KB でも sentinel 0・一行・bounded', () => {
+    noLeak(`{"password":"abc","${SENTINEL}"}`, 200);
+    const big = `{"password":"${'a'.repeat(40000)}","${SENTINEL}"}`;
+    const started = performance.now();
+    const out = maskRunError(big, 200);
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(out).not.toContain(SENTINEL);
+    expect(out.length).toBeLessThanOrEqual(201);
+    expect(out).not.toContain('\n');
+  });
+
+  it('positive oracle: 正常な JSON の非機密 field / nested / array / container 後 prose を過剰マスクしない', () => {
+    const keep: [string, RegExp, string][] = [
+      ['{"password":"secret","username":"bob"}', /"username":"bob"/, 'secret'],
+      ['{"password":"abc","meta":{"a":"b"}}', /"meta":\{"a":"b"\}/, 'abc'],
+      ['{"password":"abc","list":[1,2,3]}', /\[1,2,3\]/, 'abc'],
+      ['{"password":"abc","nested":{"deep":["x","y"]}}', /"nested"/, 'abc'],
+      ['{"password":"sec63"} then connected ok', /then connected ok/, 'sec63'],
+      // key 名が機密語でも value ではないので value 側は保持（key:value は正規）。
+      ['{"token":"abc","note":"ok"}', /"note":"ok"/, 'abc'],
+    ];
+    for (const [input, re, secret] of keep) {
+      const out = maskRunError(input, 500);
+      expect(out, `保持されず ${out}`).toMatch(re);
+      expect(out, `秘密残存 ${out}`).not.toContain(secret);
+      expect(out).toContain('[masked]');
+    }
+  });
+});

@@ -83,6 +83,10 @@ export function AiOffice({ model, initialAgentId = null }: { model: AiWorkforceR
     params.set('agent', id);
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
+  // v6.8 P2: Three.js の click ハンドラは effect クロージャ内にあり毎レンダ再構築できない（scene 再構築 = 重い）。
+  // 最新の selectAgent を ref 経由で参照し、raycast click も 2D 一覧と同じ経路（router.push で ?agent= 更新）にする。
+  const selectAgentRef = useRef(selectAgent);
+  selectAgentRef.current = selectAgent;
   const [deptFilter, setDeptFilter] = useState<string>('all');
   const [stateFilter, setStateFilter] = useState<string>('all');
   const [isNarrow, setIsNarrow] = useState(false);
@@ -327,7 +331,7 @@ export function AiOffice({ model, initialAgentId = null }: { model: AiWorkforceR
       raycaster.setFromCamera(pointer, camera);
       const hits = raycaster.intersectObjects(clickable, false);
       const hit = hits[0]?.object.parent as THREE.Group | undefined;
-      if (hit?.userData?.agentId) setSelectedId(hit.userData.agentId as string);
+      if (hit?.userData?.agentId) selectAgentRef.current(hit.userData.agentId as string);
     };
     renderer.domElement.addEventListener('click', onClick);
 

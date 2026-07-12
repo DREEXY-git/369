@@ -191,7 +191,7 @@ export default async function AdsReadModelPage({ searchParams }: { searchParams:
         </CardContent>
       </Card>
 
-      <Card>
+      <Card data-testid="suggestion-review-card">
         <CardHeader><CardTitle>改善案の承認（review-only・実行はされません）</CardTitle></CardHeader>
         <CardContent>
           <p className="mb-2 text-xs text-muted-foreground">

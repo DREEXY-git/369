@@ -414,3 +414,64 @@ export function summarizeCashflowActualVsExpected(
     paymentShortfallWarning: outflowExpected > inflowExpected,
   };
 }
+
+// ============ P3-Q2C: 見積→請求 変換（Quote → Invoice conversion）— 純ロジック ============
+
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/**
+ * quote_issue 承認の決定後、見積が遷移すべきステータス（純判定）。
+ * approve → approved（発行確定・以後 請求書化が可能）／reject → rejected。
+ * decideQuoteIssueCore の CAS（pending_approval → 本値）で使う。
+ */
+export function quoteStatusOnIssueDecision(decision: 'approve' | 'reject'): { status: 'approved' | 'rejected' } {
+  return { status: decision === 'approve' ? 'approved' : 'rejected' };
+}
+
+/**
+ * その見積を請求書へ変換してよいか（純判定）。
+ * 変換できるのは発行確定済み（approved）の見積のみ。draft / pending_approval / rejected / sent は不可。
+ * 「既に請求書化済みか」は別軸（Invoice.quoteId の unique 制約と呼び出し側の存在確認）で担保する。
+ */
+export function canConvertQuoteToInvoice(quoteStatus: string): boolean {
+  return quoteStatus === 'approved';
+}
+
+export interface QuoteLineForInvoice {
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  amount: number;
+}
+
+export interface InvoiceDraftFromQuote {
+  subtotal: number;
+  taxAmount: number;
+  total: number;
+  lineItems: QuoteLineForInvoice[];
+}
+
+/**
+ * 見積の明細・値引き率・税率から請求書ドラフトの金額を導出する純関数。
+ * Invoice には値引き列が無いため、値引きは各明細の単価/金額へ按分して織り込む
+ * （invoice.subtotal = 値引き後小計・課税標準）。原価(unitCost)は請求書には持たせない。
+ *  - factor = 1 - 値引き率/100 を各行に適用し 2 桁で丸め、行金額の合算を小計とする。
+ *  - 税額 = round2(小計 × 税率/100)、合計 = round2(小計 + 税額)。
+ * 丸めを行単位で確定させ Σ(行金額)=小計 を保証する（請求書の内訳と合計が常に一致）。
+ */
+export function buildInvoiceDraftFromQuote(
+  quote: { discountRate: number; taxRate: number },
+  lines: QuoteLineForInvoice[],
+): InvoiceDraftFromQuote {
+  const factor = 1 - (Number(quote.discountRate) || 0) / 100;
+  const lineItems = lines.map((l) => ({
+    name: l.name,
+    quantity: Number(l.quantity) || 0,
+    unitPrice: round2((Number(l.unitPrice) || 0) * factor),
+    amount: round2((Number(l.amount) || 0) * factor),
+  }));
+  const subtotal = round2(lineItems.reduce((s, l) => s + l.amount, 0));
+  const taxAmount = round2((subtotal * (Number(quote.taxRate) || 0)) / 100);
+  const total = round2(subtotal + taxAmount);
+  return { subtotal, taxAmount, total, lineItems };
+}

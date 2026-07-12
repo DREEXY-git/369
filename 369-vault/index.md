@@ -165,6 +165,8 @@
 
 ## Codex独立QA・同期
 
+- [[CodexV70先行監査]] — V70 fixed head受領前にHuman Preview証拠を整合し、実DB・mobile・Phase 4の独立監査条件を固定。
+- [[SyncManifestV70]] — app/vault/main/PreviewのV70先行同期状態とrelease Gate。
 - [[CodexV69独立再監査]] — V69固定headのGrammar、transaction、artifact、Preview、Phase Gateの独立本監査。
 - [[CodexV69先行監査]] — V69修正前headのGrammar 4経路、Phase 3.5 transaction、CI、Preview lineageの先行監査。
 - [[SyncManifestV69]] — app/vault/main/PreviewのV69同期状態と固定head受領後のGate。

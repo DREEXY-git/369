@@ -24,7 +24,7 @@
 
 | Workstream | 現在地 | blocking Gate |
 |---|---|---|
-| `P3-GROWTH` | v0の固定SHA Human Previewは有効。後継RCは未成立 | PR #27限定伝播、20回以上の反復、exact-head CI/artifact、768px Preview |
+| `P3-GROWTH` | P3-R01 `d209d5d`はCodex限定PASS。旧固定SHA Human Previewは有効。後継RCは未成立 | P3-R05後継RC、exact-head CI/artifact、768px Preview |
 | `P3-Q2C` | 見積・契約・請求・入金・仕訳候補・督促下書きの限定実装を初回独立監査 | 契約RBAC、請求/入金/正式化transaction、並行採番 |
 | `P35-CHANNELS` | C21限定合格、C19/C22は`CHANGES_REQUIRED` | C19 P2002/key/監査原子性、C22 PII/tenant/監査/schema Gate |
 | `P4-WORKFORCE` | AI社員/Human Gate限定合格 | Control Plane、Workflow、実queue/worker、registry/console群 |

@@ -26,7 +26,7 @@
 |---|---|---|
 | app main | `ffd586b8cd87ec407aad6ecd3e0ea4394aee1978` | 現行main。V72 Draft未統合 |
 | Phase 3 base | PR #14 `ba01244...` | Draft |
-| Release Path / C21 | PR #18 `fa04e74...` | `HUMAN_PREVIEW_VERIFIED` / RC R2待ち |
+| Release Path / C21 | PR #18 `d209d5d...` | `P3-R01 CODEX_VERIFIED` / 後継RC待ち。Human Previewは旧`fa04e74`限定 |
 | C19 | PR #22 `e3c410c...` | `CI_VERIFIED / CHANGES_REQUIRED`。V74独立監査でblocking P2 3件 |
 | Phase 4 | PR #20 `9080df1...` | `HUMAN_PREVIEW_VERIFIED / EVIDENCE_GAP` |
 | RC #29 | `96172e5...` | `CHANGES_REQUIRED / RELEASE HOLD`。768px topbar回帰とexact-head CI不足 |
@@ -68,7 +68,7 @@
 
 | Workstream | Repository lineage | Business Phase 0-20 | PDF / Strategy | R Stage | Evidence Stage | 主なFunction ID | Git SHA / CI | Codex | Human Preview | main | Production | Obsidian SHA |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `P3-GROWTH` | PR #14 -> #18 -> 後継RC待ち | Phase 3 Growth v0 | PDF Phase 3相当 | R7 | `HUMAN_PREVIEW_VERIFIED / RC HOLD` | C18-C22の限定範囲、`C28-017` | RC #29 `96172e5`、exact-head CIなし | `CHANGES_REQUIRED` | PR #18 `fa04e74`のみ | 未統合 | 未確認 | V74同期manifestで確定 |
+| `P3-GROWTH` | PR #14 -> #18 `d209d5d` -> 後継RC待ち | Phase 3 Growth v0 | PDF Phase 3相当 | R7 | `P3-R01 CODEX_VERIFIED / RC HOLD` | C18-C22の限定範囲、`C28-017` | #18 CI `29202591101` 472/151、RC未作成 | P3-R01 PASS、P3-R05待ち | Human Previewは`fa04e74`のみ | 未統合 | 未確認 | P3-R01同期manifestで確定 |
 | `P3-Q2C` | PR #18 code treeを初回独立監査 | Phase 3横断業務基盤 | PDF Phase 3以降の内部縦切り | R4-R7横断 | `VERIFIED_REPOSITORY / EVIDENCE_GAP` | `C10-040/041/044`、`C11-004/022`、`C12-002/028/030/031/032`、`C13-002/011/023`、`C14-001/002/003` | `fa04e74`、finance unit 32/32 | `CHANGES_REQUIRED` | Q2C受入として未実施 | 未統合 | 未確認 | V74同期manifestで確定 |
 | `P35-CHANNELS` | C21 #18、C19 #22、C22 #23を独立lane維持 | Phase 3.5 | Growth Channels | R7 | `DRAFT_IMPLEMENTED / CHANGES_REQUIRED` | C19/C21、C22は保守的にUNMAPPED | C19 `e3c410c` CI `29200855770`、C22 CIなし | C19/C22 HOLD | C21限定のみ | 未統合 | 未確認 | V74同期manifestで確定 |
 | `P4-WORKFORCE` | #20 Human Gate、#25 CP、#26 Workflow | Phase 4 | AI Workforce / Human Certification | R7-R10入口 | `HUMAN_PREVIEW_VERIFIED`限定 + `EVIDENCE_GAP` | `C28-017`、`C30-041/052`、CP/WorkflowはUNMAPPED | #20 CI `29196387933`、#25/#26 CIなし | CP/Workflow HOLD | #20限定 | 未統合 | 未確認 | V74同期manifestで確定 |

@@ -166,6 +166,7 @@
 ## Codex独立QA・同期
 
 - [[CodexV74Phase完了ゲート]] — P3-GROWTH、P3-Q2C、P35-CHANNELS、P4-WORKFORCEを固定SHAで分離監査し、blocking P2と再開条件をHOLDのまま正本化。
+- [[CodexV74P3R01再監査]] — PR #27限定伝播、768px topbar、C21同一URL race、exact-head CIと25画像を独立監査し、P3-R01だけを限定PASS。
 - [[WIPSyncManifestV74]] — WIPごとのGit SHA、tree、CI/artifact、Codex判定、app/vault commit、note hash、人間Gateを追跡する原子同期台帳。
 - [[CodexV72最大自律再監査]] — PR #18 Release Path合格、C19冪等性P2 HOLD、Phase 4実Redis/Preview証拠待ちを固定SHAで独立監査。
 - [[PhaseReadinessMatrixV3]] — Phase 3/3.5/4、4軸、競合カテゴリ、Evidence段階、人間Gateを1枚で可視化。

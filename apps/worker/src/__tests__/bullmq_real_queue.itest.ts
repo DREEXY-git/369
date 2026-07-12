@@ -23,6 +23,11 @@ function assertLoopbackRedis(): void {
 }
 assertLoopbackRedis();
 
+// bullmq には instance ではなく接続オプションを渡す（worker 直依存 ioredis と bullmq 内包 ioredis の
+// バージョン差で instance 型がクロス代入不能になる CI 環境があるため・機能は同一）。
+const redisUrl = new URL(REDIS_URL);
+const connOptions = { host: redisUrl.hostname, port: Number(redisUrl.port || 6379), maxRetriesPerRequest: null };
+// raw key 走査（機密非保存検査・後始末）専用の自前 client。
 const connection = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
 
 interface RunRow {
@@ -93,7 +98,7 @@ function makeDb() {
 const opened: { queue?: Queue; worker?: Worker }[] = [];
 
 async function makeQueue(name: string) {
-  const queue = new Queue(name, { connection, prefix: PREFIX });
+  const queue = new Queue(name, { connection: connOptions, prefix: PREFIX });
   const entry: { queue?: Queue; worker?: Worker } = { queue };
   opened.push(entry);
   return { queue, entry };
@@ -104,7 +109,7 @@ function startWorker(
   name: string,
   processor: (job: Job) => Promise<unknown>,
 ) {
-  const worker = new Worker(name, processor, { connection, prefix: PREFIX, concurrency: 2 });
+  const worker = new Worker(name, processor, { connection: connOptions, prefix: PREFIX, concurrency: 2 });
   entry.worker = worker;
   return worker;
 }

@@ -27,7 +27,10 @@ export default async function AiControlPlanePage() {
   // 承認由来セクション（Inbox のゲート・Receipt）は承認権限者かつ人間のみ（WIP-5 承認シグナル遮断＋
   // v7.0 R2 AI 閲覧境界と同一規律・取得段階で遮断）。
   const canSeeApprovalSections = hasPermission(user, 'approval', 'approve') && !user.isAi;
-  const model = await getControlPlaneModel(user.tenantId, { includeApprovalSections: canSeeApprovalSections });
+  const model = await getControlPlaneModel(user.tenantId, {
+    includeApprovalSections: canSeeApprovalSections,
+    actorId: user.userId,
+  });
 
   return (
     <div className="animate-fade-in">

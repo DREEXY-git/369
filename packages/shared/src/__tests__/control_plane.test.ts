@@ -70,7 +70,7 @@ describe('buildExecutionReceipts — 相関と成果非捏造', () => {
     const [r] = buildExecutionReceipts(
       [approval],
       [{ entityId: 'gate1', action: 'approve', createdAt: T60, metadata: { approvalId: 'apr1', runId: 'run1' } }],
-      [{ runId: 'run1', summary: '人間の承認を記録しました（再開待ち）', createdAt: T60 }],
+      [{ runId: 'run1' }], // 相関には runId の存在だけを使う（summary 本文は渡さない・P2-3）
     );
     expect(r!.outcomeLabel).toBe('承認済み・再開待ち（実行なし）');
     expect(r!.correlated).toEqual({ approval: true, audit: true, runAction: true });
@@ -105,6 +105,26 @@ describe('buildExecutionReceipts — 相関と成果非捏造', () => {
       [],
     );
     expect(b!.staleConfirmed).toBe(true);
+  });
+
+  it('P2-2: APPROVED / REJECTED 以外（PENDING / CANCELLED 等）はレシート化しない（「却下」と誤表示しない）', () => {
+    // Codex 独立 probe: buildExecutionReceipts([{status:'PENDING',...}],[],[]) が decision:'rejected' を
+    // 返していた退行の否定テスト。非終局状態は decision を捏造せず、そもそも receipt に含めない。
+    const rs = buildExecutionReceipts(
+      [
+        { ...approval, id: 'p', entityId: 'gP', status: 'PENDING', decidedAt: null, decidedById: null },
+        { ...approval, id: 'c', entityId: 'gC', status: 'CANCELLED', decidedAt: null, decidedById: null },
+        { ...approval, id: 'x', entityId: 'gX', status: 'SOMETHING_ELSE' },
+        { ...approval, id: 'ok', entityId: 'gOK', status: 'APPROVED' },
+      ],
+      [],
+      [],
+    );
+    // 終局の APPROVED だけが receipt になる。PENDING/CANCELLED/未知は 1 件も出さない。
+    expect(rs.map((r) => r.gateId)).toEqual(['gOK']);
+    expect(rs.some((r) => r.decision === 'rejected')).toBe(false);
+    expect(JSON.stringify(rs)).not.toContain('gP');
+    expect(JSON.stringify(rs)).not.toContain('gC');
   });
 
   it('decidedAt 降順で返る（決定論）', () => {

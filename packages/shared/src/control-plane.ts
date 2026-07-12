@@ -105,9 +105,8 @@ export interface ReceiptAuditRow {
 }
 
 export interface ReceiptActionRow {
+  /** 相関には runId の存在だけを使う（summary 本文は取得しない・Codex P4_CONTROL P2-3）。 */
   runId: string;
-  summary: string;
-  createdAt: Date;
 }
 
 export interface ExecutionReceipt {
@@ -145,6 +144,10 @@ export function buildExecutionReceipts(
   const receipts: ExecutionReceipt[] = [];
   for (const ap of approvals) {
     if (!ap.entityId) continue;
+    // v7.2 R2（Codex CHANGE_REQUEST_V72_P4_CONTROL P2-2）: 判断済みレシートは APPROVED / REJECTED のみ。
+    // PENDING / CANCELLED 等の非終局状態は「却下」と誤表示せず、そもそもレシート化しない（除外）。
+    // 呼び出し側の DB query も終局 status に限定するが、pure ロジックでも fail-closed に弾く（二重防御）。
+    if (ap.status !== 'APPROVED' && ap.status !== 'REJECTED') continue;
     const decision = ap.status === 'APPROVED' ? ('approved' as const) : ('rejected' as const);
     const runId = ap.payload?.runId ?? null;
     const gateAudits = auditByGate.get(ap.entityId) ?? [];

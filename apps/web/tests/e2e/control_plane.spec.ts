@@ -92,6 +92,8 @@ test.describe('Phase 4 Control Plane（v7.2 Lane C・read-only）', () => {
     await prisma.approvalRequest.deleteMany({ where: { tenantId, type: 'ai_run_resume', entityId: { in: fixtureGateIds } } });
     await prisma.auditLog.deleteMany({ where: { tenantId, entityType: 'AIApprovalGate', entityId: { in: fixtureGateIds } } });
     await prisma.dataAccessLog.deleteMany({ where: { tenantId, entityType: 'AIApprovalGate', entityId: { in: fixtureGateIds } } });
+    // v7.2 R2（P2-3）: 承認セクション閲覧の metadata-only 監査（entityType='ControlPlane'）も片付ける。
+    await prisma.dataAccessLog.deleteMany({ where: { tenantId, entityType: 'ControlPlane' } });
     await prisma.aIApprovalGate.deleteMany({ where: { id: { in: fixtureGateIds } } });
     await prisma.aIAgentAction.deleteMany({ where: { runId: { in: fixtureRunIds } } });
     await prisma.aIAgentRun.deleteMany({ where: { id: { in: fixtureRunIds } } });
@@ -199,5 +201,137 @@ test.describe('Phase 4 Control Plane（v7.2 Lane C・read-only）', () => {
     await page.goto('/ai-control');
     await page.getByTestId('cp-receipts').screenshot({ path: 'test-results/cp-receipts-desktop.png' });
     await page.getByTestId('cp-agent-stats').screenshot({ path: 'test-results/cp-agent-stats-desktop.png' });
+  });
+});
+
+// v7.2 R2（CODEX_CHANGE_REQUEST_V72_P4_CONTROL comment 4951990981）の P2 是正証拠。
+// P2-1 own-agent allowlist（own-run→foreign-agent 遮断）／P2-2 PENDING を「却下」と誤表示しない／
+// P2-3 payload 想定外キー非伝播＋承認セクション閲覧の metadata-only 監査。
+test.describe('Phase 4 Control Plane — P2 是正（own-agent allowlist / 非終局非誤表示 / payload 縮退）', () => {
+  const FOREIGN_TASK = 'CP-FOREIGN-AGENT-RUN-SENTINEL-V74';
+  const PAYLOAD_SENTINEL = 'CP-PAYLOAD-PII-SENTINEL-V74';
+  let ownTenantId = '';
+  let ceoId = '';
+  let foreignTenantId = '';
+  let foreignAgentId = '';
+  let badRunId = '';
+  let pendingGateId = '';
+  let payloadGateId = '';
+  const runIds: string[] = [];
+  const gateIds: string[] = [];
+  const approvalIds: string[] = [];
+
+  test.beforeAll(async () => {
+    const ceo = await prisma.user.findFirst({ where: { email: 'ceo@ikezaki.local' }, select: { id: true, tenantId: true } });
+    if (!ceo) throw new Error('seed ceo not found');
+    ownTenantId = ceo.tenantId;
+    ceoId = ceo.id;
+    // 別 tenant + 別 agent。
+    const ft = await prisma.tenant.create({ data: { name: `v74-cp-foreign-${process.pid}-${Date.now()}` } });
+    foreignTenantId = ft.id;
+    const fa = await prisma.aIAgent.create({
+      data: { tenantId: foreignTenantId, key: 'sales', name: 'foreign-agent', role: '別テナントの AI 社員' },
+    });
+    foreignAgentId = fa.id;
+    // own-run → foreign-agent（scalar tenantId モデルの不整合を再現・FAILED で Inbox に出得る）。
+    const badRun = await prisma.aIAgentRun.create({
+      data: {
+        tenantId: ownTenantId, agentId: foreignAgentId, task: FOREIGN_TASK, status: 'FAILED' as never,
+        input: {}, output: {}, error: 'x', startedAt: new Date(Date.now() - 3600_000), finishedAt: new Date(),
+      },
+    });
+    badRunId = badRun.id;
+    runIds.push(badRun.id);
+    // P2-2: PENDING の ai_run_resume（receipt 化してはいけない）。
+    const pendGate = await prisma.aIApprovalGate.create({
+      data: { tenantId: ownTenantId, runId: null, action: 'v74_cp_pending', reason: '判断待ち(fixture)', status: 'PENDING' },
+    });
+    pendingGateId = pendGate.id;
+    gateIds.push(pendGate.id);
+    const pendAppr = await prisma.approvalRequest.create({
+      data: {
+        tenantId: ownTenantId, type: 'ai_run_resume', requestedForAction: 'ai_run_resume', title: 'pending(fixture)',
+        entityType: 'AIApprovalGate', entityId: pendGate.id, status: 'PENDING', riskLevel: 'LOW',
+        payload: { action: 'v74_cp_pending', runId: null },
+      },
+    });
+    approvalIds.push(pendAppr.id);
+    // P2-3: APPROVED approval で payload に想定外 sentinel キー（PII/Secrets 相当）。
+    const okGate = await prisma.aIApprovalGate.create({
+      data: { tenantId: ownTenantId, runId: null, action: 'v74_cp_payload', reason: '判断待ち(fixture)', status: 'PENDING' },
+    });
+    payloadGateId = okGate.id;
+    gateIds.push(okGate.id);
+    const okAppr = await prisma.approvalRequest.create({
+      data: {
+        tenantId: ownTenantId, type: 'ai_run_resume', requestedForAction: 'ai_run_resume', title: 'payload(fixture)',
+        entityType: 'AIApprovalGate', entityId: okGate.id, status: 'APPROVED', decidedById: ceoId, decidedAt: new Date(), riskLevel: 'LOW',
+        payload: { action: 'v74_cp_payload', runId: null, secretPII: PAYLOAD_SENTINEL },
+      },
+    });
+    approvalIds.push(okAppr.id);
+  });
+
+  test.afterAll(async () => {
+    await prisma.dataAccessLog.deleteMany({ where: { tenantId: ownTenantId, entityType: 'ControlPlane' } });
+    await prisma.approvalRequest.deleteMany({ where: { id: { in: approvalIds } } });
+    await prisma.aIApprovalGate.deleteMany({ where: { id: { in: gateIds } } });
+    await prisma.aIAgentRun.deleteMany({ where: { id: { in: runIds } } });
+    await prisma.aIAgent.deleteMany({ where: { id: foreignAgentId } });
+    await prisma.tenant.deleteMany({ where: { id: foreignTenantId } });
+    await prisma.$disconnect();
+  });
+
+  test('P2-1: own-run→foreign-agent は集計/Inbox/deep link に出ない（sentinel 0・foreign agentId 非露出）', async ({ page }) => {
+    await login(page, 'ceo@ikezaki.local');
+    await page.goto('/ai-control');
+    // foreign-agent run の task sentinel も foreign agentId も画面のどこにも出ない。
+    const content = await page.content();
+    expect(content, 'foreign run task sentinel が露出').not.toContain(FOREIGN_TASK);
+    expect(content, 'foreign agentId が露出').not.toContain(foreignAgentId);
+    // Inbox に foreign run の失敗項目・deep link が無い。
+    await expect(page.getByTestId(`cp-inbox-failed-${badRunId}`)).toHaveCount(0);
+    await expect(page.locator(`a[href="/ai-agents/${foreignAgentId}"]`)).toHaveCount(0);
+    // 実測表に foreign agent の行が無い（自 tenant の agent だけ）。
+    await expect(page.getByTestId(`cp-agent-${foreignAgentId}`)).toHaveCount(0);
+  });
+
+  test('P2-2: PENDING の ai_run_resume は Receipt 化されず「却下」と誤表示しない', async ({ page }) => {
+    await login(page, 'ceo@ikezaki.local');
+    await page.goto('/ai-control');
+    // PENDING approval は終局でないため receipt に出ない。
+    await expect(page.getByTestId(`cp-receipt-${pendingGateId}`)).toHaveCount(0);
+    // APPROVED（payload fixture）は receipt に出る＝承認セクション自体は機能している対照。
+    await expect(page.getByTestId(`cp-receipt-${payloadGateId}`)).toBeVisible();
+    // 誤って「却下」ラベルが付いていないこと（この gate は承認）。
+    await expect(page.getByTestId(`cp-receipt-${payloadGateId}`)).not.toContainText('却下');
+  });
+
+  test('P2-3: payload の想定外キーは DOM に出ず、承認セクション閲覧は metadata-only で監査される', async ({ page }) => {
+    // 監査の before/after 差分を測るため、直前の ControlPlane ログを消す。
+    await prisma.dataAccessLog.deleteMany({ where: { tenantId: ownTenantId, entityType: 'ControlPlane' } });
+    await login(page, 'ceo@ikezaki.local');
+    await page.goto('/ai-control');
+    // payload の想定外 sentinel は receipt/DOM のどこにも出ない（既知メタだけに射影済み）。
+    expect(await page.content(), 'payload sentinel が DOM へ露出').not.toContain(PAYLOAD_SENTINEL);
+    // 承認セクション閲覧の metadata-only DataAccessLog が書かれ、sentinel を含まない。
+    const logs = await prisma.dataAccessLog.findMany({
+      where: { tenantId: ownTenantId, entityType: 'ControlPlane', actorId: ceoId, purpose: 'control_plane_approval_sections' },
+    });
+    expect(logs.length).toBeGreaterThanOrEqual(1);
+    for (const l of logs) {
+      expect(JSON.stringify(l.metadata ?? {}), 'metadata に sentinel/PII').not.toContain(PAYLOAD_SENTINEL);
+      expect(JSON.stringify(l.metadata ?? {})).toMatch(/gates|receipts/); // 件数メタのみ
+    }
+  });
+
+  test('P2-3: STAFF（承認権限なし）は承認セクションを閲覧せず ControlPlane 監査も書かれない', async ({ page }) => {
+    await prisma.dataAccessLog.deleteMany({ where: { tenantId: ownTenantId, entityType: 'ControlPlane' } });
+    await login(page, 'sales@ikezaki.local');
+    await page.goto('/ai-control');
+    await expect(page.getByTestId('cp-inbox-restricted')).toBeVisible();
+    const staff = await prisma.user.findFirst({ where: { tenantId: ownTenantId, email: 'sales@ikezaki.local' }, select: { id: true } });
+    const logs = await prisma.dataAccessLog.count({ where: { tenantId: ownTenantId, entityType: 'ControlPlane', actorId: staff!.id } });
+    expect(logs, '非権限者に承認セクション監査が書かれた').toBe(0);
   });
 });

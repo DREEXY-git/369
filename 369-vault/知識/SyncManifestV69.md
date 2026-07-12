@@ -13,7 +13,7 @@
 | app main | `main` | `ffd586b8cd87ec407aad6ecd3e0ea4394aee1978` | unchanged / Production HOLD |
 | Claude app | PR #14 | `ba01244ae2fb6b75e1ae2b9a718ba4e629a54425` | Grammar P1 closed / mobile P2 active |
 | Phase 3.5 | PR #18 | `dd54ce94ee31fc1f57244d770b31fc6df5819f3c` | P1 closed / DB Evidence Gap active |
-| Codex Evidence | PR #19 | `f3705c776ddc678dabf824cc51b6a4d14320719e` | V69本監査更新前 |
+| Codex Evidence | PR #19 | `91f391e21ca6155008f84da005919b89580b57f9` | V69本監査同期済み / PR #18へretarget |
 | vault main | `main` | `0812634ec443abf966819d2cf6b10e73efb3a94a` | unchanged / PASS待ち |
 | vault sync | PR #3 | `7589980925ddc130446787328b5a51f969f387b4` | V69本監査更新前 |
 
@@ -98,10 +98,11 @@ independent vault PR #3:
 
 - order: `PR #14 fixed → PR #18 fixed → Codex Evidence`。
 - `ba01244` is ancestor of `dd54ce9`。
-- PR #18とCodex Evidence `f3705c`のmerge-base: `3d808a7`。
-- left / right commits: 9 / 3。
+- PR #18とCodex Evidence `91f391e`のmerge-base: `3d808a7`。
+- left / right commits: 9 / 4。
 - duplicate patches: 0。
-- `git merge-tree --write-tree dd54ce9 f3705c`: conflict 0、candidate tree `c6d26b536e01d0c0fb5241174d7dc88e66449001`。
+- PR #19 base: `claude/p35-approval-bridges-v1`へretarget済み。
+- `git merge-tree --write-tree dd54ce9 91f391e`: conflict 0、candidate tree `e249c2acf794b6df644e7f632aab01d557858908`。
 - blocker残存のため実merge・RC作成なし。
 
 ## Sync gates

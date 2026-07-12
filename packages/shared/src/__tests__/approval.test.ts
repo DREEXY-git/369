@@ -44,8 +44,9 @@ describe('requiresApproval — dangerous actions', () => {
     expect(requiresApproval('invoice_send')).toBe(true);
   });
 
-  // Phase 3.5 承認ブリッジ（roadmap81）: コンテンツ下書きのレビューは常に人間承認（AI は申請/決定不可）。
-  it('content_review always requires human approval', () => {
+  // Phase 3.5 承認ブリッジ（roadmap81/83）: 下書き/改善案のレビューは常に人間承認（AI は申請/決定不可）。
+  it('content_review / ad_suggestion_review always require human approval', () => {
     expect(requiresApproval('content_review')).toBe(true);
+    expect(requiresApproval('ad_suggestion_review')).toBe(true);
   });
 });

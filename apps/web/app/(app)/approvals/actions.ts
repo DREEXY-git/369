@@ -8,6 +8,7 @@ import { recordUsageEvent } from '@/lib/usage-events';
 import { isSuppressed } from '@hokko/shared';
 import { getEmailProvider, isExternalSendEnabled } from '@hokko/integrations';
 import { decideContentReviewCore, type BridgeDb } from '@/lib/content-review-bridge';
+import { decideSuggestionReviewCore, type SuggestionBridgeDb } from '@/lib/suggestion-review-bridge';
 
 export async function decideApprovalAction(formData: FormData) {
   const user = await requireUser();
@@ -47,6 +48,31 @@ export async function decideApprovalAction(formData: FormData) {
     }
     revalidatePath('/approvals');
     revalidatePath('/marketing/content');
+    if (r.outcome === 'forbidden') redirect('/approvals?denied=1');
+    redirect('/approvals'); // decided / already（冪等）とも一覧へ
+  }
+
+  // C19 承認ブリッジ（roadmap83 案A）: content_review と同型の単一 transaction 決定。
+  // 承認しても広告の実変更・予算・出稿・外部送信は発生しない（社内状態のみ）。
+  if (approval.type === 'ad_suggestion_review') {
+    let r;
+    try {
+      r = await decideSuggestionReviewCore(prisma as unknown as SuggestionBridgeDb, {
+        tenantId: user.tenantId,
+        approvalId,
+        entityId: approval.entityId,
+        decision: decision === 'approve' ? 'approve' : 'reject',
+        decidedById: user.userId,
+        note,
+        approvalTitle: approval.title,
+        actorIsAi: user.isAi,
+      });
+    } catch {
+      revalidatePath('/approvals');
+      redirect('/approvals?error=suggestion_transition');
+    }
+    revalidatePath('/approvals');
+    revalidatePath('/marketing/ads');
     if (r.outcome === 'forbidden') redirect('/approvals?denied=1');
     redirect('/approvals'); // decided / already（冪等）とも一覧へ
   }

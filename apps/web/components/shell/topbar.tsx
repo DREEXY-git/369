@@ -71,8 +71,9 @@ export function Topbar({
         </span>
       ) : null}
 
+      {/* <sm では drawer 内の「表示設定 > テーマ切替」が実操作（機能は消えない・v7.0 R2）。 */}
       <div className="hidden sm:block">
-        <ThemeToggle />
+        <ThemeToggle testId="topbar-theme" />
       </div>
 
       {showApprovals ? (

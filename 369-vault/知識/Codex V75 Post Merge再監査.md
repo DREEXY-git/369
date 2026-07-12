@@ -25,5 +25,14 @@
 
 C19、Phase 4、WorkflowはCI証拠を確認したが、Production worker・stalled recovery・Production動作は未証明である。CI greenをProduction verifiedへ格上げしない。
 
+## Draft PR #36 CI再確認
+
+- run `29210476847`: stage1 success / stage3_e2e failure
+- E2E: 202 passed / 1 failed
+- failing test: `ads_suggestion_bridge.spec.ts:87`
+- report artifact: `8265067898`
+- screenshot artifact: `8265068017`
+- 判定は`CHANGES_REQUIRED / HOLD`のまま維持する。
+
 [[完全機能台帳/index]]
 [[Codex V75 Post Merge再監査]]

@@ -1,11 +1,13 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Table, Th, Td, Badge, Button, Stat } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { formatJpy, formatDate } from '@hokko/shared';
+import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,11 +18,33 @@ const STATUS_TONE: Record<string, string> = {
 export default async function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
+  // WIP-4（roadmap65）: 原価・粗利を含む見積詳細は quote:read 配下（値引き承認ルールを含む
+  // STAFF の業務フロー）。ページ基礎権限をデータ取得前に適用する。
+  if (!hasPermission(user, 'quote', 'read')) {
+    return (
+      <AccessDenied
+        title="見積詳細"
+        reason="見積の閲覧には見積の閲覧権限（quote:read）が必要です"
+        breadcrumb={[{ label: '見積', href: '/quotes' }]}
+      />
+    );
+  }
   const quote = await prisma.quote.findFirst({
     where: { id, tenantId: user.tenantId },
-    include: { lineItems: true, deal: { include: { customer: true } } },
+    include: { lineItems: true, deal: true },
   });
   if (!quote) notFound();
+  // v5.8 Medium-4 修正: 顧客名は「表示抑止」ではなく取得段階から遮断する（WIP-4 受入条件）。
+  // customer:read が無ければ customer を select しない。権限があっても label 条件付き別クエリで
+  // 可視範囲のみ取得する（不可視は空 = 未設定と区別不能でオラクルにならない）。
+  let customerName = '';
+  if (quote.deal && hasPermission(user, 'customer', 'read')) {
+    const c = await prisma.customer.findFirst({
+      where: { id: quote.deal.customerId, tenantId: user.tenantId, label: { in: visibleCustomerLabels(user.roles) } },
+      select: { name: true },
+    });
+    customerName = c?.name ?? '';
+  }
 
   const gm = toNumber(quote.grossMarginRate);
 
@@ -28,7 +52,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
     <div>
       <PageHeader
         title={`${quote.number} ${quote.title}`}
-        description={quote.deal?.customer?.name ?? ''}
+        description={customerName}
         breadcrumb={[{ label: '見積', href: '/quotes' }, { label: quote.number, href: '#' }]}
         action={
           <div className="flex items-center gap-3">

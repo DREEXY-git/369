@@ -79,3 +79,26 @@ export async function summarizeGrowthEvents(tenantId: string, sinceDays = 30) {
     })),
   );
 }
+
+/**
+ * 金額列（revenueImpact/costSaving/amount）を DB クエリ段階から一切取得しない件数・時間集計
+ * （財務閲覧権限のない閲覧者向け・WIP-3/roadmap64）。
+ * finance カテゴリの行も取得しない（件数・削減時間合計への混入による存在シグナルを遮断。
+ * category 列は emitGrowthEvent が growthCategoryOf(type) で必ず導出するため type 由来の
+ * byCategory と一致する）。返り値の金額系合計は常に 0（呼び出し側で表示しないこと）。
+ */
+export async function summarizeGrowthEventCounts(tenantId: string, sinceDays = 30) {
+  const since = new Date(Date.now() - sinceDays * 86_400_000);
+  const events = await prisma.growthEvent.findMany({
+    where: { tenantId, occurredAt: { gte: since }, category: { not: 'finance' } },
+    select: { type: true, timeSavingMinutes: true },
+  });
+  return summarizeGrowth(
+    events.map((e) => ({
+      type: e.type,
+      revenueImpact: 0,
+      costSaving: 0,
+      timeSavingMinutes: e.timeSavingMinutes ?? 0,
+    })),
+  );
+}

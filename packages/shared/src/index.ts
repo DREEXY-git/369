@@ -21,9 +21,17 @@ export * from './operations';
 export * from './golden-path';
 export * from './golden-path-dashboard';
 export * from './golden-path-actions';
+export * from './growth-control-tower';
 export * from './dunning';
 export * from './case-study';
 export * from './case-study-consent';
 export * from './customer-pain-access';
+export * from './ads';
+export * from './content-seo';
+export * from './content-approval';
+export * from './ai-workforce';
+export * from './agent-run-lifecycle';
+export * from './outcome-evidence';
+export * from './ai-characters';
 // 注: './webhook' は node:crypto を使うため barrel に含めない（client汚染防止）。
 //     サーバ/ワーカーは '@hokko/shared/webhook' から直接 import する。

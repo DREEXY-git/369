@@ -7,7 +7,10 @@ import { prisma, writeAudit } from '@/lib/db';
 import { emitGrowthEvent } from '@/lib/growth';
 import { generateMarketingAsset, type MarketingAssetKind } from '@/lib/ai-generate';
 import { requireApprovalForDangerousAction } from '@/lib/approval';
-import { checkToolPermission } from '@hokko/shared';
+import { checkToolPermission, summarizeAdsMetrics } from '@hokko/shared';
+import { generateAdsImprovementDraft } from '@/lib/ads-insight';
+import { generateSeoBriefDraft } from '@/lib/seo-brief';
+import { toNumber } from '@/lib/utils';
 
 function num(v: FormDataEntryValue | null, d = 0): number {
   const n = Number(v ?? d);
@@ -183,4 +186,111 @@ export async function recordMarketingCampaignResultAction(formData: FormData) {
   await writeAudit({ tenantId: user.tenantId, actorId: user.userId, action: 'update', entityType: 'MarketingCampaign', entityId: campaignId, summary: '実績KPIを記録' });
   revalidatePath(`/marketing/campaigns/${campaignId}`);
   redirect(`/marketing/campaigns/${campaignId}`);
+}
+
+/** C19 Ads: 広告改善案の下書きを生成する（Phase 3.5 Stream A・roadmap70）。
+ *  read-only 分析＋下書きのみ。出稿変更・費用増減・外部媒体反映・外部送信は行わない（封印中）。
+ *  生成は人間のみ（AI ロールの再帰生成を作らない・P3-CT-4 と同方針）。 */
+export async function generateAdsImprovementDraftAction(formData: FormData) {
+  const user = await requireUser();
+  if (!hasPermission(user, 'marketing', 'create')) redirect('/marketing/ads?denied=1');
+  if (user.isAi) redirect('/marketing/ads?denied=1');
+  const tool = checkToolPermission('user', 'generate');
+  if (!tool.allowed) redirect('/marketing/ads?error=tool');
+
+  const campaignId = String(formData.get('campaignId') ?? '');
+  const campaign = await prisma.marketingCampaign.findFirst({
+    where: { id: campaignId, tenantId: user.tenantId },
+    include: { metrics: true },
+  });
+  if (!campaign) redirect('/marketing/ads?error=notfound');
+
+  const summary = summarizeAdsMetrics(
+    campaign!.metrics.map((m) => ({
+      impressions: m.impressions,
+      clicks: m.clicks,
+      conversions: m.conversions,
+      cost: toNumber(m.cost),
+    })),
+  );
+  const result = await generateAdsImprovementDraft({
+    tenantId: user.tenantId,
+    userId: user.userId,
+    campaignId: campaign!.id,
+    input: {
+      campaignName: campaign!.name,
+      channel: campaign!.channel,
+      budget: toNumber(campaign!.budget),
+      spent: toNumber(campaign!.spent),
+      impressions: summary.impressions,
+      clicks: summary.clicks,
+      conversions: summary.conversions,
+      cost: summary.cost,
+      ctr: summary.ctr,
+      cvr: summary.cvr,
+      cpa: summary.cpa,
+    },
+  });
+  if (result.blocked) redirect('/marketing/ads?blocked=1');
+  await writeAudit({
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    action: 'ai_run',
+    entityType: 'MarketingCampaign',
+    entityId: campaign!.id,
+    summary: `広告改善案の下書きを生成: ${campaign!.name}（実行なし・封印中）`,
+  });
+  revalidatePath('/marketing/ads');
+  redirect('/marketing/ads?generated=1');
+}
+
+/** C21 SEO/Content: SEO ブリーフの下書きを生成する（Phase 3.5 Stream A2・roadmap73）。
+ *  下書きのみ。公開・CMS 投稿・外部検索・PR 配信は行わない（封印中）。生成は人間のみ。 */
+export async function generateSeoBriefDraftAction(formData: FormData) {
+  const user = await requireUser();
+  if (!hasPermission(user, 'marketing', 'create')) redirect('/marketing/content?denied=1');
+  if (user.isAi) redirect('/marketing/content?denied=1');
+  const tool = checkToolPermission('user', 'generate');
+  if (!tool.allowed) redirect('/marketing/content?error=tool');
+
+  // v5.8 Medium-5 修正: 自由入力に上限を課す（巨大入力による AIOutput/DataAccessLog/描画の肥大化防止）。
+  // 超過は黙って切り詰めず、エラーとして返す（入力の意図しない改変をしない）。
+  const SEO_INPUT_MAX = { keyword: 120, audience: 200, theme: 300 } as const;
+  const keyword = String(formData.get('keyword') ?? '').trim();
+  if (!keyword) redirect('/marketing/content?error=keyword');
+  const audience = String(formData.get('audience') ?? '').trim();
+  const theme = String(formData.get('theme') ?? '').trim();
+  if (keyword.length > SEO_INPUT_MAX.keyword || audience.length > SEO_INPUT_MAX.audience || theme.length > SEO_INPUT_MAX.theme) {
+    redirect('/marketing/content?error=too_long');
+  }
+  // 既存記事タイトルのみ渡す（顧客 PII・CUSTOMER_CONFIDENTIAL は取得も送出もしない）。
+  // v5.8 Low 修正: orderBy を固定して重複診断の入力集合を決定論化（100件超でも集合が不定にならない）。
+  // タイトル自体も1件あたり上限で切る（AI入力の肥大化防止・表示は別途 DB 値が正）。
+  const existing = await prisma.contentAsset.findMany({
+    where: { tenantId: user.tenantId, type: { in: ['article', 'lp'] } },
+    select: { title: true },
+    orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+    take: 100,
+  });
+  const result = await generateSeoBriefDraft({
+    tenantId: user.tenantId,
+    userId: user.userId,
+    input: {
+      keyword,
+      audience,
+      theme,
+      existingTitles: existing.map((e) => e.title.slice(0, 200)),
+    },
+  });
+  if (result.blocked) redirect('/marketing/content?blocked=1');
+  await writeAudit({
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    action: 'ai_run',
+    entityType: 'ContentAsset',
+    entityId: result.aiOutputId ?? 'seo-brief',
+    summary: `SEOブリーフ下書きを生成: ${keyword.slice(0, 40)}（公開なし・封印中）`,
+  });
+  revalidatePath('/marketing/content');
+  redirect('/marketing/content?generated=1');
 }

@@ -1,0 +1,462 @@
+import { describe, expect, it } from 'vitest';
+import { runWithAgentLifecycle, type LifecycleDb } from '../agent-lifecycle';
+
+// v5.8 High-2 / Medium-1 / Medium-6 の回帰テスト（DB 非依存・mock db 注入）。
+// 実 DB との結線は CI の e2e（seed 済み ephemeral DB）で担保する。
+
+interface RunRow {
+  id: string;
+  tenantId: string;
+  agentId: string;
+  task: string;
+  status: string;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+  error: string | null;
+}
+
+function makeDb(opts: { agentExists?: boolean; preexisting?: RunRow[]; now?: () => Date } = {}) {
+  let seq = 0;
+  const clock = opts.now ?? (() => new Date());
+  const runs: RunRow[] = [...(opts.preexisting ?? [])];
+  const gates: unknown[] = [];
+  const actions: unknown[] = [];
+  const db: LifecycleDb = {
+    aIAgent: {
+      findFirst: async () => (opts.agentExists === false ? null : { id: 'agent-1' }),
+    },
+    aIAgentRun: {
+      findMany: async (args) => {
+        const where = (args as { where: { status: { in: string[] } } }).where;
+        return runs
+          .filter((r) => where.status.in.includes(r.status))
+          .map((r) => ({ id: r.id, status: r.status, startedAt: r.startedAt }));
+      },
+      create: async () => {
+        seq += 1;
+        const row: RunRow = {
+          id: `run-${String(seq).padStart(2, '0')}`,
+          tenantId: 't1',
+          agentId: 'agent-1',
+          task: 'テストタスク',
+          status: 'RUNNING',
+          startedAt: clock(),
+          finishedAt: null,
+          error: null,
+        };
+        runs.push(row);
+        return { id: row.id, startedAt: row.startedAt! };
+      },
+      updateMany: async (args) => {
+        const a = args as { where: { id: string; status: { in: string[] } }; data: { status: string; error?: string | null } };
+        const row = runs.find((r) => r.id === a.where.id && a.where.status.in.includes(r.status));
+        if (!row) return { count: 0 };
+        row.status = a.data.status;
+        row.error = a.data.error ?? null;
+        return { count: 1 };
+      },
+    },
+    aIApprovalGate: { create: async (g) => (gates.push(g), g) },
+    aIAgentAction: { create: async (a) => (actions.push(a), a) },
+  };
+  return { db, runs, gates, actions };
+}
+
+const params = { tenantId: 't1', agentKey: 'chief_of_staff', task: 'テストタスク', summary: 'テスト' };
+
+describe('runWithAgentLifecycle（v5.8 hardening）', () => {
+  it('成功時は SUCCEEDED を記録し result を返す', async () => {
+    const { db, runs, actions } = makeDb();
+    const out = await runWithAgentLifecycle(params, async () => ({ value: 1 }), db);
+    expect(out.ok).toBe(true);
+    expect(runs[0]!.status).toBe('SUCCEEDED');
+    expect(actions).toHaveLength(1);
+  });
+
+  it('High-2: fn の失敗は FAILED 記録後に再 throw され、メッセージに秘密が残らない', async () => {
+    const { db, runs } = makeDb();
+    await expect(
+      runWithAgentLifecycle(
+        params,
+        async () => {
+          throw new Error('boom Authorization: Bearer sk-live-VERYSECRET99 while calling https://api.example.com/x?key=abc');
+        },
+        db,
+      ),
+    ).rejects.toThrow(/agent lifecycle job failed/);
+    // FAILED として記録され、保存エラーにも throw メッセージにも秘密が残らない。
+    expect(runs[0]!.status).toBe('FAILED');
+    expect(runs[0]!.error).not.toContain('VERYSECRET99');
+    try {
+      await runWithAgentLifecycle(
+        { ...params, task: '別タスク' },
+        async () => {
+          throw new Error('Authorization: Bearer sk-live-VERYSECRET99');
+        },
+        db,
+      );
+      expect.unreachable('should throw');
+    } catch (e) {
+      expect(String(e)).not.toContain('VERYSECRET99');
+    }
+  });
+
+  it('v6.3 P1: escaped-quoted / 改行入り秘密も、保存エラーと再throwの両方でマスクされる', async () => {
+    const { db, runs } = makeDb();
+    await expect(
+      runWithAgentLifecycle(
+        params,
+        async () => {
+          // P1-1（comma）と P1-2（newline）を含む秘密。保存値・再throw値のどちらにも残ってはならない。
+          throw new Error('upstream {"password":"abc,COMMASECRET63"} and {"token":"x\nNEWLINESECRET63"}');
+        },
+        db,
+      ),
+    ).rejects.toThrow(/agent lifecycle job failed/);
+    expect(runs[0]!.status).toBe('FAILED');
+    for (const sec of ['COMMASECRET63', 'NEWLINESECRET63']) {
+      expect(runs[0]!.error).not.toContain(sec);
+    }
+    try {
+      await runWithAgentLifecycle(
+        { ...params, task: '別タスク63' },
+        async () => {
+          throw new Error('{"password":"abc,COMMASECRET63"}\n{"token":"x\nNEWLINESECRET63"}');
+        },
+        db,
+      );
+      expect.unreachable('should throw');
+    } catch (e) {
+      expect(String(e)).not.toContain('COMMASECRET63');
+      expect(String(e)).not.toContain('NEWLINESECRET63');
+    }
+  });
+
+  it('v6.4 P1: 内部 depth3 escaped quote 直後の秘密も、保存エラー・再throw・Action要約でマスクされる', async () => {
+    const { db, runs, actions } = makeDb();
+    // 開始 depth 1・内部 quote depth 3・直後 comma（Codex 再現ケース）を含む秘密。
+    const payload = String.raw`upstream {\"password\":\"abc\\\",DEPTH3SECRET64\"} boom`;
+    await expect(
+      runWithAgentLifecycle(params, async () => {
+        throw new Error(payload);
+      }, db),
+    ).rejects.toThrow(/agent lifecycle job failed/);
+    expect(runs[0]!.status).toBe('FAILED');
+    expect(runs[0]!.error).not.toContain('DEPTH3SECRET64'); // 保存値
+    // 失敗 Action 要約にも残らない。
+    for (const a of actions as { data: { summary: string } }[]) {
+      expect(a.data.summary).not.toContain('DEPTH3SECRET64');
+    }
+    try {
+      await runWithAgentLifecycle({ ...params, task: 'depth3別' }, async () => {
+        throw new Error(payload);
+      }, db);
+      expect.unreachable('should throw');
+    } catch (e) {
+      expect(String(e)).not.toContain('DEPTH3SECRET64'); // 再throw値
+    }
+  });
+
+  it('v6.5 P1: 偽closer＋別depth終端 quote の生成 matrix が、保存値・再throw・Action要約の3経路で 0 残存', async () => {
+    // Codex 84/84 sentinel 残存の攻撃クラス（decoy を同 depth の偽 closer で閉じ、本物の秘密を comma の外に置き、
+    // 別 depth の終端 quote を付す）を worker 経路で網羅する。sentinel と decoy 内秘密の両方が全経路で残らない。
+    const SENTINEL = 'O0F144S64';
+    const INNER = 'INNERSECRET65';
+    const KEYS = ['password', 'token', 'authorization', 'session'];
+    const QUOTES = ['"', "'"];
+    const TERMINALS = [String.raw`\"`, String.raw`\'`, String.raw`\\\"`];
+    const SEPS = [',', ', ', ' ,'];
+    const inputs: string[] = [];
+    for (const key of KEYS)
+      for (const q of QUOTES)
+        for (const sep of SEPS)
+          for (const term of TERMINALS)
+            inputs.push(`upstream {${q}${key}${q}:${q}${INNER}${q}${sep}${SENTINEL}${term}} boom`);
+
+    let i = 0;
+    for (const input of inputs) {
+      const { db, runs, actions } = makeDb();
+      // ① FAILED 保存値
+      await expect(
+        runWithAgentLifecycle({ ...params, task: `v65-save-${i}` }, async () => {
+          throw new Error(input);
+        }, db),
+      ).rejects.toThrow(/agent lifecycle job failed/);
+      expect(runs[0]!.status).toBe('FAILED');
+      for (const sec of [SENTINEL, INNER]) {
+        expect(runs[0]!.error, `保存値に残存: ${JSON.stringify(runs[0]!.error)}`).not.toContain(sec);
+        // ② Action 要約
+        for (const a of actions as { data: { summary: string } }[]) {
+          expect(a.data.summary, `Action要約に残存: ${a.data.summary}`).not.toContain(sec);
+        }
+      }
+      // ③ 再throw 値
+      try {
+        await runWithAgentLifecycle({ ...params, task: `v65-rethrow-${i}` }, async () => {
+          throw new Error(input);
+        }, db);
+        expect.unreachable('should throw');
+      } catch (e) {
+        for (const sec of [SENTINEL, INNER]) {
+          expect(String(e), `再throwに残存: ${String(e)}`).not.toContain(sec);
+        }
+      }
+      i += 1;
+    }
+    expect(inputs.length).toBeGreaterThanOrEqual(48);
+  });
+
+  it('v6.6 P1: balanced-but-invalid tail（`,SECRET"x"` 等）が、保存値・再throw・Action要約の3経路で 0 残存', async () => {
+    // quote 均衡だが文法的に不正な tail（偽 closer を信頼させる）を worker 経路で網羅する。
+    const SENTINEL = 'O0F144S64';
+    const INNER = 'INNERSECRET66';
+    const KEYS = ['password', 'token', 'authorization', 'session'];
+    const mk = (k: string): string[] => [
+      `upstream {"${k}":"${INNER}",${SENTINEL}"x"} boom`,
+      `upstream {"${k}":"${INNER}",${SENTINEL}} boom`,
+      `upstream {"${k}":"${INNER}","${SENTINEL}""x"} boom`,
+      `upstream {"${k}":"${INNER}", ${SENTINEL}"x"} boom`,
+      `upstream ["${k}":"${INNER}",${SENTINEL}"x"] boom`,
+      `upstream {"${k}":"${INNER}",42,${SENTINEL}"x"} boom`,
+    ];
+    const inputs = KEYS.flatMap(mk);
+
+    let i = 0;
+    for (const input of inputs) {
+      const { db, runs, actions } = makeDb();
+      await expect(
+        runWithAgentLifecycle({ ...params, task: `v66-save-${i}` }, async () => {
+          throw new Error(input);
+        }, db),
+      ).rejects.toThrow(/agent lifecycle job failed/);
+      expect(runs[0]!.status).toBe('FAILED');
+      for (const sec of [SENTINEL, INNER]) {
+        expect(runs[0]!.error, `保存値に残存: ${JSON.stringify(runs[0]!.error)}`).not.toContain(sec);
+        for (const a of actions as { data: { summary: string } }[]) {
+          expect(a.data.summary, `Action要約に残存: ${a.data.summary}`).not.toContain(sec);
+        }
+      }
+      try {
+        await runWithAgentLifecycle({ ...params, task: `v66-rethrow-${i}` }, async () => {
+          throw new Error(input);
+        }, db);
+        expect.unreachable('should throw');
+      } catch (e) {
+        for (const sec of [SENTINEL, INNER]) {
+          expect(String(e), `再throwに残存: ${String(e)}`).not.toContain(sec);
+        }
+      }
+      i += 1;
+    }
+    expect(inputs.length).toBeGreaterThanOrEqual(24);
+  });
+
+  it('v6.7 P1: 値後の空白/LF malformed tail が、保存値・再throw・Action要約の3経路で 0 残存', async () => {
+    // container 内で値の後に空白/改行＋任意 bare token を置く漏洩クラスを worker 経路で網羅する。
+    const SENTINEL = 'O0F144S66';
+    const INNER = 'INNERSECRET67';
+    const KEYS = ['password', 'token', 'authorization', 'session'];
+    const SEPS = [' ', '\n', '\t'];
+    const mk = (k: string): string[] =>
+      SEPS.flatMap((sep) => [
+        `upstream {"${k}":"${INNER}"${sep}${SENTINEL}"x"} boom`,
+        `upstream {"${k}":"${INNER}"${sep}${SENTINEL}} boom`,
+      ]);
+    const inputs = KEYS.flatMap(mk);
+
+    let i = 0;
+    for (const input of inputs) {
+      const { db, runs, actions } = makeDb();
+      await expect(
+        runWithAgentLifecycle({ ...params, task: `v67-save-${i}` }, async () => {
+          throw new Error(input);
+        }, db),
+      ).rejects.toThrow(/agent lifecycle job failed/);
+      expect(runs[0]!.status).toBe('FAILED');
+      for (const sec of [SENTINEL, INNER]) {
+        expect(runs[0]!.error, `保存値に残存: ${JSON.stringify(runs[0]!.error)}`).not.toContain(sec);
+        for (const a of actions as { data: { summary: string } }[]) {
+          expect(a.data.summary, `Action要約に残存: ${a.data.summary}`).not.toContain(sec);
+        }
+      }
+      try {
+        await runWithAgentLifecycle({ ...params, task: `v67-rethrow-${i}` }, async () => {
+          throw new Error(input);
+        }, db);
+        expect.unreachable('should throw');
+      } catch (e) {
+        for (const sec of [SENTINEL, INNER]) {
+          expect(String(e), `再throwに残存: ${String(e)}`).not.toContain(sec);
+        }
+      }
+      i += 1;
+    }
+    expect(inputs.length).toBeGreaterThanOrEqual(24);
+  });
+
+  it('v6.8 P1: object の keyless value（`,"secret"}` 等）が、保存値・再throw・Action要約の3経路で 0 残存', async () => {
+    // object-comma 後を array 同様の値位置として受理していた漏洩クラスを worker 経路で網羅する。
+    const SENTINEL = 'O0F144S68';
+    const INNER = 'INNERSECRET68';
+    const KEYS = ['password', 'token', 'authorization', 'session'];
+    const mk = (k: string): string[] => [
+      `upstream {"${k}":"${INNER}","${SENTINEL}"} boom`,
+      `upstream {"${k}":"${INNER}",${SENTINEL}} boom`,
+      `upstream {"${k}":"${INNER}",{"x":"${SENTINEL}"}} boom`,
+      `upstream {"${k}":"${INNER}",["${SENTINEL}"]} boom`,
+      `upstream {"${k}":"${INNER}" "${SENTINEL}"} boom`,
+    ];
+    const inputs = KEYS.flatMap(mk);
+
+    let i = 0;
+    for (const input of inputs) {
+      const { db, runs, actions } = makeDb();
+      await expect(
+        runWithAgentLifecycle({ ...params, task: `v68-save-${i}` }, async () => {
+          throw new Error(input);
+        }, db),
+      ).rejects.toThrow(/agent lifecycle job failed/);
+      expect(runs[0]!.status).toBe('FAILED');
+      for (const sec of [SENTINEL, INNER]) {
+        expect(runs[0]!.error, `保存値に残存: ${JSON.stringify(runs[0]!.error)}`).not.toContain(sec);
+        for (const a of actions as { data: { summary: string } }[]) {
+          expect(a.data.summary, `Action要約に残存: ${a.data.summary}`).not.toContain(sec);
+        }
+      }
+      try {
+        await runWithAgentLifecycle({ ...params, task: `v68-rethrow-${i}` }, async () => {
+          throw new Error(input);
+        }, db);
+        expect.unreachable('should throw');
+      } catch (e) {
+        for (const sec of [SENTINEL, INNER]) {
+          expect(String(e), `再throwに残存: ${String(e)}`).not.toContain(sec);
+        }
+      }
+      i += 1;
+    }
+    expect(inputs.length).toBeGreaterThanOrEqual(20);
+  });
+
+  it('v6.9 P1: trailing comma・非strict number・mismatched/underflow/extra closer・array内keyが3経路で0残存', async () => {
+    // Codex 10 mutation（threads r3565804348/r3565805875/r3565808689/r3565808693/r3565825674/r3565863141-150）
+    // を worker の保存値・再throw・Action要約で網羅する（direct は shared unit 側）。
+    const TAIL = 'CODEXTAIL68SECRET';
+    const INNER = 'INNERSECRET68';
+    const KEYS = ['password', 'token', 'authorization', 'session'];
+    const mk = (k: string): string[] => [
+      `upstream {"${k}":"${INNER}",} ${TAIL} boom`, // object trailing comma
+      `upstream {"a":{"${k}":"${INNER}",}} ${TAIL} boom`, // nested object trailing comma
+      `upstream [{"${k}":"${INNER}"},] ${TAIL} boom`, // array trailing comma
+      `upstream {"${k}":"${INNER}","x":01} ${TAIL} boom`, // leading zero number
+      `upstream {"${k}":"${INNER}","x":-01} ${TAIL} boom`,
+      `upstream [{]"${k}":"${INNER}"] ${TAIL} boom`, // mismatched closer prefix
+      `upstream }}{"${k}":"${INNER}"} ${TAIL} boom`, // underflow closer prefix
+      `upstream {"${k}":"${INNER}"}} ${TAIL} boom`, // extra closer after exit
+      `upstream ["${k}":"${INNER}","${TAIL}"] boom`, // array 内 sensitive key 構文
+      `upstream {"${k}":"${INNER}",} PREV68MIDV68POST boom`,
+    ];
+    const inputs = KEYS.flatMap(mk);
+
+    let i = 0;
+    for (const input of inputs) {
+      const { db, runs, actions } = makeDb();
+      await expect(
+        runWithAgentLifecycle({ ...params, task: `v69-save-${i}` }, async () => {
+          throw new Error(input);
+        }, db),
+      ).rejects.toThrow(/agent lifecycle job failed/);
+      expect(runs[0]!.status).toBe('FAILED');
+      for (const sec of [TAIL, INNER, 'PREV68MIDV68POST']) {
+        expect(runs[0]!.error, `保存値に残存: ${JSON.stringify(runs[0]!.error)}`).not.toContain(sec);
+        for (const a of actions as { data: { summary: string } }[]) {
+          expect(a.data.summary, `Action要約に残存: ${a.data.summary}`).not.toContain(sec);
+        }
+      }
+      try {
+        await runWithAgentLifecycle({ ...params, task: `v69-rethrow-${i}` }, async () => {
+          throw new Error(input);
+        }, db);
+        expect.unreachable('should throw');
+      } catch (e) {
+        for (const sec of [TAIL, INNER, 'PREV68MIDV68POST']) {
+          expect(String(e), `再throwに残存: ${String(e)}`).not.toContain(sec);
+        }
+      }
+      i += 1;
+    }
+    expect(inputs.length).toBeGreaterThanOrEqual(40);
+  });
+
+  it('二重 Run 防止: 新鮮な RUNNING が既存なら実行せず skip する', async () => {
+    const { db } = makeDb({
+      preexisting: [
+        { id: 'run-00', tenantId: 't1', agentId: 'agent-1', task: 'テストタスク', status: 'RUNNING', startedAt: new Date(), finishedAt: null, error: null },
+      ],
+    });
+    let executed = false;
+    const out = await runWithAgentLifecycle(params, async () => ((executed = true), { value: 1 }), db);
+    expect(out.ok).toBe(false);
+    expect(out.skipped).toContain('重複');
+    expect(executed).toBe(false);
+  });
+
+  it('Medium-1: create 後に先行 active を検出したら自分を FAILED(重複) にして fn を実行しない', async () => {
+    // pre-check は通る（先行が pre-check 後に現れた想定）→ post-check で降りる状況を、
+    // create 直前に先行 run を滑り込ませて再現する。
+    const { db, runs } = makeDb();
+    const origCreate = db.aIAgentRun.create.bind(db.aIAgentRun);
+    db.aIAgentRun.create = async (args) => {
+      // 競合 worker が一瞬先に RUNNING を作った
+      runs.push({ id: 'run-00-rival', tenantId: 't1', agentId: 'agent-1', task: 'テストタスク', status: 'RUNNING', startedAt: new Date(Date.now() - 1000), finishedAt: null, error: null });
+      return origCreate(args);
+    };
+    let executed = false;
+    const out = await runWithAgentLifecycle(params, async () => ((executed = true), { value: 1 }), db);
+    expect(executed).toBe(false);
+    expect(out.ok).toBe(false);
+    const mine = runs.find((r) => r.id !== 'run-00-rival');
+    expect(mine!.status).toBe('FAILED');
+    expect(mine!.error).toContain('二重実行');
+    // 先行側はそのまま RUNNING（勝者は 1 本に収束）
+    expect(runs.find((r) => r.id === 'run-00-rival')!.status).toBe('RUNNING');
+  });
+
+  it('v6.1: stale（クラッシュ残骸）RUNNING は競合に含めず、新規 run は成功する', async () => {
+    // 3 時間前に起動して finishedAt を持たない RUNNING は crash 残骸。作成前 gate は作成を許可し、
+    // 作成後 rival 判定でも「先行」と見なさない（さもなくば残骸が新規 run を恒久的に潰す）。
+    const stale = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const { db, runs } = makeDb({
+      preexisting: [
+        { id: 'run-stale', tenantId: 't1', agentId: 'agent-1', task: 'テストタスク', status: 'RUNNING', startedAt: stale, finishedAt: null, error: null },
+      ],
+    });
+    let executed = false;
+    const out = await runWithAgentLifecycle(params, async () => ((executed = true), { value: 42 }), db);
+    expect(executed).toBe(true);
+    expect(out.ok).toBe(true);
+    const mine = runs.find((r) => r.id !== 'run-stale');
+    expect(mine!.status).toBe('SUCCEEDED');
+    // 残骸はそのまま（履歴は巻き戻さない）
+    expect(runs.find((r) => r.id === 'run-stale')!.status).toBe('RUNNING');
+  });
+
+  it('needsApproval は NEEDS_APPROVAL＋AIApprovalGate(PENDING) を作り、承認はしない', async () => {
+    const { db, runs, gates } = makeDb();
+    const out = await runWithAgentLifecycle(params, async () => ({ needsApproval: '外部送信を含むため人間の承認が必要' }), db);
+    expect(out.ok).toBe(true);
+    expect(runs[0]!.status).toBe('NEEDS_APPROVAL');
+    expect(gates).toHaveLength(1);
+    expect((gates[0] as { data: { status: string } }).data.status).toBe('PENDING');
+  });
+
+  it('Medium-6: 遷移 CAS が失敗（count 0）したら Gate/Action を作らず競合例外を投げる', async () => {
+    const { db, gates, actions } = makeDb();
+    // updateMany を常に count:0 に固定（競合で他者が terminal へ動かした想定）
+    db.aIAgentRun.updateMany = async () => ({ count: 0 });
+    await expect(runWithAgentLifecycle(params, async () => ({ needsApproval: 'x' }), db)).rejects.toThrow(/競合/);
+    expect(gates).toHaveLength(0);
+    // 競合例外の記録 action は best-effort 側で作られ得るが、承認待ち action は作られていない
+    expect(actions.every((a) => !String((a as { data: { summary: string } }).data.summary).includes('承認待ち'))).toBe(true);
+  });
+});

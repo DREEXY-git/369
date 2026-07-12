@@ -2,6 +2,17 @@
 
 このファイルは Claude Code が次回作業時に参照する開発ガイドです。
 
+## Codexからの自動引き継ぎ（必須）
+
+- `.claude/settings.json` のHookが、セッション開始・再開・compact後と各ユーザープロンプト送信時に、GitHub上のopenな `codex/**` PRをread-onlyで確認する。
+- Hookから `[CODEX_HANDOFF_PENDING]` が渡された場合、新規実装より先に対象PRの本文・差分・checks・最新コメントを確認し、現在のClaude Streamと重複しない取り込み順を決める。
+- 受領したPRには `CLAUDE_ACK`、取り込み完了時には `CLAUDE_INTEGRATED` をPR Conversationへ記録する。commit SHA、対象Stream、未解決Gateを含める。
+- Codex成果の正本はGitHubのcommit・Draft PR・PR Conversationとし、チャット本文だけを正本にしない。
+- HookがGitHubへ接続できなかった場合は「通知なし」ではなく「確認不能」と扱い、`gh pr list --state open --search 'head:codex/'`で再確認する。
+- Codex PRを未確認のまま同じファイルを編集しない。main merge、本番、DB、Secrets、外部送信、実LLM、課金は従来どおり別の人間承認が必要。
+
+詳細手順: `docs/coordination/CODEX_CLAUDE_HANDOFF_PROTOCOL.md`
+
 ## プロダクト概要
 中小企業向けの統合AI経営OS（経営/営業/CRM/会計/財務/人事/在庫/会議/ナレッジ/AI社員）。
 中核に **LeadMap AI**（地図×AIの新規開拓OS：リード抽出→AI分析→個別営業メール→承認→送信→追客→商談化）。
@@ -92,3 +103,4 @@ pnpm test:e2e                               # Playwright（要 chromium）
 - `369-vault` の構成: `index.md`（目次）/ `README.md`（目的）/ `思想/`（思想・哲学・世界観・ビジョン）/ `プロンプト/`（1プロンプト1ファイル）/ `知識/`（設計判断・用語集・意思決定の記録）。
 - 一時状態（未push・承認待ち等）はヴォルトに固定しない。**現在地は `tasks/CURRENT_STATE.md`＋git refs を正**とする。
 - 補足: `369-vault` は独立 private リポジトリを目指すが、初期構築時点ではセッションのGitHub連携が `369` スコープのみで新規リポジトリを作成できなかったため、`369-vault/` フォルダとして本リポジトリ内に置いている。独立リポジトリへ移行後は、そのリポジトリへ反映する。
+- **二重反映ルール（2026-07-10 から実運用）**: 独立リポジトリ `DREEXY-git/369-vault` へ初回完全同期済み（commit `99f6b62`・Obsidian はこちらを pull する）。以降、vault を更新したら **①本リポジトリ内 `369-vault/` フォルダ ②独立リポジトリ `DREEXY-git/369-vault`（main）の両方へ反映・push** する（②はセッションに `add_repo` で追加してから同一内容をミラー push。正本は GitHub docs、vault は閲覧用の要約という役割分担は不変）。

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { SeverityBadge } from '@/components/badges';
 import { generateMorningReport } from '@hokko/ai';
 import { detectAnomalies, formatDate } from '@hokko/shared';
@@ -12,9 +13,21 @@ export const dynamic = 'force-dynamic';
 export default async function MorningReportPage() {
   const user = await requireUser();
   const t = user.tenantId;
+  // WIP-5（roadmap66 追補）: 経営指標の俯瞰ページとしてページ基礎権限（dashboard:read）を
+  // データ取得前に適用（外部ロール・AI アシスタントを遮断。STAFF は従前どおり閲覧可）。
+  if (!hasPermission(user, 'dashboard', 'read')) {
+    return (
+      <AccessDenied
+        title="AI朝礼レポート"
+        reason="朝礼レポートの閲覧にはダッシュボードの閲覧権限（dashboard:read）が必要です"
+      />
+    );
+  }
   // 朝報は全社的に閲覧されうる。売上・原価・粗利・売掛延滞などの財務指標は finance:read 保有者のみに限定し、
   // 表示だけでなく AI 朝報生成の入力からも redact する（画面 redact のすり抜け防止・Phase 1-19）。
   const canViewFinance = hasPermission(user, 'finance', 'read');
+  // 承認待ち件数も Topbar / /approvals ページゲートと同一条件で redact（存在シグナルの遮断・WIP-5 追補）。
+  const canViewApprovals = hasPermission(user, 'approval', 'approve');
 
   const [dealSum, target, overdue, unhandledLeads, pendingApprovals, stalledDeals, tasks, prevMargin, complaints, expiring] =
     await Promise.all([
@@ -22,7 +35,9 @@ export default async function MorningReportPage() {
       prisma.systemSetting.findUnique({ where: { tenantId_key: { tenantId: t, key: 'sales_target_monthly' } } }),
       prisma.receivable.count({ where: { tenantId: t, status: 'overdue' } }),
       prisma.localBusinessLead.count({ where: { tenantId: t, priority: { gte: 70 }, stage: { in: ['NEW', 'ANALYZED', 'DRAFTED', 'PENDING_APPROVAL'] } } }),
-      prisma.approvalRequest.count({ where: { tenantId: t, status: 'PENDING' } }),
+      canViewApprovals
+        ? prisma.approvalRequest.count({ where: { tenantId: t, status: 'PENDING' } })
+        : Promise.resolve(0),
       prisma.deal.count({ where: { tenantId: t, stage: { in: ['CONTACT', 'HEARING'] }, nextActionAt: { lt: new Date() } } }),
       prisma.actionItem.findMany({ where: { tenantId: t, status: { not: 'done' } }, orderBy: { dueDate: 'asc' }, take: 5 }),
       Promise.resolve(38),
@@ -37,6 +52,7 @@ export default async function MorningReportPage() {
   const targetVal = canViewFinance ? toNumber(target?.value, 12_000_000) : 0;
   const overdueShown = canViewFinance ? overdue : 0;
   const prevMarginShown = canViewFinance ? prevMargin : 0;
+  const pendingApprovalsShown = canViewApprovals ? pendingApprovals : 0;
 
   const anomalies = detectAnomalies({
     salesActual: sales,
@@ -46,7 +62,7 @@ export default async function MorningReportPage() {
     overdueReceivableCount: overdueShown,
     highPriorityUnhandledLeads: unhandledLeads,
     stalledDeals,
-    pendingApprovals,
+    pendingApprovals: pendingApprovalsShown,
     complaintsThisPeriod: complaints,
     complaintsPrevPeriod: 0,
     contractsExpiringSoon: expiring,
@@ -58,7 +74,7 @@ export default async function MorningReportPage() {
     salesTarget: targetVal,
     overdueCount: overdueShown,
     unhandledLeads,
-    pendingApprovals,
+    pendingApprovals: pendingApprovalsShown,
     stalledDeals,
     topTasks: tasks.map((t2) => t2.title),
     anomalies: anomalies.map((a) => ({ title: a.title })),

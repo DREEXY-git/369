@@ -135,7 +135,22 @@ export async function getConsentStatus(
 
 export async function assertCanViewConfidential(
   user: CurrentUser,
-  res: { dataType: string; label: ConfidentialityLabel; entityType: string; entityId?: string | null; ownerId?: string | null; purpose?: string; reasonProvided?: boolean },
+  res: {
+    dataType: string;
+    label: ConfidentialityLabel;
+    entityType: string;
+    entityId?: string | null;
+    ownerId?: string | null;
+    purpose?: string;
+    reasonProvided?: boolean;
+    /**
+     * true のとき DataAccessLog（confidential_view）を書かない。
+     * URL パラメータ等の未検証 ID を fetch 前判定に使う場合、対象が実在しないときに
+     * 「閲覧した」という allow 記録が残る偽陽性を防ぐ（WIP-4/roadmap65 追補）。
+     * PolicyDecisionLog（判定の記録）は常に書かれる。
+     */
+    skipViewLog?: boolean;
+  },
 ): Promise<void> {
   await assertPolicyAccess(user, {
     resource: { dataType: res.dataType, label: res.label, ownerId: res.ownerId },
@@ -144,6 +159,7 @@ export async function assertCanViewConfidential(
     sensitiveAccessReasonProvided: res.reasonProvided,
     targetId: res.entityId,
   });
+  if (res.skipViewLog) return;
   await writeConfidentialViewLog({
     tenantId: user.tenantId,
     actorId: user.userId,

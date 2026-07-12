@@ -1,17 +1,41 @@
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { QuoteForm } from '@/components/quotes/quote-form';
+import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
 
 export const dynamic = 'force-dynamic';
 
 export default async function NewQuotePage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const user = await requireUser();
+  // WIP-4（roadmap65）: 作成フォームは quote:create をデータ取得前に適用。
+  if (!hasPermission(user, 'quote', 'create')) {
+    return (
+      <AccessDenied
+        title="見積の新規作成"
+        reason="見積の作成には見積の作成権限（quote:create）が必要です"
+        breadcrumb={[{ label: '見積', href: '/quotes' }, { label: '新規', href: '#' }]}
+      />
+    );
+  }
   const sp = await searchParams;
   const [customers, deals] = await Promise.all([
-    prisma.customer.findMany({ where: { tenantId: user.tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
-    prisma.deal.findMany({ where: { tenantId: user.tenantId }, orderBy: { updatedAt: 'desc' }, select: { id: true, title: true }, take: 50 }),
+    // 顧客ドロップダウンは CRM 一覧（WIP1）と同じ可視ラベル集合でフィルタ
+    // （閲覧不可 label の顧客名を候補として露出しない）。
+    prisma.customer.findMany({
+      where: { tenantId: user.tenantId, label: { in: visibleCustomerLabels(user.roles) } },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+    }),
+    // 案件候補も、不可視ラベル顧客に紐づく案件を除外（title に顧客名が含まれる運用への備え・fail-closed）。
+    prisma.deal.findMany({
+      where: { tenantId: user.tenantId, customer: { label: { in: visibleCustomerLabels(user.roles) } } },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true, title: true },
+      take: 50,
+    }),
   ]);
 
   return (

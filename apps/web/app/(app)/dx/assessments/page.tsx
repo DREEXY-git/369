@@ -1,14 +1,25 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, Table, Th, Td, Badge, Button, EmptyState } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { formatDate } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AssessmentsPage() {
   const user = await requireUser();
+  // WIP-3（roadmap64 追補）: DX 診断は業務ヒアリング結果（内部情報）。/dx 系と同じページ基礎権限。
+  if (!hasPermission(user, 'marketing', 'read')) {
+    return (
+      <AccessDenied
+        title="DX診断"
+        reason="DX診断の閲覧にはマーケティングの閲覧権限（marketing:read）が必要です"
+        breadcrumb={[{ label: 'DX OS', href: '/dx' }, { label: 'DX診断', href: '#' }]}
+      />
+    );
+  }
   const items = await prisma.dXAssessment.findMany({ where: { tenantId: user.tenantId }, orderBy: { createdAt: 'desc' }, include: { _count: { select: { opportunities: true } } } });
   return (
     <div>

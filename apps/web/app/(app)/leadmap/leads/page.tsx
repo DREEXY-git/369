@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, Table, Th, Td, Badge, EmptyState, Select, Input, Button } from '@/components/ui';
 import { LeadStageBadge, PriorityBadge } from '@/components/badges';
+import { AccessDenied } from '@/components/access-denied';
 import { LEAD_STAGES, type LeadStage } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
@@ -14,6 +15,17 @@ export default async function LeadsPage({
   searchParams: Promise<{ stage?: string; q?: string; campaign?: string }>;
 }) {
   const user = await requireUser();
+  // リード一覧は店舗名・営業状況を含む。leadmap:read を持たないロール（外部士業等）には
+  // データ取得前に遮断する（/approvals と同型・P3-CT-5 push 前レビューの指摘対応）。
+  if (!hasPermission(user, 'leadmap', 'read')) {
+    return (
+      <AccessDenied
+        title="リード一覧"
+        reason="リード一覧の閲覧には LeadMap の閲覧権限（leadmap:read）が必要です"
+        breadcrumb={[{ label: 'リード一覧', href: '/leadmap/leads' }]}
+      />
+    );
+  }
   const sp = await searchParams;
 
   const where: any = { tenantId: user.tenantId };

@@ -5,15 +5,29 @@ import { toNumber } from '@/lib/utils';
 import { getGoldenPathExecutiveDashboardData } from '@/lib/domains/operations/golden-path-dashboard';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, EmptyState, Button } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { GoldenPathKpiGrid, AttentionList } from '@/components/golden-path-kpi';
 import { formatJpy, formatDate } from '@hokko/shared';
+import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PlanningHokkoPage() {
   const user = await requireUser();
+  // WIP-6（roadmap67）: 全案件の顧客名・進捗を俯瞰する経営ビュー。ページ基礎権限
+  // （dashboard:read）をデータ取得前に適用（外部ロール・AI アシスタントの直 URL を遮断）。
+  if (!hasPermission(user, 'dashboard', 'read')) {
+    return (
+      <AccessDenied
+        title="プランニングホッコー"
+        reason="この画面の閲覧にはダッシュボードの閲覧権限（dashboard:read）が必要です"
+      />
+    );
+  }
   // 金額（売上/原価/粗利/未回収/資金繰り）は財務閲覧権限が必要。redact は lib 側で行う。
   const canViewFinance = hasPermission(user, 'finance', 'read');
+  // 顧客名は CRM の閲覧境界（WIP1）に従う: 可視ラベル集合を lib へ渡し、集合外は lib 段階で null 化。
+  const customerLabels = hasPermission(user, 'customer', 'read') ? visibleCustomerLabels(user.roles) : [];
 
   const [events, gpDashboard] = await Promise.all([
     prisma.eventProject.findMany({
@@ -21,7 +35,7 @@ export default async function PlanningHokkoPage() {
       include: { productUsages: true, nextProposals: true },
       orderBy: { eventDate: 'asc' },
     }),
-    getGoldenPathExecutiveDashboardData(user.tenantId, canViewFinance),
+    getGoldenPathExecutiveDashboardData(user.tenantId, canViewFinance, customerLabels),
   ]);
   // 案件別 KPI（進捗・次の一手・低粗利等）を id で引けるよう Map 化。
   const kpiByEvent = new Map(gpDashboard.projects.map((p) => [p.id, p]));

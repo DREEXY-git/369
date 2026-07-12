@@ -1,9 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
+import { assertCanViewConfidential, PolicyDenied } from '@/lib/security/policy';
+import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
 import { toNumber } from '@/lib/utils';
 import { PrintButton } from '@/components/print-button';
+import { AccessDenied } from '@/components/access-denied';
 import { formatJpy, formatDate } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
@@ -11,11 +14,47 @@ export const dynamic = 'force-dynamic';
 export default async function InvoicePrintPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
+  // WIP-4（roadmap65）: 印刷画面にも請求詳細（/invoices/[id]）と同じ財務機密 ABAC を
+  // データ取得前に適用する（fetch-then-assert にしない・拒否閲覧者に ID の存在有無も返さない）。
+  // 存在確認は id のみの envelope で行い、実在しない ID には confidential_view の allow 記録を残さない。
+  const envelope = await prisma.invoice.findFirst({ where: { id, tenantId: user.tenantId }, select: { id: true } });
+  try {
+    await assertCanViewConfidential(user, {
+      dataType: 'invoice',
+      label: 'FINANCIAL_CONFIDENTIAL',
+      entityType: 'Invoice',
+      entityId: id,
+      purpose: '請求書の印刷表示',
+      skipViewLog: !envelope,
+    });
+  } catch (e) {
+    if (e instanceof PolicyDenied) {
+      return (
+        <AccessDenied
+          title="請求書の印刷"
+          reason={e.decision.reason}
+          needsReason={e.decision.requiredSensitiveAccessReason}
+        />
+      );
+    }
+    throw e;
+  }
+  if (!envelope) notFound();
   const [invoice, tenant] = await Promise.all([
-    prisma.invoice.findFirst({ where: { id, tenantId: user.tenantId }, include: { lineItems: true, customer: true } }),
+    prisma.invoice.findFirst({ where: { id, tenantId: user.tenantId }, include: { lineItems: true } }),
     prisma.tenant.findUnique({ where: { id: user.tenantId } }),
   ]);
   if (!invoice) notFound();
+  // v5.8 Medium-4 修正: 宛先も取得段階から遮断（権限なし= select しない・権限あり= label 条件付き
+  // 別クエリ。不可視は「宛先未設定」と区別不能でオラクルにならない・quote 側と対称）。
+  let customerName: string | null = null;
+  if (invoice.customerId && hasPermission(user, 'customer', 'read')) {
+    const c = await prisma.customer.findFirst({
+      where: { id: invoice.customerId, tenantId: user.tenantId, label: { in: visibleCustomerLabels(user.roles) } },
+      select: { name: true },
+    });
+    customerName = c?.name ?? null;
+  }
 
   return (
     <div className="min-h-screen bg-white text-slate-900">
@@ -29,7 +68,7 @@ export default async function InvoicePrintPage({ params }: { params: Promise<{ i
 
         <div className="flex items-end justify-between">
           <div className="w-1/2">
-            <div className="border-b-2 border-slate-800 pb-1 text-lg font-semibold">{invoice.customer?.name ?? '（宛先未設定）'} 御中</div>
+            <div className="border-b-2 border-slate-800 pb-1 text-lg font-semibold">{customerName ?? '（宛先未設定）'} 御中</div>
             <p className="mt-3 text-sm">下記のとおりご請求申し上げます。</p>
             <table className="mt-3 text-sm">
               <tbody>

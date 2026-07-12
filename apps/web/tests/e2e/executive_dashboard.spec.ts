@@ -16,7 +16,7 @@ test('社長コックピットに Golden Path 経営KPI と「今すぐ見るべ
   await login(page, 'ceo@ikezaki.local');
   await page.goto('/dashboard/ceo');
   // 既存 Deal 中心 KPI（壊していないこと）
-  await expect(page.getByText('社長コックピット', { exact: false })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '社長コックピット' })).toBeVisible();
   // 追加した Golden Path 経営KPI セクション
   await expect(page.getByText('プランニングホッコー Golden Path', { exact: false })).toBeVisible();
   await expect(page.getByText('今すぐ見るべき案件', { exact: false })).toBeVisible();
@@ -40,8 +40,8 @@ test('案件詳細から経営ダッシュボードへ戻る導線がある', as
   await page.getByRole('link', { name: /案件詳細・次の一手/ }).first().click();
   await page.waitForURL('**/operations/events/**');
   await expect(page.getByText('経営ダッシュボードで全体を見る', { exact: false })).toBeVisible();
-  await expect(page.getByRole('link', { name: /プランニングホッコー/ })).toBeVisible();
-  await expect(page.getByRole('link', { name: /社長コックピット/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'プランニングホッコー →' })).toBeVisible();
+  await expect(page.getByRole('link', { name: '社長コックピット →' })).toBeVisible();
 });
 
 test('スタッフは経営KPIの金額（売上/粗利/未回収）を閲覧できない', async ({ page }) => {

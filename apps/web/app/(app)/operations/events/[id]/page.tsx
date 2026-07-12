@@ -7,6 +7,8 @@ import { writeConfidentialViewLog } from '@/lib/audit';
 import { getEventGoldenPathStatus } from '@/lib/domains/operations/golden-path';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Table, Th, Td, Badge, Stat, Input, Select, Button, EmptyState } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
+import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
 import { formatJpy, formatDate, eventProfitMargin, isHighSeverityRisk, RISK_TYPE_LABEL, LOGISTICS_TASK_LABEL, isLogisticsTaskType, type ConfidentialityLabel } from '@hokko/shared';
 import {
   assignAssetToEventAction,
@@ -34,6 +36,17 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const user = await requireUser();
   const { id } = await params;
   const sp = await searchParams;
+  // WIP-6（roadmap67）: イベント案件詳細（顧客名・進捗・リスクを含む）のページ基礎権限を
+  // データ取得前に適用（operations アクション群と同じ inventory リソース）。
+  if (!hasPermission(user, 'inventory', 'read')) {
+    return (
+      <AccessDenied
+        title="イベント案件詳細"
+        reason="イベント案件の閲覧には在庫・運用の閲覧権限（inventory:read）が必要です"
+        breadcrumb={[{ label: 'Operations', href: '/operations' }, { label: 'イベント案件', href: '/operations/events' }]}
+      />
+    );
+  }
   const canEdit = hasPermission(user, 'inventory', 'update');
   const canViewFinance = hasPermission(user, 'finance', 'read');
   const canCreateFinance = hasPermission(user, 'finance', 'create');
@@ -76,7 +89,12 @@ export default async function EventDetailPage({ params, searchParams }: { params
     : [];
 
   // Golden Path（現在地と次の一手）。会計連携の進捗を横断集約。
-  const gp = await getEventGoldenPathStatus(user.tenantId, event!.id);
+  // 顧客名は CRM の閲覧境界（WIP1）に従い、可視ラベル集合外は lib 段階で null 化（WIP-6）。
+  const gp = await getEventGoldenPathStatus(
+    user.tenantId,
+    event!.id,
+    hasPermission(user, 'customer', 'read') ? visibleCustomerLabels(user.roles) : [],
+  );
 
   return (
     <div>

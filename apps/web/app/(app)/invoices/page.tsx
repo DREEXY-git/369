@@ -1,7 +1,8 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { assertCanViewConfidential, PolicyDenied } from '@/lib/security/policy';
+import { canSeeCustomerLabel } from '@/lib/security/customer-visibility';
 import { AccessDenied } from '@/components/access-denied';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
@@ -38,9 +39,11 @@ export default async function InvoicesPage() {
   }
   const invoices = await prisma.invoice.findMany({
     where: { tenantId: user.tenantId },
-    include: { customer: true },
+    // 顧客は表示に使う name と可視判定の label のみ取得（PII over-fetch 防止・WIP-4 追補）。
+    include: { customer: { select: { name: true, label: true } } },
     orderBy: { createdAt: 'desc' },
   });
+  const canReadCustomer = hasPermission(user, 'customer', 'read');
   const overdueCount = invoices.filter((i) => isOverdue(i.dueDate, i.status)).length;
   const unpaid = invoices.filter((i) => i.status !== 'PAID' && i.status !== 'VOID').reduce((s, i) => s + toNumber(i.total), 0);
 
@@ -66,7 +69,7 @@ export default async function InvoicesPage() {
                 return (
                   <tr key={i.id} className="hover:bg-secondary/50">
                     <Td className="font-mono text-xs"><Link href={`/invoices/${i.id}`} className="text-primary hover:underline">{i.number}</Link></Td>
-                    <Td>{i.customer?.name ?? '—'}</Td>
+                    <Td>{i.customer && canReadCustomer && canSeeCustomerLabel(user.roles, i.customer.label) ? i.customer.name : '—'}</Td>
                     <Td className="font-medium">{formatJpy(toNumber(i.total))}</Td>
                     <Td>{formatJpy(toNumber(i.paidAmount))}</Td>
                     <Td className={od ? 'text-red-600' : ''}>{formatDate(i.dueDate)}</Td>

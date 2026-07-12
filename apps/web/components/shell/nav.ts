@@ -35,6 +35,8 @@ import {
   ShieldAlert,
   Cog,
   TrendingUp,
+  BarChart3,
+  Building2,
   Cpu,
   Siren,
   Sparkles,
@@ -50,6 +52,7 @@ import {
   BookText,
   Brain,
   BookMarked,
+  Radar,
 } from 'lucide-react';
 
 export type NavItem = {
@@ -75,8 +78,11 @@ export const NAV: NavGroup[] = [
     title: 'Growth・DX OS',
     items: [
       { label: '成長ダッシュボード', href: '/growth', icon: TrendingUp },
+      { label: 'Growthコントロールタワー', href: '/growth/control-tower', icon: Radar },
       { label: '成長イベント台帳', href: '/growth/events', icon: Activity },
       { label: 'Marketing OS', href: '/marketing', icon: Megaphone },
+      { label: '広告・チャネル分析', href: '/marketing/ads', icon: BarChart3 },
+      { label: 'SEO・コンテンツ', href: '/marketing/content', icon: FileText },
       { label: 'DX OS', href: '/dx', icon: Cpu },
     ],
   },
@@ -153,6 +159,7 @@ export const NAV: NavGroup[] = [
     title: 'AI・組織',
     items: [
       { label: 'AI社員', href: '/ai-agents', icon: Bot },
+      { label: '3Dバーチャルオフィス', href: '/ai-office', icon: Building2 },
       { label: 'コミュニケーション', href: '/communications/inbox', icon: Inbox },
       { label: '報連相', href: '/horenso', icon: MessagesSquare },
     ],

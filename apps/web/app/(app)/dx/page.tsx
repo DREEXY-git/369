@@ -1,9 +1,10 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Stat, Badge, Button, EmptyState } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { BarList } from '@/components/charts';
 import { formatJpy, dxMonetaryImpact, type Difficulty } from '@hokko/shared';
 
@@ -13,6 +14,18 @@ const STATUS_TONE: Record<string, string> = { identified: 'slate', planned: 'blu
 
 export default async function DXHomePage() {
   const user = await requireUser();
+  // WIP-3（roadmap64 追補）: DX 改善機会の推定金額は担当者が自ら入力するドメインデータ
+  // （marketing リソース配下・実財務データではない）。外部ロール（EXTERNAL_PARTNER/EXPERT）に
+  // 内部のコスト構造推定を見せないため、DX アクション群と同じ資源のページ基礎権限を適用する。
+  if (!hasPermission(user, 'marketing', 'read')) {
+    return (
+      <AccessDenied
+        title="DX OS"
+        reason="DX OS の閲覧にはマーケティングの閲覧権限（marketing:read）が必要です"
+        breadcrumb={[{ label: 'DX OS', href: '/dx' }]}
+      />
+    );
+  }
   const t = user.tenantId;
   const [assessments, opportunities, doneCount] = await Promise.all([
     prisma.dXAssessment.count({ where: { tenantId: t } }),

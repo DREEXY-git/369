@@ -17,6 +17,7 @@ const TYPE_LABEL: Record<string, string> = {
   dunning_send: '督促送信（お支払い状況の確認）',
   contract_sign: '契約締結',
   payment_execute: '支払実行',
+  content_review: 'コンテンツ承認（review-only）',
 };
 
 export default async function ApprovalsPage() {
@@ -34,9 +35,18 @@ export default async function ApprovalsPage() {
       />
     );
   }
-  const [pending, recent] = await Promise.all([
+  const [pending, recent, aiGates] = await Promise.all([
     prisma.approvalRequest.findMany({ where: { tenantId: user.tenantId, status: 'PENDING' }, orderBy: { createdAt: 'desc' } }),
     prisma.approvalRequest.findMany({ where: { tenantId: user.tenantId, status: { not: 'PENDING' } }, orderBy: { decidedAt: 'desc' }, take: 10 }),
+    // v5.8 Medium-2: AI 実行の承認ゲート（AIApprovalGate PENDING）を人間の承認画面から可視化する。
+    // 判断（承認/却下→run 再開/失敗）の実行導線は bridge 設計（roadmap78 Gate）実装まで作らない
+    // （read-only 表示のみ。payload 本文は取得しない: action/reason/時刻のみ）。
+    prisma.aIApprovalGate.findMany({
+      where: { tenantId: user.tenantId, status: 'PENDING' },
+      select: { id: true, action: true, reason: true, createdAt: true, runId: true },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    }),
   ]);
 
   return (
@@ -57,6 +67,17 @@ export default async function ApprovalsPage() {
                   <span className="ml-auto text-xs text-muted-foreground">{formatDateTime(a.createdAt)}</span>
                 </div>
                 {a.summary ? <div className="mt-1 text-sm text-muted-foreground">{a.summary}</div> : null}
+                {a.type === 'content_review' && a.entityId ? (
+                  <div className="mt-1 text-xs">
+                    <a
+                      href={`/marketing/content?highlight=${a.entityId}#content-${a.entityId}`}
+                      className="text-blue-700 underline"
+                      data-testid={`approval-content-deeplink-${a.entityId}`}
+                    >
+                      元の下書きを開く（/marketing/content）
+                    </a>
+                  </div>
+                ) : null}
                 {canApprove ? (
                   <form action={decideApprovalAction} className="mt-2 flex flex-wrap items-center gap-2">
                     <input type="hidden" name="approvalId" value={a.id} />
@@ -65,6 +86,30 @@ export default async function ApprovalsPage() {
                     <Button type="submit" name="decision" value="reject" variant="danger">却下</Button>
                   </form>
                 ) : null}
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      <h2 className="mb-2 text-sm font-semibold">AI 実行の承認ゲート（read-only）</h2>
+      <Card className="mb-4" data-testid="ai-approval-gates">
+        <CardContent className="space-y-1.5 pt-4">
+          <p className="text-xs text-muted-foreground">
+            AI 実行が人間の判断待ちで停止している記録です。AI は自己承認しません。この一覧からの承認・却下は
+            判断導線（bridge）の設計 Gate が完了するまで提供されません（現在 read-only）。
+          </p>
+          {aiGates.length === 0 ? (
+            <EmptyState title="判断待ちの AI 承認ゲートはありません" />
+          ) : (
+            aiGates.map((g) => (
+              <div key={g.id} className="rounded-md border p-2.5 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="purple">AIゲート</Badge>
+                  <span className="font-medium">{g.action}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">{formatDateTime(g.createdAt)}</span>
+                </div>
+                <div className="mt-0.5 text-xs text-muted-foreground">{g.reason}</div>
               </div>
             ))
           )}

@@ -1,18 +1,39 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, Table, Th, Td, Badge, Button, Input, EmptyState } from '@/components/ui';
 import { LabelBadge } from '@/components/badges';
+import { AccessDenied } from '@/components/access-denied';
 import { formatDate } from '@hokko/shared';
+import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const user = await requireUser();
+  // 顧客一覧は氏名・満足度・離反リスク等を含む。customer:read をデータ取得前に適用する（WIP1・roadmap61）。
+  if (!hasPermission(user, 'customer', 'read')) {
+    return (
+      <AccessDenied
+        title="顧客管理 CRM"
+        reason="顧客一覧の閲覧には顧客情報の閲覧権限（customer:read）が必要です"
+        breadcrumb={[{ label: '顧客', href: '/customers' }]}
+      />
+    );
+  }
   const sp = await searchParams;
+  // 閲覧不可 label の行は DB クエリ段階で除外する（不可視行は内容も件数も表示しない・許可表は labels.ts の既存定義）。
+  // さらに詳細側の ABAC（shared/policy.ts §7: 非マネージャは高機密ラベルに機密アクセス理由が必要）と
+  // 整合させるため、非マネージャには高機密ラベル行を一覧にも出さない（fail-closed・所有者例外も一覧では出さない）。
+  // 判定は lib/security/customer-visibility.ts（WIP-4 で共有ヘルパへ抽出）を正とする。
+  const visibleLabels = visibleCustomerLabels(user.roles);
   const customers = await prisma.customer.findMany({
-    where: { tenantId: user.tenantId, ...(sp.q ? { name: { contains: sp.q, mode: 'insensitive' } } : {}) },
+    where: {
+      tenantId: user.tenantId,
+      label: { in: visibleLabels },
+      ...(sp.q ? { name: { contains: sp.q, mode: 'insensitive' } } : {}),
+    },
     orderBy: { updatedAt: 'desc' },
     include: { _count: { select: { deals: true, complaints: true } } },
   });

@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { Users, Briefcase, MapPin, Wallet } from 'lucide-react';
-import { requireUser, primaryRole, ROLE_LABEL } from '@/lib/auth/current-user';
+import { requireUser, hasPermission, primaryRole, ROLE_LABEL } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
+import { AccessDenied } from '@/components/access-denied';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import {
@@ -25,7 +26,19 @@ const DONUT_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#a855f7', '#9
 
 export default async function DashboardPage() {
   const user = await requireUser();
+  // WIP-5（roadmap66）: 経営ダッシュボード（商談パイプライン金額・監査ログ含む）にページ基礎権限
+  // dashboard:read をデータ取得前に適用（/growth 系と同一規約・roadmap64 追補で記録した不整合の解消）。
+  if (!hasPermission(user, 'dashboard', 'read')) {
+    return (
+      <AccessDenied
+        title="ダッシュボード"
+        reason="ダッシュボードの閲覧にはダッシュボードの閲覧権限（dashboard:read）が必要です"
+      />
+    );
+  }
   const t = user.tenantId;
+  // 承認待ち件数は Topbar（layout.tsx）と同一条件で取得段階から遮断（WIP-5 追補・同一画面での迂回防止）。
+  const canViewApprovals = hasPermission(user, 'approval', 'approve');
   const [
     customers,
     deals,
@@ -41,7 +54,9 @@ export default async function DashboardPage() {
     prisma.customer.count({ where: { tenantId: t } }),
     prisma.deal.count({ where: { tenantId: t, stage: { not: 'LOST' } } }),
     prisma.localBusinessLead.count({ where: { tenantId: t } }),
-    prisma.approvalRequest.count({ where: { tenantId: t, status: 'PENDING' } }),
+    canViewApprovals
+      ? prisma.approvalRequest.count({ where: { tenantId: t, status: 'PENDING' } })
+      : Promise.resolve(0),
     prisma.deal.aggregate({ where: { tenantId: t, stage: { not: 'LOST' } }, _sum: { amount: true } }),
     prisma.auditLog.findMany({ where: { tenantId: t }, orderBy: { createdAt: 'desc' }, take: 8 }),
     prisma.actionItem.findMany({
@@ -200,12 +215,14 @@ export default async function DashboardPage() {
               >
                 ナレッジ検索
               </Link>
-              <Link
-                href="/approvals"
-                className="rounded-md border p-2 text-center transition hover:border-primary/30 hover:bg-secondary"
-              >
-                承認 ({pendingApprovals})
-              </Link>
+              {canViewApprovals ? (
+                <Link
+                  href="/approvals"
+                  className="rounded-md border p-2 text-center transition hover:border-primary/30 hover:bg-secondary"
+                >
+                  承認 ({pendingApprovals})
+                </Link>
+              ) : null}
             </CardContent>
           </Card>
 

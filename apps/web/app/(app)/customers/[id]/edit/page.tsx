@@ -1,8 +1,10 @@
 import { notFound } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
+import { assertCanViewConfidential, PolicyDenied } from '@/lib/security/policy';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, Button, Input, Select, Textarea } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { updateCustomerAction } from '../../actions';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +12,45 @@ export const dynamic = 'force-dynamic';
 export default async function EditCustomerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
-  const customer = await prisma.customer.findFirst({ where: { id, tenantId: user.tenantId } });
+  // WIP1（roadmap61）: 編集フォームも顧客 PII を含むため、read ゲート＋二段階取得＋ABAC を通す。
+  if (!hasPermission(user, 'customer', 'read')) {
+    return (
+      <AccessDenied
+        title="顧客情報の編集"
+        reason="顧客情報の閲覧には顧客情報の閲覧権限（customer:read）が必要です"
+        breadcrumb={[{ label: '顧客', href: '/customers' }]}
+      />
+    );
+  }
+  const envelope = await prisma.customer.findFirst({
+    where: { id, tenantId: user.tenantId },
+    select: { id: true, label: true, ownerId: true },
+  });
+  if (!envelope) notFound();
+  try {
+    await assertCanViewConfidential(user, {
+      dataType: 'customer',
+      label: envelope.label as any,
+      entityType: 'Customer',
+      entityId: envelope.id,
+      ownerId: envelope.ownerId,
+      purpose: '顧客情報の編集画面の閲覧',
+    });
+  } catch (e) {
+    if (e instanceof PolicyDenied) {
+      return (
+        <AccessDenied
+          title="顧客情報の編集"
+          reason={`この顧客情報の閲覧は許可されていません（理由: ${e.decision.reason}）`}
+          breadcrumb={[{ label: '顧客', href: '/customers' }]}
+        />
+      );
+    }
+    throw e;
+  }
+  const customer = await prisma.customer.findFirst({
+    where: { id, tenantId: user.tenantId, label: envelope.label },
+  });
   if (!customer) notFound();
   const canEdit = hasPermission(user, 'customer', 'update');
 

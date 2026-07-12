@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Table, Th, Td, Badge, Input, Select, Button, EmptyState } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { formatJpy } from '@hokko/shared';
 import { createDXOpportunityAction } from '../actions';
 
@@ -13,6 +14,17 @@ const STATUS_TONE: Record<string, string> = { identified: 'slate', planned: 'blu
 
 export default async function OpportunitiesPage() {
   const user = await requireUser();
+  // WIP-3（roadmap64 追補）: 推定金額は担当者入力のドメインデータ。DX アクション群と同じ資源で
+  // ページ基礎権限を適用し、外部ロールへの内部コスト構造推定の露出を遮断する。
+  if (!hasPermission(user, 'marketing', 'read')) {
+    return (
+      <AccessDenied
+        title="DX改善機会"
+        reason="DX改善機会の閲覧にはマーケティングの閲覧権限（marketing:read）が必要です"
+        breadcrumb={[{ label: 'DX OS', href: '/dx' }, { label: '改善機会', href: '#' }]}
+      />
+    );
+  }
   const [items, assessments] = await Promise.all([
     prisma.dXOpportunity.findMany({ where: { tenantId: user.tenantId }, orderBy: { priority: 'desc' } }),
     prisma.dXAssessment.findMany({ where: { tenantId: user.tenantId }, select: { id: true, title: true }, orderBy: { createdAt: 'desc' } }),

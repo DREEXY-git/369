@@ -1,12 +1,23 @@
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, Button, Input, Select, Textarea } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { createCustomerAction } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
 export default async function NewCustomerPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  await requireUser();
+  const user = await requireUser();
+  // WIP1（roadmap61）: 作成フォームは customer:create を持つ人にのみ表示する（action 側の既存チェックと二重防御）。
+  if (!hasPermission(user, 'customer', 'create')) {
+    return (
+      <AccessDenied
+        title="顧客を追加"
+        reason="顧客の作成には顧客情報の作成権限（customer:create）が必要です"
+        breadcrumb={[{ label: '顧客', href: '/customers' }]}
+      />
+    );
+  }
   const sp = await searchParams;
   return (
     <div className="mx-auto max-w-2xl">

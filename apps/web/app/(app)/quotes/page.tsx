@@ -1,15 +1,27 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, Table, Th, Td, Badge, Button, EmptyState } from '@/components/ui';
+import { AccessDenied } from '@/components/access-denied';
 import { formatJpy, isLowMargin } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
 
 export default async function QuotesPage() {
   const user = await requireUser();
+  // WIP-4（roadmap65）: 見積の金額・粗利は quote:read 配下の業務データ（値引き承認ルールを含む
+  // STAFF の見積業務フロー）。ページ基礎権限をデータ取得前に適用し、外部ロールを遮断する。
+  if (!hasPermission(user, 'quote', 'read')) {
+    return (
+      <AccessDenied
+        title="見積管理"
+        reason="見積一覧の閲覧には見積の閲覧権限（quote:read）が必要です"
+        breadcrumb={[{ label: '見積', href: '/quotes' }]}
+      />
+    );
+  }
   const quotes = await prisma.quote.findMany({ where: { tenantId: user.tenantId }, orderBy: { createdAt: 'desc' } });
   const lowMargin = quotes.filter((q) => isLowMargin(toNumber(q.grossMarginRate))).length;
 

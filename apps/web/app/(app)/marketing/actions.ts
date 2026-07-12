@@ -200,6 +200,17 @@ export async function generateAdsImprovementDraftAction(formData: FormData) {
   if (!tool.allowed) redirect('/marketing/ads?error=tool');
 
   const campaignId = String(formData.get('campaignId') ?? '');
+  // v7.2 R2（Codex r3566352032）: フォーム描画時に発行される冪等キー。suggestion の deterministic PK に
+  // なるため cuid 互換形式（^c[a-z0-9]{20,32}$）を強制する。二重 submit / 失敗後の同一フォーム retry は
+  // 同一キー＝1件へ収束（DB unique 制約による直列化・詳細は suggestion-review-bridge.ts）。
+  const idempotencyKey = String(formData.get('idempotencyKey') ?? '').trim();
+  if (!/^c[a-z0-9]{20,32}$/i.test(idempotencyKey)) redirect('/marketing/ads?error=input');
+  // fast-path: 同一キーで既に実体化済みなら再生成しない（成功後の同一フォーム再送で AIOutput を増やさない）。
+  const existing = await prisma.marketingSuggestion.findFirst({
+    where: { id: idempotencyKey, tenantId: user.tenantId },
+    select: { id: true },
+  });
+  if (existing) redirect(`/marketing/ads?generated=1&highlight=${existing.id}`);
   const campaign = await prisma.marketingCampaign.findFirst({
     where: { id: campaignId, tenantId: user.tenantId },
     include: { metrics: true },
@@ -233,10 +244,11 @@ export async function generateAdsImprovementDraftAction(formData: FormData) {
     },
   });
   if (result.blocked) redirect('/marketing/ads?blocked=1');
-  // C19 承認ブリッジ（roadmap83 案A）: 生成した改善案を MarketingSuggestion として実体化する
-  // （approvalStatus='none' で作成 → 人間が /marketing/ads から承認申請できる）。実行・出稿は封印のまま。
-  // v7.0 R2（Codex P2 inline r3566352032）: 実体化＋必須監査は materializeSuggestionCore の単一 transaction
-  // （監査失敗＝suggestion ごと rollback・aiOutputId を冪等キーに重複実体化なし）。
+  // C19 承認ブリッジ（roadmap83 案A）: 生成した改善案を MarketingSuggestion として実体化する。
+  // v7.2 R2（Codex r3566352032）: 実体化は deterministic PK（idempotencyKey）＋単一 transaction。
+  // suggestion 作成・実体化監査・**生成全体の必須監査（ai_run）**を同一 transaction で確定し、
+  // transaction 外の後置 writeAudit を残さない（最終監査失敗でも suggestion ごと rollback →
+  // 同一キーの利用者 retry で 1 件に収束・並行同一キーは unique 制約で 1 件だけ commit）。
   if (result.aiOutputId) {
     const out = await prisma.aIOutput.findFirst({
       where: { id: result.aiOutputId, tenantId: user.tenantId },
@@ -247,20 +259,28 @@ export async function generateAdsImprovementDraftAction(formData: FormData) {
       tenantId: user.tenantId,
       actorId: user.userId,
       actorIsAi: user.isAi,
+      suggestionId: idempotencyKey,
       aiOutputId: result.aiOutputId,
       title: `広告改善案: ${campaign!.name}｜${o.title ?? '改善案'}`.slice(0, 180),
       detail: (o.recommendations ?? []).join('\n').slice(0, 2000),
       campaignId: campaign!.id,
+      runAudit: {
+        entityType: 'MarketingCampaign',
+        entityId: campaign!.id,
+        summary: `広告改善案の下書きを生成: ${campaign!.name}（実行なし・封印中）`,
+      },
+    });
+  } else {
+    // 実体化対象がない場合（output なし）は生成の監査のみ（従来どおり）。
+    await writeAudit({
+      tenantId: user.tenantId,
+      actorId: user.userId,
+      action: 'ai_run',
+      entityType: 'MarketingCampaign',
+      entityId: campaign!.id,
+      summary: `広告改善案の下書きを生成: ${campaign!.name}（実行なし・封印中）`,
     });
   }
-  await writeAudit({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    action: 'ai_run',
-    entityType: 'MarketingCampaign',
-    entityId: campaign!.id,
-    summary: `広告改善案の下書きを生成: ${campaign!.name}（実行なし・封印中）`,
-  });
   revalidatePath('/marketing/ads');
   redirect('/marketing/ads?generated=1');
 }

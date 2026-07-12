@@ -24,6 +24,9 @@ async function createPendingQuote(title: string) {
   const quote = await prisma.quote.create({
     data: {
       tenantId,
+      // createdAt を過去に固定し、/quotes（createdAt desc）で本 fixture が先頭に来ないようにする
+      // ＝ 他 spec の「先頭 Q- リンクをクリック」（quotes_boundary 等）と衝突しない（test 分離）。
+      createdAt: new Date('2020-01-01T00:00:00Z'),
       number: `Q-E2E-${Date.now()}-${count}`,
       title,
       status: 'pending_approval',

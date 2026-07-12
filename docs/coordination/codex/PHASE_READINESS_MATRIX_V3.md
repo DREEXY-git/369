@@ -82,6 +82,8 @@
 
 これは公開情報を起点にした高水準分類であり、機能単位の完全fit-gapはClaudeの専用lane固定head受領後にEvidenceへ接続する。
 
+Function ID単位のV72詳細分類は`COMPETITOR_FIT_GAP_V72.md`を正とする。専用Claude実装headがない範囲は、そこで`ROADMAP_ONLY`または`EVIDENCE_GAP`に留めた。
+
 ## 6. 次の3 WIP
 
 1. **C19冪等性クローズ**: DB一意性またはCAS、並行実PG、Action全体retry、固定SHA再監査。

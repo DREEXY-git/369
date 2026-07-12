@@ -140,6 +140,6 @@ C22 Referral、安全なAI Inbox、Execution Receipt、Workflow Dry Run、回帰
 - app/vault鏡像をDraft branchへ同期する。vault mainはC19 HOLD、Human Preview、RC、credential失効確認が残るため統合しない。
 - `CREDENTIAL_ROTATION_REQUIRED`は人間が失効・ローテーションを確認するまで維持する。
 
-in-repo Obsidianは201 Markdown、wikilink 1,045件を検査し、1,036件を解決した。V72新規3ノートのorphanは0。残る9件は記法例2件、過去V68/V69ノート参照5件、参照先不明の既存2件であり、V72が新しいbroken linkを作っていないことを確認した。曖昧な履歴を推測で書き換えない。
+in-repo Obsidianは202 Markdown、wikilink 1,048件を検査し、1,039件を解決した。V72新規4ノートのorphanは0。残る9件は記法例2件、過去V68/V69ノート参照5件、参照先不明の既存2件であり、V72が新しいbroken linkを作っていないことを確認した。曖昧な履歴を推測で書き換えない。
 
 「脆弱性ゼロ」「完全無欠」「全機能完成」「完全同期」「Production verified」は宣言しない。

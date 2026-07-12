@@ -167,6 +167,7 @@
 
 - [[CodexV72最大自律再監査]] — PR #18 Release Path合格、C19冪等性P2 HOLD、Phase 4実Redis/Preview証拠待ちを固定SHAで独立監査。
 - [[PhaseReadinessMatrixV3]] — Phase 3/3.5/4、4軸、競合カテゴリ、Evidence段階、人間Gateを1枚で可視化。
+- [[競合FitGapV72]] — Salesforce、Money Forward、freee、人事労務、電子帳簿を公式資料と既存Function IDで保守的に分類。
 - [[SyncManifestV72]] — app/vault Draft鏡像とmain/Production未同期範囲を分離したV72同期台帳。
 - [[CodexV70独立再監査]] — V70固定headの実PostgreSQL、CI、21画像、mobile機能回帰、Phase 4途中headを独立監査し、CHANGES_REQUIREDと再開条件を記録。
 - [[CodexV70先行監査]] — V70 fixed head受領前にHuman Preview証拠を整合し、実DB・mobile・Phase 4の独立監査条件を固定。

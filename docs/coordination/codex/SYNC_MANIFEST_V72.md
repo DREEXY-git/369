@@ -43,8 +43,8 @@
 
 ## 同期Gate
 
-1. app側V72監査、Manifest、Matrix、Function Evidenceとin-repo Obsidian鏡像を同一commit系譜へ置く。
-2. 独立vaultの3鏡像とindexをDraft PRへfast-forwardで同期する。
+1. app側V72監査、Manifest、Matrix、Fit-Gap、Function Evidenceとin-repo Obsidian鏡像を同一commit系譜へ置く。
+2. 独立vaultのV72鏡像4件とindexをDraft PRへfast-forwardで同期する。
 3. blob hash、wikilink、orphan、secret scan、commit graphを検査する。
 4. C19 P2、Human Preview、RC ancestry、credential失効確認が残る間はvault mainへmergeしない。
 5. app main、Production、本番DB、Secrets、外部送信、実LLM、課金へ触れない。
@@ -60,9 +60,10 @@
 
 ## Link state
 
-- in-repo鏡像: 201 Markdown / wikilink 1,045 occurrence / 解決1,036。
-- V72新規3ノートはindexから解決し、新規orphan 0。
+- in-repo鏡像: 202 Markdown / wikilink 1,048 occurrence / 解決1,039。
+- V72新規4ノートはindexから解決し、新規orphan 0。
 - 未解決9件の内訳は、記法例2件、過去V68/V69 Codexノート参照5件、参照先を一意に決められない`残存欠陥クローズと統合v59` 2件。
 - V72で新しいbroken linkは追加していない。履歴ノートの本文や曖昧な参照先を推測修復せず、全体broken link 0とは宣言しない。
+- 独立vault Draft: 210 Markdown / wikilink 1,047 occurrence / 解決1,045。未解決2件はREADME/indexの記法例で、V72新規orphan 0。
 
 `SYNC_COMPLETE=false`である。Draft間の鏡像一致を確認しても、main・Production・外部環境を含む完全同期とは呼ばない。

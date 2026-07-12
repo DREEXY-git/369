@@ -18,8 +18,8 @@
 ## 同期対象
 
 1. appのCodex監査記録、Function Evidence、Matrix V3。
-2. in-repo Obsidianの[[CodexV72最大自律再監査]]、[[PhaseReadinessMatrixV3]]、本ノート。
-3. 独立`369-vault`の同名3ノートとindex。
+2. in-repo Obsidianの[[CodexV72最大自律再監査]]、[[PhaseReadinessMatrixV3]]、[[競合FitGapV72]]、本ノート。
+3. 独立`369-vault`の同名4ノートとindex。
 
 ## mainを止める条件
 
@@ -31,4 +31,6 @@
 
 従ってDraft鏡像が一致しても、vault main、app main、Productionへは進めない。
 
-in-repo鏡像のV72新規3ノートはindexから解決し、新規orphan 0。既存の未解決wikilink 9件は記法例、過去Codexノート、参照先不明の履歴であり、推測修復しない。
+in-repo鏡像のV72新規4ノートはindexから解決し、新規orphan 0。既存の未解決wikilink 9件は記法例、過去Codexノート、参照先不明の履歴であり、推測修復しない。
+
+独立vault Draftは210 Markdown、wikilink 1,047件、解決1,045件。未解決2件はREADME/indexの記法例で、V72新規orphan 0。

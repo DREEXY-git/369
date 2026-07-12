@@ -14,9 +14,9 @@
 | Claude Phase 3 | PR #14 | `ba01244ae2fb6b75e1ae2b9a718ba4e629a54425` | V69 fixed / Human Preview received |
 | Claude Phase 3.5 | PR #18 | `c8b60651d058b867ba7ad5e07662d75a7f4f1947` | V70 fixed / CHANGES_REQUIRED |
 | Claude Phase 4 | `claude/p4-human-gate-resume-v1` | `ddfcffefc9e458a002636551e1e42bb5a898c374` | 途中head / preauditのみ |
-| Codex Evidence | successor Draft PR | 作成中 | V70再監査と台帳同期 |
+| Codex Evidence | PR #21 | `1c966bf1f4e408664333dbf359cb006c36f3e088`（manifest更新前） | V70再監査と台帳同期 |
 | vault main | `main` | `0812634ec443abf966819d2cf6b10e73efb3a94a` | unchanged / PASS待ち |
-| vault sync | PR #3 | `c0a3aadaeee4209254bae6a952be71fd30553832` | V69 final Evidence |
+| vault sync | PR #3 | `2ff91840408672434e3f362f64efcf35397e63a8`（V70再監査同期前） | Draft / main未統合 |
 
 ## Human Preview evidence
 

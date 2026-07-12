@@ -157,6 +157,8 @@
 
 ## 🔗 コード側の正（source of truth）
 
+- [[Codex V75 Q2C Post Merge再監査]] — `main@3709671` の見積→請求変換を独立監査。CI greenだがtransaction・tenant境界・並行性のEvidence不足でHOLD。
+
 - 現在地: `369` リポジトリの `tasks/CURRENT_STATE.md`＋git refs。
 - 履歴: `369/tasks/PROGRESS.md`。
 - 監査記録: `369/docs/audit/*`。

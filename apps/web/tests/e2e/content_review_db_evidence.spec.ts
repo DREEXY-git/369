@@ -131,12 +131,16 @@ test.describe('C21 実 PostgreSQL transaction 証拠（v7.0 Lane R2）', () => {
     expect(after?.approvalStatus).toBe('none');
     expect(await prisma.approvalRequest.count({ where: { tenantId: tenantA, entityId: asset.id } })).toBe(0);
     expect(await prisma.auditLog.count({ where: { tenantId: tenantA, entityId: asset.id } })).toBe(0);
+    expect(await prisma.dataAccessLog.count({ where: { tenantId: tenantA, entityId: asset.id } })).toBe(0);
     // rollback 後は再申請が成功する。
     const retry = await requestContentReviewCore(prisma as unknown as BridgeDb, reqInput(tenantA, asset));
     expect(retry.outcome).toBe('requested');
   });
 
-  test('3. Audit / DataAccessLog 失敗でも全 rollback（部分 commit なし）', async () => {
+  test('3. Audit / DataAccessLog 失敗でも全 rollback（4テーブル再取得で部分 commit 0・再申請成功）', async () => {
+    // v7.0 R2（EVIDENCE_GAP-1・comment 4951029653）: 各 failOn で asset・ApprovalRequest・AuditLog・
+    // DataAccessLog の4テーブルすべてを実 DB re-fetch する。特に failOn=dataAccessLog では
+    // 「直前に作成された AuditLog が rollback したこと」を auditLog.count===0 で証明する。
     for (const failOn of ['auditLog', 'dataAccessLog'] as const) {
       const asset = await makeAsset(tenantA);
       await expect(requestContentReviewCore(failingDb(failOn), reqInput(tenantA, asset))).rejects.toThrow(
@@ -144,8 +148,14 @@ test.describe('C21 実 PostgreSQL transaction 証拠（v7.0 Lane R2）', () => {
       );
       const after = await prisma.contentAsset.findUnique({ where: { id: asset.id } });
       expect(after?.status, `failOn=${failOn}`).toBe('draft');
-      expect(await prisma.approvalRequest.count({ where: { tenantId: tenantA, entityId: asset.id } }), `failOn=${failOn}`).toBe(0);
-      expect(await prisma.dataAccessLog.count({ where: { tenantId: tenantA, entityId: asset.id } }), `failOn=${failOn}`).toBe(0);
+      expect(after?.approvalStatus, `failOn=${failOn}`).toBe('none');
+      expect(await prisma.approvalRequest.count({ where: { tenantId: tenantA, entityId: asset.id } }), `failOn=${failOn} approvalRequest`).toBe(0);
+      expect(await prisma.auditLog.count({ where: { tenantId: tenantA, entityId: asset.id } }), `failOn=${failOn} auditLog`).toBe(0);
+      expect(await prisma.dataAccessLog.count({ where: { tenantId: tenantA, entityId: asset.id } }), `failOn=${failOn} dataAccessLog`).toBe(0);
+      // rollback 後の実 retry が成功し、ちょうど1件の PENDING に収束する。
+      const retry = await requestContentReviewCore(prisma as unknown as BridgeDb, reqInput(tenantA, asset));
+      expect(retry.outcome, `failOn=${failOn} retry`).toBe('requested');
+      expect(await prisma.approvalRequest.count({ where: { tenantId: tenantA, entityId: asset.id, status: 'PENDING' } }), `failOn=${failOn} retry PENDING`).toBe(1);
     }
   });
 
@@ -214,6 +224,18 @@ test.describe('C21 実 PostgreSQL transaction 証拠（v7.0 Lane R2）', () => {
   });
 
   test('8. AI 主体（権限誤設定想定）は実 DB 接触前に拒否され、行数が一切変化しない', async () => {
+    // v7.0 R2（comment 4951029653 補足）: 行数不変（実 DB）に加えて、「DB 接触前」の source evidence を併記する。
+    // core 双方で actorIsAi の早期 return が最初の db.$transaction より前に位置することを実ソースで assert
+    // （mock db の call-zero 契約は tests/content_review_bridge.test.ts が別途担保）。
+    const src = readFileSync(resolve(dirname(test.info().file), '../../lib/content-review-bridge.ts'), 'utf8');
+    for (const fn of ['requestContentReviewCore', 'decideContentReviewCore']) {
+      const body = src.slice(src.indexOf(`export async function ${fn}`));
+      const guard = body.indexOf('if (input.actorIsAi)');
+      const txn = body.indexOf('db.$transaction');
+      expect(guard, `${fn}: actorIsAi guard 存在`).toBeGreaterThan(-1);
+      expect(txn, `${fn}: $transaction 存在`).toBeGreaterThan(-1);
+      expect(guard, `${fn}: guard が DB 接触より前`).toBeLessThan(txn);
+    }
     const asset = await makeAsset(tenantA);
     const counts = async () => ({
       ap: await prisma.approvalRequest.count({ where: { tenantId: tenantA } }),
@@ -264,22 +286,51 @@ test.describe('C21 実 PostgreSQL transaction 証拠（v7.0 Lane R2）', () => {
     expect(after?.decidedById).toBeNull();
   });
 
-  test('11. 本文・PII・secret は ApprovalRequest/Audit/DataAccessLog のどこにも保存されない', async () => {
-    const asset = await makeAsset(tenantA); // body = SECRET_BODY
+  test('11. 本文（body）は request/decision 双方の承認・監査・DataAccessLog に複製されない（title の保存先は設計どおりに限定）', async () => {
+    // v7.0 R2（EVIDENCE_GAP-2・comment 4951029653）: 主張を「本文非複製」へ限定し、取得漏れだった
+    // decision AuditLog（entityId=approvalId）も含めて全行を re-fetch する。title は人間の承認一覧表示のため
+    // ApprovalRequest.title / 監査 summary へ複製される**設計**なので、独立 title sentinel で
+    // 「複製先が設計どおりの場所だけ」（payload / DataAccessLog metadata には入らない）を検証する。
+    const TITLE_SENTINEL = 'TITLE-SENTINEL-V70R2';
+    const asset = await prisma.contentAsset.create({
+      data: {
+        tenantId: tenantA,
+        type: 'lp',
+        title: `v70 title ${TITLE_SENTINEL}`,
+        body: SECRET_BODY,
+        status: 'draft',
+        approvalStatus: 'none',
+        generatedByAi: true,
+      },
+    });
     const req = await requestContentReviewCore(prisma as unknown as BridgeDb, reqInput(tenantA, asset));
     if (req.outcome !== 'requested') throw new Error('setup failed');
-    await decideContentReviewCore(prisma as unknown as BridgeDb, decInput(tenantA, req.approvalId, asset.id, 'approve'));
-    const rows = [
-      ...(await prisma.approvalRequest.findMany({ where: { tenantId: tenantA, entityId: asset.id } })),
-      ...(await prisma.auditLog.findMany({ where: { tenantId: tenantA, entityId: asset.id } })),
-      ...(await prisma.dataAccessLog.findMany({ where: { tenantId: tenantA, entityId: asset.id } })),
-    ];
-    expect(rows.length).toBeGreaterThanOrEqual(3);
+    // 実 action と同じく approvalTitle には asset title 由来の文字列が渡る（decision audit summary への複製経路を再現）。
+    await decideContentReviewCore(
+      prisma as unknown as BridgeDb,
+      { ...decInput(tenantA, req.approvalId, asset.id, 'approve'), approvalTitle: `コンテンツ承認申請: ${asset.title}` },
+    );
+    const approvals = await prisma.approvalRequest.findMany({ where: { tenantId: tenantA, entityId: asset.id } });
+    const audits = await prisma.auditLog.findMany({ where: { tenantId: tenantA, entityId: { in: [asset.id, req.approvalId] } } });
+    const accesses = await prisma.dataAccessLog.findMany({ where: { tenantId: tenantA, entityId: { in: [asset.id, req.approvalId] } } });
+    const rows = [...approvals, ...audits, ...accesses];
+    // decision AuditLog（entityId=approvalId）が取得対象に実在することを確認（取得漏れの再発防止）。
+    const decisionAudits = audits.filter((a) => a.entityId === req.approvalId);
+    expect(decisionAudits.length, 'decision AuditLog を取得できている').toBeGreaterThanOrEqual(1);
+    expect(rows.length).toBeGreaterThanOrEqual(4);
+    // 本文 sentinel は request/decision 双方のどの行にも現れない。
     for (const row of rows) {
-      expect(JSON.stringify(row), 'audit 系に本文が複製されている').not.toContain(SECRET_BODY);
+      expect(JSON.stringify(row), '承認・監査・DataAccessLog に本文が複製されている').not.toContain(SECRET_BODY);
     }
+    // title sentinel の複製先は設計どおり: ApprovalRequest.title と監査 summary のみ。
+    expect(approvals[0]?.title).toContain(TITLE_SENTINEL);
+    expect(decisionAudits.some((a) => (a.summary ?? '').includes(TITLE_SENTINEL))).toBe(true);
     const payload = (await prisma.approvalRequest.findUnique({ where: { id: req.approvalId } }))?.payload as Record<string, unknown>;
     expect(Object.keys(payload).sort()).toEqual(['campaignId', 'generatedByAi', 'type']); // メタのみ
+    expect(JSON.stringify(payload), 'payload に title が複製されている').not.toContain(TITLE_SENTINEL);
+    for (const da of accesses) {
+      expect(JSON.stringify(da.metadata ?? {}), 'DataAccessLog metadata に title が複製されている').not.toContain(TITLE_SENTINEL);
+    }
   });
 
   test('12. 外部作用 0: 承認経路に外部送信/CMS/実LLM/課金の呼び出しが存在せず、送信ログも増えない', async () => {
@@ -294,11 +345,16 @@ test.describe('C21 実 PostgreSQL transaction 証拠（v7.0 Lane R2）', () => {
       expect(src, `forbidden identifier: ${forbiddenIdent}`).not.toContain(forbiddenIdent);
     }
     // 実 DB 検査: 申請→承認の1周で OutreachSendLog が増えない。
-    const before = await prisma.outreachSendLog.count();
+    // v7.0 R2（EVIDENCE_GAP-3・comment 4951029653）: 並列 worker の他 spec と分離するため
+    // グローバル件数ではなく本 spec 専有 fixture tenant（tenantA/tenantB）に scope して before/after 比較する。
+    const countOwn = async () =>
+      prisma.outreachSendLog.count({ where: { tenantId: { in: [tenantA, tenantB] } } });
+    const before = await countOwn();
+    expect(before).toBe(0); // 専有 tenant に送信ログは存在しない前提から開始
     const asset = await makeAsset(tenantA);
     const req = await requestContentReviewCore(prisma as unknown as BridgeDb, reqInput(tenantA, asset));
     if (req.outcome !== 'requested') throw new Error('setup failed');
     await decideContentReviewCore(prisma as unknown as BridgeDb, decInput(tenantA, req.approvalId, asset.id, 'approve'));
-    expect(await prisma.outreachSendLog.count()).toBe(before);
+    expect(await countOwn()).toBe(0);
   });
 });

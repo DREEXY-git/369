@@ -17,6 +17,7 @@ const TYPE_LABEL: Record<string, string> = {
   dunning_send: '督促送信（お支払い状況の確認）',
   contract_sign: '契約締結',
   payment_execute: '支払実行',
+  content_review: 'コンテンツ承認（review-only）',
 };
 
 export default async function ApprovalsPage() {
@@ -66,6 +67,17 @@ export default async function ApprovalsPage() {
                   <span className="ml-auto text-xs text-muted-foreground">{formatDateTime(a.createdAt)}</span>
                 </div>
                 {a.summary ? <div className="mt-1 text-sm text-muted-foreground">{a.summary}</div> : null}
+                {a.type === 'content_review' && a.entityId ? (
+                  <div className="mt-1 text-xs">
+                    <a
+                      href={`/marketing/content?highlight=${a.entityId}#content-${a.entityId}`}
+                      className="text-blue-700 underline"
+                      data-testid={`approval-content-deeplink-${a.entityId}`}
+                    >
+                      元の下書きを開く（/marketing/content）
+                    </a>
+                  </div>
+                ) : null}
                 {canApprove ? (
                   <form action={decideApprovalAction} className="mt-2 flex flex-wrap items-center gap-2">
                     <input type="hidden" name="approvalId" value={a.id} />

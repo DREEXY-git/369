@@ -27,15 +27,21 @@ export function Topbar({
 }) {
   const role = primaryRole(user.roles);
   const initial = (user.name ?? '?').trim().slice(0, 1) || '?';
+  // v7.0 Lane R1（Codex P2 comment 4950700665）: <sm はモバイル優先順位表示。
+  // 常時 viewport 内に保証する control = hamburger・brand mark・build badge・Bell・avatar・logout。
+  // theme/approvals/role text/氏名 は ≥sm のみ（承認待ちの代替導線は drawer の「承認待ち」link）。
   return (
-    <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-card/70">
+    <header
+      className="flex h-16 shrink-0 items-center gap-1.5 border-b border-border bg-card/80 px-3 backdrop-blur supports-[backdrop-filter]:bg-card/70 sm:gap-3 sm:px-4"
+      data-testid="topbar"
+    >
       {/* モバイル: ハンバーガー＋ブランド */}
       <MobileNav allowedHrefs={allowedHrefs} />
       <div className="flex items-center gap-2 md:hidden">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-xs font-black text-white">
           IK
         </div>
-        <span className="text-sm font-bold tracking-tight">IKEZAKI OS</span>
+        <span className="hidden text-sm font-bold tracking-tight sm:inline">IKEZAKI OS</span>
       </div>
 
       <form action="/knowledge/search" className="relative hidden flex-1 md:block">
@@ -65,13 +71,18 @@ export function Topbar({
         </span>
       ) : null}
 
-      <ThemeToggle />
+      {/* <sm では drawer 内の「表示設定 > テーマ切替」が実操作（機能は消えない・v7.0 R2）。 */}
+      <div className="hidden sm:block">
+        <ThemeToggle testId="topbar-theme" />
+      </div>
 
       {showApprovals ? (
         <Link
           href="/approvals"
-          className="relative rounded-lg p-2 text-foreground/70 transition hover:bg-secondary hover:text-foreground"
+          className="relative hidden rounded-lg p-2 text-foreground/70 transition hover:bg-secondary hover:text-foreground sm:inline-flex"
           title="承認待ち"
+          aria-label="承認待ち"
+          data-testid="topbar-approvals"
         >
           <CheckSquare className="h-5 w-5" />
           {approvals > 0 ? (
@@ -86,6 +97,8 @@ export function Topbar({
         href="/notifications"
         className="relative rounded-lg p-2 text-foreground/70 transition hover:bg-secondary hover:text-foreground"
         title="通知"
+        aria-label="通知"
+        data-testid="topbar-bell"
       >
         <Bell className="h-5 w-5" />
         {notifications > 0 ? (
@@ -95,27 +108,36 @@ export function Topbar({
         ) : null}
       </Link>
 
-      <div className="flex items-center gap-2.5 border-l border-border pl-3">
+      <div className="flex items-center gap-1.5 border-l border-border pl-2 sm:gap-2.5 sm:pl-3">
         <div
-          className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold text-white shadow-sm ${
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white shadow-sm ${
             user.isAi
               ? 'bg-gradient-to-br from-fuchsia-500 to-purple-600'
               : 'bg-gradient-to-br from-indigo-500 to-violet-600'
           }`}
-          title={user.name}
+          title={`${user.name}（${ROLE_LABEL[role]}）`}
+          role="img"
+          aria-label={`${user.name}（${ROLE_LABEL[role]}）`}
+          data-testid="topbar-avatar"
         >
           {initial}
         </div>
-        <div className="hidden text-right sm:block">
+        {/* v7.2 Lane E 回帰検出の修正: md（768px）帯はサイドバー常設で topbar 実幅が 512px となり、
+            氏名/メール＋role バッジで 75px 溢れる（実測）。lg 以上でのみ表示し、sm〜lg は avatar の
+            aria-label（氏名＋role）へ集約する（情報は失わない・1280px の既存表示は不変）。 */}
+        <div className="hidden text-right lg:block">
           <div className="text-sm font-medium leading-tight">{user.name}</div>
           <div className="text-[11px] leading-tight text-muted-foreground">{user.email}</div>
         </div>
-        <Badge tone={user.isAi ? 'purple' : 'primary'}>{ROLE_LABEL[role]}</Badge>
+        <Badge tone={user.isAi ? 'purple' : 'primary'} className="hidden lg:inline-flex">
+          {ROLE_LABEL[role]}
+        </Badge>
         <form action={logoutAction}>
           <button
             className="rounded-lg p-2 text-foreground/70 transition hover:bg-secondary hover:text-foreground"
             title="ログアウト"
             type="submit"
+            data-testid="topbar-logout"
           >
             <LogOut className="h-4 w-4" />
           </button>

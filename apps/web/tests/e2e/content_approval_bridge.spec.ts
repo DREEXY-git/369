@@ -98,3 +98,66 @@ test('AI ロールは承認申請ボタンを持たない（申請は人間か�
   await expect(page.getByTestId(`content-approval-status-${id}`)).toBeVisible();
   await expect(page.locator('[data-testid^="content-request-approval-"]')).toHaveCount(0);
 });
+
+// v6.9（Codex r3565885990/r3565885993）: AI ロール＋承認権限の誤設定 fixture からの「直接 Server Action」否定。
+// RBAC（AI_AGENT に approval:approve なし）とは独立に、action 境界の user.isAi 拒否が効くことを実 UI で証明する。
+import { prisma } from '@hokko/db';
+
+test.describe('AI ロールは承認権限が付与されていても決定できない（action 境界の不変条件）', () => {
+  const AI_EMAIL = 'e2e-ai-approver-v69@ikezaki.local';
+  let assetId = '';
+  let approvalId = '';
+
+  test.beforeAll(async () => {
+    const ceo = await prisma.user.findFirst({
+      where: { email: 'ceo@ikezaki.local' },
+      select: { tenantId: true, passwordHash: true },
+    });
+    if (!ceo) throw new Error('seed ceo not found');
+    const ownerRole = await prisma.role.findFirst({ where: { tenantId: ceo.tenantId, key: 'OWNER' } });
+    if (!ownerRole) throw new Error('OWNER role not found');
+    // 誤設定 fixture: isAiAgent=true なのに OWNER role（approval:approve を含む）を持つユーザー。
+    const aiUser = await prisma.user.create({
+      data: { tenantId: ceo.tenantId, email: AI_EMAIL, name: 'AI承認否定fixture', passwordHash: ceo.passwordHash, isAiAgent: true },
+    });
+    await prisma.userRole.create({ data: { tenantId: ceo.tenantId, userId: aiUser.id, roleId: ownerRole.id } });
+    const asset = await prisma.contentAsset.create({
+      data: { tenantId: ceo.tenantId, type: 'lp', title: 'v69 AI決定否定 fixture', body: '', status: 'pending_approval', approvalStatus: 'pending', generatedByAi: true },
+    });
+    assetId = asset.id;
+    const approval = await prisma.approvalRequest.create({
+      data: { tenantId: ceo.tenantId, type: 'content_review', requestedForAction: 'content_review', title: 'v69 AI決定否定 fixture 申請', entityType: 'content_asset', entityId: asset.id, status: 'PENDING', riskLevel: 'LOW' },
+    });
+    approvalId = approval.id;
+  });
+
+  test.afterAll(async () => {
+    if (approvalId) await prisma.approvalRequest.deleteMany({ where: { id: approvalId } });
+    if (assetId) await prisma.contentAsset.deleteMany({ where: { id: assetId } });
+    const u = await prisma.user.findFirst({ where: { email: AI_EMAIL } });
+    if (u) {
+      await prisma.userRole.deleteMany({ where: { userId: u.id } });
+      await prisma.user.deleteMany({ where: { id: u.id } });
+    }
+    await prisma.$disconnect();
+  });
+
+  test('AI＋OWNER role fixture の承認 submit は denied・ApprovalRequest/asset は不変', async ({ page }) => {
+    await login(page, AI_EMAIL); // approval:approve を持つため /approvals は閲覧できてしまう前提の fixture
+    await page.goto('/approvals');
+    const item = page
+      .locator('.rounded-md.border.p-3')
+      .filter({ has: page.getByTestId(`approval-content-deeplink-${assetId}`) });
+    await expect(item).toHaveCount(1);
+    await item.getByRole('button', { name: '承認' }).click();
+    await page.waitForURL(/\/approvals\?denied=1/);
+
+    // DB 実測: 決定も状態遷移も起きていない（action 境界で拒否）。
+    const approval = await prisma.approvalRequest.findUnique({ where: { id: approvalId } });
+    expect(approval?.status).toBe('PENDING');
+    expect(approval?.decidedById).toBeNull();
+    const asset = await prisma.contentAsset.findUnique({ where: { id: assetId } });
+    expect(asset?.status).toBe('pending_approval');
+    expect(asset?.approvalStatus).toBe('pending');
+  });
+});

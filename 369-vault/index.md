@@ -157,6 +157,8 @@
 
 ## 🔗 コード側の正（source of truth）
 
+- [[Codex V75 Post Merge再監査]] — `main@c8dc1f4` のC22/C19/Phase 4/Control Plane/Workflow統合後監査。C22・Control Tower・Control Planeの変更要求を固定し、Phase MatrixはHOLD（CI greenはProduction verifiedではない）。
+
 - 現在地: `369` リポジトリの `tasks/CURRENT_STATE.md`＋git refs。
 - 履歴: `369/tasks/PROGRESS.md`。
 - 監査記録: `369/docs/audit/*`。

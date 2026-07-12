@@ -1,0 +1,1 @@
+docs/coordination/codex/SYNC_MANIFEST_V75.md

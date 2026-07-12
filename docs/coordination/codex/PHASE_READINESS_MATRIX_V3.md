@@ -26,9 +26,9 @@
 |---|---|---|
 | app main | `ffd586b8cd87ec407aad6ecd3e0ea4394aee1978` | 現行main。V72 Draft未統合 |
 | Phase 3 base | PR #14 `ba01244...` | Draft |
-| Release Path / C21 | PR #18 `fa04e74...` | `CODEX_VERIFIED / HUMAN_PREVIEW_REQUIRED` |
+| Release Path / C21 | PR #18 `fa04e74...` | `HUMAN_PREVIEW_VERIFIED` / RC監査待ち |
 | C19 | PR #22 `1379317...` | `CI_VERIFIED / CHANGES_REQUIRED` |
-| Phase 4 | PR #20 `9080df1...` | `CODEX_VERIFIED / EVIDENCE_GAP` |
+| Phase 4 | PR #20 `9080df1...` | `HUMAN_PREVIEW_VERIFIED / EVIDENCE_GAP` |
 | Codex Evidence | `codex/v72-max-autonomous-reaudit` | Matrix・Evidence同期branch |
 | vault main | `0812634...` | V72未統合 |
 
@@ -38,12 +38,12 @@
 
 | Phase / 機能群 | 実装 | CI | Codex | Preview | main / Production | 現在の意味 |
 |---|---|---|---|---|---|---|
-| Phase 3 Growth Engine v0 | `DRAFT_IMPLEMENTED` | `CI_VERIFIED` | `CODEX_VERIFIED` | 旧SHAのみ人間確認 | HOLD | 管制塔、read-only分析、AI下書き、安全境界のv0。全Growth Channel完成ではない |
-| Phase 3.5 C21 SEO/Content | `DRAFT_IMPLEMENTED` | 472 unit / 146 E2E | `CODEX_VERIFIED` | 新SHA待ち | HOLD | 内部review-only承認まで。CMS公開・外部送信・実LLMなし |
+| Phase 3 Growth Engine v0 | `DRAFT_IMPLEMENTED` | `CI_VERIFIED` | `CODEX_VERIFIED` | `HUMAN_PREVIEW_VERIFIED` | HOLD | 管制塔、read-only分析、AI下書き、安全境界のv0。全Growth Channel完成ではない |
+| Phase 3.5 C21 SEO/Content | `DRAFT_IMPLEMENTED` | 472 unit / 146 E2E | `CODEX_VERIFIED` | `HUMAN_PREVIEW_VERIFIED`（mobile/NAV/AI UI範囲） | HOLD | 内部review-only承認まで。DB意味論はCI/Codex証拠。CMS公開・外部送信・実LLMなし |
 | Phase 3.5 C19 Ads | `DRAFT_IMPLEMENTED` | 481 unit / 158 E2E | `CHANGES_REQUIRED` | 旧DB Gateのみ | HOLD | read-only、AI下書き、内部承認。並行冪等性P2が残る |
 | Phase 3.5 C22 Referral | `ROADMAP_ONLY` | なし | 未監査 | なし | HOLD | 外部紹介送信を持たない最小Draftから着手予定 |
-| Phase 4 AI社員可視化 | `DRAFT_IMPLEMENTED` | `CI_VERIFIED` | `CODEX_VERIFIED` | 新SHA待ち | HOLD | 8名、一覧、詳細、3D、canonical profile/state |
-| Phase 4 Human Gate | `DRAFT_IMPLEMENTED` | 493 unit / 159 E2E | `CODEX_VERIFIED` | 固有画面待ち | HOLD | approveはQUEUED、stale再確認、AI拒否、6表rollback |
+| Phase 4 AI社員可視化 | `DRAFT_IMPLEMENTED` | `CI_VERIFIED` | `CODEX_VERIFIED` | `HUMAN_PREVIEW_VERIFIED` | HOLD | 8名、一覧、詳細、3D、canonical profile/state |
+| Phase 4 Human Gate | `DRAFT_IMPLEMENTED` | 493 unit / 159 E2E | `CODEX_VERIFIED` | `HUMAN_PREVIEW_VERIFIED` | HOLD | approve後QUEUED/再開待ちと成果未記録をPreview確認。stale/AI拒否/6表rollbackはCI/Codex証拠 |
 | Phase 4 実行再開 | `DRAFT_IMPLEMENTED` | ローカルBullMQ 9/9 | `EVIDENCE_GAP` | なし | HOLD | CI実Redis、production worker、stalled recovery、実requeueが未証明 |
 | AI Inbox | `ROADMAP_ONLY` | なし | 未監査 | なし | HOLD | read-only集約から段階着手 |
 | Execution Receipt | `ROADMAP_ONLY` | なし | 未監査 | なし | HOLD | 実行結果と監査証拠を結ぶreceipt |
@@ -53,7 +53,7 @@
 
 | 軸 | 現在地 | 次段 |
 |---|---|---|
-| Repository lineage | Phase 3 Draft -> Phase 3.5/4並行Draft | Human Preview -> RC監査 -> 人間main Gate |
+| Repository lineage | Phase 3 Draft -> Phase 3.5/4並行Draft | RC監査 -> 人間main Gate |
 | Business Phase 0-20 | Phase 3 Growth v0とPhase 4 AI Workforceの入口 | Phase 3.5主要channel接続、Phase 4実行証拠 |
 | PDF Phase 2.5-18 | Phase 3承認・監査基盤相当をDraftで強化中 | 実運用Gate、会計/労務/電子帳簿を段階拡張 |
 | Strategy 18.5-26 | 未到達。Marketplace、MCP、課金、広域外部連携は封印 | 人間承認後の後続Phase |
@@ -87,7 +87,7 @@ Function ID単位のV72詳細分類は`COMPETITOR_FIT_GAP_V72.md`を正とする
 ## 6. 次の3 WIP
 
 1. **C19冪等性クローズ**: DB一意性またはCAS、並行実PG、Action全体retry、固定SHA再監査。
-2. **Human Preview / RC**: PR #18 exact headのmobile theme、C21、NAV、AI社員/3Dを確認し、ancestry・競合・機能消失をRCで再監査。
+2. **RC独立監査**: PR #14＋PR #18限定RCのancestry、競合、機能消失、CI、artifact、Preview lineageを再監査。
 3. **Phase 4実行証拠**: CI実Redis、approved run requeue、worker restart/stalled recovery、Execution Receipt、固有画面artifact。
 
 C22、AI Inbox、Workflow Dry Run、競合fit-gapは、上記を妨げない別branchで外部作用なしのDraftまで並行可能。
@@ -108,7 +108,7 @@ C22、AI Inbox、Workflow Dry Run、競合fit-gapは、上記を妨げない別b
 
 - C19並行冪等性P2。
 - BullMQ/workerの本番相当証拠不足。
-- 新固定SHAのHuman Preview未完了。
+- PR #14＋PR #18限定RC未受領・未監査。
 - main/Production未統合。
 - 完全fit-gap未作成。
 - credential失効確認待ち。

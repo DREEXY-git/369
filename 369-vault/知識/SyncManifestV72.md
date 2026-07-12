@@ -11,9 +11,9 @@
 
 ## 判定
 
-- Release Path: `CODEX_VERIFIED / HUMAN_PREVIEW_REQUIRED`
+- Release Path: `HUMAN_PREVIEW_VERIFIED` / RC監査待ち
 - C19: `CHANGES_REQUIRED / HOLD`
-- Phase 4: `CODEX_VERIFIED / EVIDENCE_GAP`
+- Phase 4: `HUMAN_PREVIEW_VERIFIED / EVIDENCE_GAP`
 
 ## 同期対象
 
@@ -24,13 +24,12 @@
 ## mainを止める条件
 
 - C19並行冪等性P2。
-- PR #18 exact-head Human Preview未完了。
 - RC ancestry、機能消失、Preview lineage未監査。
 - CI実Redis、production worker、stalled recovery未確認。
 - credential失効・ローテーションの人間確認待ち。
 
 従ってDraft鏡像が一致しても、vault main、app main、Productionへは進めない。
 
-in-repo鏡像のV72新規4ノートはindexから解決し、新規orphan 0。既存の未解決wikilink 9件は記法例、過去Codexノート、参照先不明の履歴であり、推測修復しない。
+in-repo鏡像のV72新規4ノートはindexから解決し、新規orphan 0。in-repoは202 Markdown、wikilink 1,049件、解決1,040件。既存の未解決9件は記法例、過去Codexノート、参照先不明の履歴であり、推測修復しない。
 
 独立vault Draftは210 Markdown、wikilink 1,047件、解決1,045件。未解決2件はREADME/indexの記法例で、V72新規orphan 0。

@@ -6,16 +6,16 @@
 - C19 lane: PR #22 `13793171a8439477f4d8bc08822f2875043b5475`
 - Phase 4 lane: PR #20 `9080df1d4cafcee225775003700b219ac0522d64`
 - app main: `ffd586b8cd87ec407aad6ecd3e0ea4394aee1978`
-- 判定: Release Path `CODEX_VERIFIED`、C19 `CHANGES_REQUIRED / HOLD`、Phase 4 `CODEX_VERIFIED / EVIDENCE_GAP`
+- 判定: Release Path `HUMAN_PREVIEW_VERIFIED`、C19 `CHANGES_REQUIRED / HOLD`、Phase 4 `HUMAN_PREVIEW_VERIFIED / EVIDENCE_GAP`
 - app main / Production / 本番DB / 外部作用: 非接触
 
 ## 1. 非エンジニア向け結論
 
-Phase 3.5のC21承認経路は、前回の3つの証拠不足とモバイルのテーマ切替消失が修正された。固定SHAのCI、実PostgreSQLテスト、21枚の画面証拠、独立unit、review threadを再確認し、PR #18のRelease Pathを合格とした。ただし、新SHAのVercel Previewを人間が確認するまではmainへ進めない。
+Phase 3.5のC21承認経路は、前回の3つの証拠不足とモバイルのテーマ切替消失が修正された。固定SHAのCI、実PostgreSQLテスト、21枚の画面証拠、独立unit、review threadを再確認し、PR #18のRelease Pathを合格とした。さらに同一SHAのVercel Previewで人間確認が完了した。次はPR #14＋#18だけのRCをCodexが再監査し、main判断はその後の人間Gateとする。
 
 C19は原子性、rollback、監査、画面証拠が大きく改善した。一方、改善案生成の冪等性が`findFirst`の先行確認だけで、同時実行すると同じ入力から2件作成できる。実際に独立oracleで2件生成を再現したため、PR #22はP2 HOLDである。これはPR #18のRelease Path合格とは分離する。
 
-Phase 4は、承認だけで成功扱いにせず`QUEUED`へ戻すこと、stale時の人間再確認、AI閲覧拒否、6表rollback、二重submitが実装・検証された。コードとCIは合格だが、CI上の実Redis、production worker registry、stalled recovery、Phase 4固有の画面証拠は不足している。
+Phase 4は、承認だけで成功扱いにせず`QUEUED`へ戻すこと、stale時の人間再確認、AI閲覧拒否、6表rollback、二重submitが実装・検証された。人間Previewで`QUEUED/再開待ち`と成果未記録も確認済みである。一方、CI上の実Redis、production worker registry、stalled recoveryは不足している。
 
 ## 2. Scoutと所有境界
 
@@ -49,6 +49,14 @@ Phase 4は、承認だけで成功扱いにせず`QUEUED`へ戻すこと、stale
 7. PR #18はPR #14の子孫で、PR #22/#20の変更を含まない。`merge-tree`でPR #14への統合競合なし。
 
 判定は`CODEX_RELEASE_PASS_V70_R2 / HUMAN_PREVIEW_REQUIRED_V72`。PR #18 comment `4951699871`、thread reply `3566568170`に記録した。
+
+### Human Preview受領
+
+- `HUMAN_PREVIEW_VERIFIED_V72`: PR #18 comment `4951939581`。
+- Status `Ready`、branch `claude/p35-approval-bridges-v1`、SHA `fa04e7405...`を人間確認。
+- 320pxのdrawer、theme切替とreload永続化、Bell、user menu、logout、最下部NAVを確認。
+- AI社員一覧・詳細・3Dで人物、profile、state一致を確認。
+- この確認はPreview限定であり、C21のDB意味論はCI/Codex証拠、main/Productionは別Gate。
 
 ## 4. PR #22 C19
 
@@ -110,6 +118,8 @@ Evidence Gap:
 
 判定は`CODEX_P4_PASS_V70_R2 / EVIDENCE_GAP / HUMAN_PREVIEW_REQUIRED_V72`。PR #20 comment `4951708593`に記録した。
 
+Human Preview comment `4951939636`で、Status `Ready`、branch `claude/p4-human-gate-resume-v1`、SHA `9080df1...`、Preview DB分離、approve後`QUEUED/再開待ち`、承認だけでは成果未記録であることを人間確認した。これはProduction queue/worker、stalled recovery、実requeueの証拠ではなく、既存`EVIDENCE_GAP`を維持する。
+
 ## 6. Previewと下流V72 lane
 
 Vercel combined statusは3固定headでsuccessを確認したが、deploymentの実画面とBuild LogsをCodex環境から認証付きで確認していない。
@@ -126,20 +136,21 @@ C22 Referral、安全なAI Inbox、Execution Receipt、Workflow Dry Run、回帰
 
 | Phase | 現在地 | 次のGate |
 |---|---|---|
-| Phase 3 | Growth Engine v0のDraft実装・安全境界・主要UIはCI/Codex確認済み | PR #18の人間Preview、RC ancestry、main merge判断 |
-| Phase 3.5 C21 | `CODEX_VERIFIED` | exact-head Human Preview後にRelease候補へ |
+| Phase 3 | Growth Engine v0のDraft実装・安全境界・主要UIは`HUMAN_PREVIEW_VERIFIED` | RC ancestry、main merge判断 |
+| Phase 3.5 C21 | Release Path `HUMAN_PREVIEW_VERIFIED`、DB意味論は`CODEX_VERIFIED` | PR #14＋#18限定RCの独立監査 |
 | Phase 3.5 C19 | `CI_VERIFIED / CHANGES_REQUIRED` | 冪等性P2修正、再監査、Preview |
 | Phase 3.5 C22 | `ROADMAP_ONLY` | 外部作用なしの最小Draft設計と固定PR |
-| Phase 4可視化 | AI社員8名、3D、canonical profileは`CI_VERIFIED / CODEX_VERIFIED` | exact-head Human Preview |
-| Phase 4実行制御 | `CODEX_VERIFIED / EVIDENCE_GAP` | 実queue/requeue/worker証拠と固有画面Preview |
+| Phase 4可視化 | AI社員8名、3D、canonical profileは`HUMAN_PREVIEW_VERIFIED` | RCとは別laneで継続 |
+| Phase 4実行制御 | `HUMAN_PREVIEW_VERIFIED / EVIDENCE_GAP` | 実queue/requeue/worker証拠 |
 
 ## 8. 永続化方針
 
 - Release Pathが合格したため、Evidenceを保守的に更新し`PHASE_READINESS_MATRIX_V3.md`を作成する。
-- C19、BullMQ、Preview、main、Productionは不足を維持し、Matrix作成を完成宣言に使わない。
-- app/vault鏡像をDraft branchへ同期する。vault mainはC19 HOLD、Human Preview、RC、credential失効確認が残るため統合しない。
+- C19、BullMQ、main、Productionは不足を維持し、Matrix作成を完成宣言に使わない。
+- app/vault鏡像をDraft branchへ同期する。vault mainはC19 HOLD、RC、credential失効確認が残るため統合しない。
+- `HUMAN_PREVIEW_GATES_CONFIRMED_V72`: PR #18 comment `4951939700`。RC準備とCodex read-only再監査への限定GOであり、main/Production GOではない。
 - `CREDENTIAL_ROTATION_REQUIRED`は人間が失効・ローテーションを確認するまで維持する。
 
-in-repo Obsidianは202 Markdown、wikilink 1,048件を検査し、1,039件を解決した。V72新規4ノートのorphanは0。残る9件は記法例2件、過去V68/V69ノート参照5件、参照先不明の既存2件であり、V72が新しいbroken linkを作っていないことを確認した。曖昧な履歴を推測で書き換えない。
+in-repo Obsidianは202 Markdown、wikilink 1,049件を検査し、1,040件を解決した。V72新規4ノートのorphanは0。残る9件は記法例2件、過去V68/V69ノート参照5件、参照先不明の既存2件であり、V72が新しいbroken linkを作っていないことを確認した。曖昧な履歴を推測で書き換えない。
 
 「脆弱性ゼロ」「完全無欠」「全機能完成」「完全同期」「Production verified」は宣言しない。

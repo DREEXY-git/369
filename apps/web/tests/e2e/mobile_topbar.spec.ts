@@ -3,8 +3,11 @@ import { test, expect, type Page } from '@playwright/test';
 // v7.0 Lane R1（Codex P2 comment 4950700665・ARTIFACT_ONLY / NOT_REPRODUCED_IN_HUMAN_PREVIEW）:
 // mobile topbar の必須 control（hamburger・Bell・avatar・logout・build badge）が 320/360/390/430px の
 // すべてで viewport 内・visible・操作可能・accessible name 付きであることを boundingBox 実測で検証する。
-// <sm で意図して隠す control（theme/approvals/role text）は代替導線（drawer の承認待ち link・avatar の
-// aria-label）を assert する。desktop（≥sm）は従来表示の非退行を確認する。
+// <sm で topbar から外した control の代替導線を実 assert する（v7.0 R2・Codex P2 comment 4951029653）:
+// - 承認待ち = drawer の「承認待ち」link
+// - テーマ切替 = drawer 内「表示設定 > テーマ切替」（drawer-theme-toggle・実クリック/永続化は専用テスト）
+// - role text = avatar の aria-label
+// desktop（≥sm）は従来表示の非退行を確認する。
 
 const MOBILE_WIDTHS = [320, 360, 390, 430];
 
@@ -58,11 +61,17 @@ test('mobile topbar: 320/360/390/430px で Bell・avatar・logout・build badge 
     await expect(page.getByRole('button', { name: 'ログアウト' })).toBeVisible();
     await expect(page.getByRole('img', { name: /北郷 誠一（社長）/ })).toBeVisible(); // avatar = 氏名＋role を集約
 
-    // <sm で隠した承認待ちの代替導線: drawer に「承認待ち」link が存在する。
+    // <sm で隠した承認待ち/テーマの代替導線: drawer に「承認待ち」link とテーマ切替の実操作が存在し、
+    // どちらも viewport 内（部分切れ 0）である。
     await hamburger.click();
     const drawer = page.getByTestId('mobile-nav-drawer');
     await expect(drawer).toBeVisible();
     await expect(drawer.getByRole('link', { name: '承認待ち' })).toHaveCount(1);
+    const themeInDrawer = page.getByTestId('drawer-theme-toggle');
+    await expect(themeInDrawer, `drawer theme@${width}px`).toBeVisible();
+    const tb = await themeInDrawer.boundingBox();
+    expect(tb!.x, `drawer theme 左端@${width}px`).toBeGreaterThanOrEqual(-1);
+    expect(tb!.x + tb!.width, `drawer theme 右端@${width}px`).toBeLessThanOrEqual(width + 1);
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('mobile-nav-drawer')).toHaveCount(0);
 
@@ -79,6 +88,44 @@ test('mobile topbar: 320/360/390/430px で Bell・avatar・logout・build badge 
   await page.goto('/dashboard');
   await page.getByTestId('topbar-bell').click();
   await page.waitForURL('**/notifications');
+});
+
+test('mobile theme: 320px で drawer のテーマ切替が実クリックで light↔dark・永続化・keyboard 操作可能', async ({ page }) => {
+  // v7.0 R2（Codex P2 comment 4951029653）: <sm で theme を隠したことによる「機能消失」の是正証拠。
+  // 実クリックで html.dark が切り替わり、reload 後も localStorage 経由で復元されることを実測する。
+  await page.setViewportSize({ width: 320, height: 844 });
+  await login(page, 'ceo@ikezaki.local');
+  await page.goto('/dashboard');
+
+  const isDark = () => page.evaluate(() => document.documentElement.classList.contains('dark'));
+  const before = await isDark();
+
+  // 実クリック 1回目: light↔dark が反転する。
+  await page.getByRole('button', { name: 'メニューを開く' }).click();
+  const toggle = page.getByTestId('drawer-theme-toggle');
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toHaveAccessibleName('テーマ切替');
+  await toggle.click();
+  expect(await isDark()).toBe(!before);
+
+  // 永続化: reload 後も選択が復元される（layout の theme init script + localStorage）。
+  await page.reload();
+  await page.waitForLoadState('domcontentloaded');
+  expect(await isDark()).toBe(!before);
+
+  // keyboard 操作: drawer を開き直し、フォーカスして Enter で元へ戻る。
+  await page.getByRole('button', { name: 'メニューを開く' }).click();
+  await page.getByTestId('drawer-theme-toggle').focus();
+  await page.keyboard.press('Enter');
+  expect(await isDark()).toBe(before);
+  await page.reload();
+  await page.waitForLoadState('domcontentloaded');
+  expect(await isDark()).toBe(before);
+
+  // テーマ操作後も必須 control は viewport 内のまま（レイアウト非破壊）。
+  for (const id of ['topbar-bell', 'topbar-avatar', 'topbar-logout', 'build-info']) {
+    await expectFullyInViewport(page, id, 320);
+  }
 });
 
 test('desktop topbar: ≥sm は theme/approvals/role/氏名を含め従来表示（非退行）', async ({ page }) => {

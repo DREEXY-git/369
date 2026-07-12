@@ -122,12 +122,14 @@ export function Topbar({
         >
           {initial}
         </div>
-        <div className="hidden text-right sm:block">
+        {/* v7.2 Lane E 回帰検出の修正: md（768px）帯はサイドバー常設で topbar 実幅が 512px となり、
+            氏名/メール＋role バッジで 75px 溢れる（実測）。lg 以上でのみ表示し、sm〜lg は avatar の
+            aria-label（氏名＋role）へ集約する（情報は失わない・1280px の既存表示は不変）。 */}
+        <div className="hidden text-right lg:block">
           <div className="text-sm font-medium leading-tight">{user.name}</div>
           <div className="text-[11px] leading-tight text-muted-foreground">{user.email}</div>
         </div>
-        {/* role text は <sm では avatar の accessible name（aria-label）へ集約（幅確保・情報は失わない）。 */}
-        <Badge tone={user.isAi ? 'purple' : 'primary'} className="hidden sm:inline-flex">
+        <Badge tone={user.isAi ? 'purple' : 'primary'} className="hidden lg:inline-flex">
           {ROLE_LABEL[role]}
         </Badge>
         <form action={logoutAction}>

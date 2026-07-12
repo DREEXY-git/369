@@ -1,7 +1,9 @@
 # 369 OS Phase Readiness Matrix V3
 
 - 基準日: 2026-07-13 JST
-- Release Path固定head: PR #18 `fa04e7405cf3ab6cb56f329804fc778dde6470b0`
+- Release Path固定head: RC PR #32 `8d3ae36f9f036b4125d029c5b7a55cbbc3d04685`
+- 最新app main: `7efb22b43b781e485a4759fab4145792eeabe92e`
+- 最新独立判定: `POST_RELEASE_CHANGES_REQUIRED`（P2 3件）
 - Matrixの意味: 実装、CI、独立監査、Preview、main、Productionを分離した現在地
 - 完成宣言: しない
 
@@ -24,30 +26,31 @@
 
 | 系譜 | 現在地 | 判定 |
 |---|---|---|
-| app main | `ffd586b8cd87ec407aad6ecd3e0ea4394aee1978` | 現行main。V72 Draft未統合 |
-| Phase 3 base | PR #14 `ba01244...` | Draft |
-| Release Path / C21 | PR #18 `d209d5d...` | `P3-R01 CODEX_VERIFIED` / 後継RC待ち。Human Previewは旧`fa04e74`限定 |
+| app main | `7efb22b43b781e485a4759fab4145792eeabe92e` | PR #32 Phase 3/C21とPR #33 C22を履歴付きで統合済み。P2修正待ち |
+| Phase 3 base | PR #14 `ba01244...` | RC #32を経てmainのancestor |
+| Release Path / C21 | PR #18 `d209d5d...` -> RC #32 `8d3ae36...` -> main `71e0b426...` | CI/Human Preview/main統合済み。Control Tower監査label P2でcompletion HOLD |
 | C19 | PR #22 `e3c410c...` | `CI_VERIFIED / CHANGES_REQUIRED`。V74独立監査でblocking P2 3件 |
 | Phase 4 | PR #20 `9080df1...` | `HUMAN_PREVIEW_VERIFIED / EVIDENCE_GAP` |
-| RC #29 | `96172e5...` | `CHANGES_REQUIRED / RELEASE HOLD`。768px topbar回帰とexact-head CI不足 |
-| C22 | PR #23 `9209ef8...` | `DRAFT_IMPLEMENTED / CHANGES_REQUIRED` |
+| RC #29 | `96172e5...` | RC #32にsupersedeされた履歴 |
+| RC #32 | `8d3ae36...` | CI 472/151、artifact 25 PNG、Human Preview、main統合済み。post-release P2でHOLD |
+| C22 | PR #23 `2884949...` -> PR #33 -> main `7efb22b...` | source CI/Human Preview/main統合済み。追加P2 2件で`CHANGES_REQUIRED` |
 | Phase 4 Control Plane | PR #25 `c28b9bf...` | `DRAFT_IMPLEMENTED / CHANGES_REQUIRED` |
 | Workflow Dry Run | PR #26 `45bde82...` | `DRAFT_IMPLEMENTED / CHANGES_REQUIRED` |
 | Regression hardening | PR #27 `bc8fbef...` | `CODE_DIFF_ACCEPTED / EVIDENCE_GAP` |
 | Codex Evidence | `codex/v74-phase-completion-gate` | V74 WIP監査・Matrix・Evidence同期branch |
-| vault main | `0812634...` | V72未統合 |
+| vault main | `0517997b386ffdb82034c7d3bbc57e5a0062a30f` | P3-R01まで同期済み。post-release再監査同期を次commitで追補 |
 
-安全な統合候補順は`PR #14 -> PR #18 -> Codex Evidence`。PR #22とPR #20は独立laneとして、各Gateを満たすまでRelease Pathへ混在させない。
+PR #14/#18はRC #32を経てmainへ統合済みで、C22もPR #33経由でmainへ入った。今後はP2 3件を専用fix-forward laneで閉じ、C19とPhase 4は各Gateを満たすまで別laneを維持する。
 
 ## 3. Phase 3 / 3.5 / 4
 
 | Phase / 機能群 | 実装 | CI | Codex | Preview | main / Production | 現在の意味 |
 |---|---|---|---|---|---|---|
-| Phase 3 Growth Engine v0 | `DRAFT_IMPLEMENTED` | `CI_VERIFIED` | `CODEX_VERIFIED` | `HUMAN_PREVIEW_VERIFIED` | RC HOLD | v0本体は限定確認済み。RCに768px回帰が残り、全Growth Channel完成ではない |
-| Phase 3.5 C21 SEO/Content | `DRAFT_IMPLEMENTED` | 472 unit / 146 E2E | `CODEX_VERIFIED` | `HUMAN_PREVIEW_VERIFIED`（mobile/NAV/AI UI範囲） | RC HOLD | PR #27修正の限定伝播、PR #18 exact-head CI、RC R2が必要。CMS公開等なし |
+| Phase 3 Growth Engine v0 | `MAIN_MERGED` | 472 unit / 151 E2E | `POST_RELEASE_CHANGES_REQUIRED` | `HUMAN_PREVIEW_VERIFIED` | main統合、Vercel success | 768px回帰は解消。Control Towerの財務機密閲覧label P2をfix-forwardするまでcompletion HOLD |
+| Phase 3.5 C21 SEO/Content | `MAIN_MERGED` | 472 unit / 151 E2E | `CODEX_VERIFIED`（限定範囲） | `HUMAN_PREVIEW_VERIFIED` | main統合、owner Production Ready申告 | 内部下書き・承認まで。CMS公開・外部送信なし。Phase 3全体のP2とは分離して記録 |
 | Phase 3.5 C19 Ads | `DRAFT_IMPLEMENTED` | 484 unit / 161 E2E | `CHANGES_REQUIRED` | 旧DB Gateのみ | HOLD | read-only、AI下書き、内部承認。P2002誤判定、業務意図key、生成全体監査のblocking P2が残る |
-| Phase 3.5 C22 Referral | `DRAFT_IMPLEMENTED` | exact-head Actions未確認 | `CHANGES_REQUIRED` | なし | HOLD | read-only候補/下書きは存在。PII取得段階、tenant実在ID、一覧監査が不足 |
-| Phase 4 AI社員可視化 | `DRAFT_IMPLEMENTED` | `CI_VERIFIED` | `CODEX_VERIFIED` | `HUMAN_PREVIEW_VERIFIED` | HOLD | 8名、一覧、詳細、3D、canonical profile/state |
+| Phase 3.5 C22 Referral | `MAIN_MERGED` | source head 483 unit / 155 E2E | `CHANGES_REQUIRED` | `HUMAN_PREVIEW_VERIFIED` | main統合、Vercel success | 旧P2 3件は修正。候補外direct previewとAI actorType誤分類の追加P2 2件、merge head exact CI不足 |
+| Phase 4 AI社員可視化 | `MAIN_MERGED` | 472 unit / 151 E2E | `CODEX_VERIFIED` | `HUMAN_PREVIEW_VERIFIED` | main統合、Vercel success | 8名、一覧、詳細、3D、canonical profile/state。Production機能受入は未実測 |
 | Phase 4 Human Gate | `DRAFT_IMPLEMENTED` | 493 unit / 159 E2E | `CODEX_VERIFIED` | `HUMAN_PREVIEW_VERIFIED` | HOLD | approve後QUEUED/再開待ちと成果未記録をPreview確認。stale/AI拒否/6表rollbackはCI/Codex証拠 |
 | Phase 4 実行再開 | `DRAFT_IMPLEMENTED` | ローカルBullMQ 9/9 | `EVIDENCE_GAP` | なし | HOLD | CI実Redis、production worker、stalled recovery、実requeueが未証明 |
 | AI Inbox / Execution Receipt | `DRAFT_IMPLEMENTED` | exact-head Actions未確認 | `CHANGES_REQUIRED` | なし | HOLD | tenant逆参照、未決定receipt、payload/DataAccess最小化が不足 |
@@ -57,9 +60,9 @@
 
 | 軸 | 現在地 | 次段 |
 |---|---|---|
-| Repository lineage | Phase 3 Draft -> Phase 3.5/4並行Draft | RC監査 -> 人間main Gate |
-| Business Phase 0-20 | Phase 3 Growth v0とPhase 4 AI Workforceの入口 | Phase 3.5主要channel接続、Phase 4実行証拠 |
-| PDF Phase 2.5-18 | Phase 3承認・監査基盤相当をDraftで強化中 | 実運用Gate、会計/労務/電子帳簿を段階拡張 |
+| Repository lineage | Phase 3/C21/C22とAI社員可視化はmain。C19/Phase 4制御系は並行Draft | P2 fix-forward -> Codex再監査 -> 人間main/Production Gate |
+| Business Phase 0-20 | Phase 3 Growth v0とPhase 3.5一部をmainへ統合、Phase 4 AI Workforceの入口 | Growthの監査補修、主要channel接続、Phase 4実行証拠 |
+| PDF Phase 2.5-18 | Phase 3承認・監査基盤相当をmain/並行Draftで強化中 | 実運用Gate、会計/労務/電子帳簿を段階拡張 |
 | Strategy 18.5-26 | 未到達。Marketplace、MCP、課金、広域外部連携は封印 | 人間承認後の後続Phase |
 
 この表は異なる番号体系を無理に同じ進捗率へ換算しない。各軸の証拠段階を正とする。
@@ -68,16 +71,16 @@
 
 | Workstream | Repository lineage | Business Phase 0-20 | PDF / Strategy | R Stage | Evidence Stage | 主なFunction ID | Git SHA / CI | Codex | Human Preview | main | Production | Obsidian SHA |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `P3-GROWTH` | PR #14 -> #18 `d209d5d` -> 後継RC待ち | Phase 3 Growth v0 | PDF Phase 3相当 | R7 | `P3-R01 CODEX_VERIFIED / RC HOLD` | C18-C22の限定範囲、`C28-017` | #18 CI `29202591101` 472/151、RC未作成 | P3-R01 PASS、P3-R05待ち | Human Previewは`fa04e74`のみ | 未統合 | 未確認 | P3-R01同期manifestで確定 |
-| `P3-Q2C` | PR #18 code treeを初回独立監査 | Phase 3横断業務基盤 | PDF Phase 3以降の内部縦切り | R4-R7横断 | `VERIFIED_REPOSITORY / EVIDENCE_GAP` | `C10-040/041/044`、`C11-004/022`、`C12-002/028/030/031/032`、`C13-002/011/023`、`C14-001/002/003` | `fa04e74`、finance unit 32/32 | `CHANGES_REQUIRED` | Q2C受入として未実施 | 未統合 | 未確認 | V74同期manifestで確定 |
-| `P35-CHANNELS` | C21 #18、C19 #22、C22 #23を独立lane維持 | Phase 3.5 | Growth Channels | R7 | `DRAFT_IMPLEMENTED / CHANGES_REQUIRED` | C19/C21、C22は保守的にUNMAPPED | C19 `e3c410c` CI `29200855770`、C22 CIなし | C19/C22 HOLD | C21限定のみ | 未統合 | 未確認 | V74同期manifestで確定 |
-| `P4-WORKFORCE` | #20 Human Gate、#25 CP、#26 Workflow | Phase 4 | AI Workforce / Human Certification | R7-R10入口 | `HUMAN_PREVIEW_VERIFIED`限定 + `EVIDENCE_GAP` | `C28-017`、`C30-041/052`、CP/WorkflowはUNMAPPED | #20 CI `29196387933`、#25/#26 CIなし | CP/Workflow HOLD | #20限定 | 未統合 | 未確認 | V74同期manifestで確定 |
+| `P3-GROWTH` | PR #14 -> #18 `d209d5d` -> RC #32 `8d3ae36` -> main `71e0b426` | Phase 3 Growth v0 | PDF Phase 3相当 | R7 | `MAIN_MERGED / POST_RELEASE_CHANGES_REQUIRED` | C18-C22の限定範囲、`C28-017` | RC CI `29205251769` 472/151、artifact `8263616002` | ancestry/tree/CI/25 PNG確認、監査label P2 | `8d3ae36` Human Preview済み | `71e0b426` | owner Ready/env安全申告、機能実測は限定 | post-release同期manifestで追補 |
+| `P3-Q2C` | PR #18 code tree -> RC #32 -> main `71e0b426` | Phase 3横断業務基盤 | PDF Phase 3以降の内部縦切り | R4-R7横断 | `MAIN_MERGED / EVIDENCE_GAP` | `C10-040/041/044`、`C11-004/022`、`C12-002/028/030/031/032`、`C13-002/011/023`、`C14-001/002/003` | RC `8d3ae36`、finance unit 32/32、全体CI 472/151 | `CHANGES_REQUIRED` | Q2C受入として未実施 | `71e0b426` | deployment successのみ、Q2C機能未実測 | post-release同期manifestで追補 |
+| `P35-CHANNELS` | C21はRC #32、C22はPR #33でmain統合。C19は独立lane | Phase 3.5 | Growth Channels | R7 | `MAIN_MERGED部分 / CHANGES_REQUIRED` | C19/C21、C22 read-onlyは保守的にUNMAPPED | C22 source CI `29204903544` 483/155、merge head Actionsなし | C22追加P2 2件、C19 HOLD | C21/C22固定SHAで実施 | `7efb22b` | Vercel status success、C22本番機能実測は未確認 | post-release同期manifestで追補 |
+| `P4-WORKFORCE` | AI社員可視化はmain。#20 Human Gate、#25 CP、#26 Workflowは独立lane | Phase 4 | AI Workforce / Human Certification | R7-R10入口 | `MAIN_MERGED部分 / HUMAN_PREVIEW_VERIFIED限定 + EVIDENCE_GAP` | `C28-017`、`C30-041/052`、CP/WorkflowはUNMAPPED | RC CI 472/151、#20 CI `29196387933`、#25/#26 CIなし | 可視化PASS、CP/Workflow HOLD | AI UIと#20限定 | AI UIのみ`71e0b426` | AI UI deployment success、Human Gate/queue未統合 | post-release同期manifestで追補 |
 
 ### Wave分離
 
 | Wave | 対象 | 現在地 |
 |---|---|---|
-| Wave 1 | AI DX + Marketing | Phase 3/3.5/4のDraftを監査中。machine completeではない |
+| Wave 1 | AI DX + Marketing | Phase 3/C21/C22/AI社員可視化は一部main、残りはDraft/HOLD。machine completeではない |
 | Wave 2 | Salesforce型CRM/SFA | 既存CRM/SFA限定実装 + Fit-Gap。`PARTIAL / ROADMAP_ONLY` |
 | Wave 3 | Money Forward/freee型会計 | Q2C限定縦切りを初回独立監査。原子性・権限のblocking P2、`EVIDENCE_GAP` |
 | Wave 4 | 人事労務・電子帳簿 | `ROADMAP_ONLY`中心。法務・専門家Gateが必要 |
@@ -111,11 +114,11 @@ Function ID単位のV72詳細分類は`COMPETITOR_FIT_GAP_V72.md`を正とする
 
 ## 6. 次の3 WIP
 
-1. **P3-GROWTH / P3-Q2C**: PR #27限定伝播と後継RCに加え、契約RBAC、請求/入金/正式化transaction、並行採番を独立WIPで閉じる。
-2. **P35-CHANNELS**: C19のP2002/key/生成監査、C22の取得段階PII/tenant/監査を固定headで再監査する。
+1. **P3-GROWTH / P3-Q2C**: Control Tower財務閲覧labelをfix-forwardし、契約RBAC、請求/入金/正式化transaction、並行採番を独立WIPで閉じる。
+2. **P35-CHANNELS**: C22の候補外previewとAI actorTypeをfix-forwardし、C19のP2002/key/生成監査を固定headで再監査する。
 3. **P4-WORKFORCE**: Control Plane tenant/receipt、Workflow fail-closed/URL、CI実Redis、approved run requeue、worker restart/stalled recoveryを閉じる。
 
-C22、AI Inbox、Workflow Dry Run、競合fit-gapは、上記を妨げない別branchで外部作用なしのDraftまで並行可能。
+AI Inbox、Workflow Dry Run、競合fit-gapは、上記を妨げない別branchで外部作用なしのDraftまで並行可能。C22は既にmainのため、追加拡張より先にP2修正を優先する。
 
 ## 7. 人間Gate
 
@@ -131,13 +134,13 @@ C22、AI Inbox、Workflow Dry Run、競合fit-gapは、上記を妨げない別b
 
 ## 8. 残存リスク
 
-- RC 768px topbar回帰とexact-head CI/artifact不足。
+- RC 768px topbar回帰は解消しmain統合済み。ただしControl Tower財務閲覧label P2が現行mainに残る。
 - P3-Q2Cの契約RBAC、請求/入金/正式化の非原子的更新、並行採番。
 - C19のP2002誤判定、業務意図key、生成全体監査のP2。
-- C22の取得段階PII/tenant/監査、Control Planeのtenant/receipt、Workflowのfail-open。
+- C22の旧PII/tenant/一覧監査は修正済みだが、候補外direct previewとAI actorTypeのP2が現行mainに残る。Control Planeのtenant/receipt、Workflowのfail-openも未解消。
 - BullMQ/workerの本番相当証拠不足。
-- PR #14＋PR #18限定RCは受領したが`CHANGES_REQUIRED`。
-- main/Production未統合。
+- PR #14＋PR #18限定RCとC22はmainへ統合済み。Codex独立PASS前の統合で、fix-forwardが必要。
+- Vercel status/owner Ready申告はあるが、P2修正後のProduction受入は未実施。
 - 完全fit-gap未作成。
 - credential失効確認待ち。
 

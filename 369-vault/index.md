@@ -165,6 +165,7 @@
 
 ## Codex独立QA・同期
 
+- [[CodexV74本番後再監査]] — PR #32/#33のmain統合後に固定SHAを再監査し、現行mainのControl Tower監査labelとC22 preview/actorTypeのP2 3件をfix-forward HOLDとして記録。
 - [[CodexV74Phase完了ゲート]] — P3-GROWTH、P3-Q2C、P35-CHANNELS、P4-WORKFORCEを固定SHAで分離監査し、blocking P2と再開条件をHOLDのまま正本化。
 - [[CodexV74P3R01再監査]] — PR #27限定伝播、768px topbar、C21同一URL race、exact-head CIと25画像を独立監査し、P3-R01だけを限定PASS。
 - [[WIPSyncManifestV74]] — WIPごとのGit SHA、tree、CI/artifact、Codex判定、app/vault commit、note hash、人間Gateを追跡する原子同期台帳。

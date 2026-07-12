@@ -149,7 +149,7 @@
 - [[CRM閲覧境界クローズとGrowthEvent成果可視化]] — 顧客管理の7つの穴（無権限の一覧全行表示・判定前取得・拒否画面の顧客名・履歴/インサイトの判定漏れ・ページ表示だけで顧客名＋履歴が AI に送られ得る構造 等）を「先に判定・後に取得」の二段階で全経路クローズし doc125 の HOLD を解消：あわせて管制塔に成果と削減時間（Growth Event Ledger）を read-only 表示・金額は財務権限者のみ・財務件数は引き算復元も遮断・レビュー5視点で critical 1 含む10件を push 前修正・テスト 80→85件（roadmap61-63/doc160-162・WIP1 完全クローズ）。
 - [[Phase3クローズ準備_境界クローズ4連WIP]] — Phase 3 のクローズ準備として閲覧境界を4連 WIP でクローズ：/growth・/dx の財務境界、見積/請求/印刷/案件の閲覧境界（原価・粗利は quote:read 配下と明文化・宛先にも可視ラベルガード）、承認待ち件数のシグナル遮断、顧客 PII 29 経路の機械監査台帳と Critical/High 修正。設計原則「取得段階遮断・fail-closed 既定・判定は fetch より先」が型として確立。Phase 3 完了は宣言せず案A/案B を人間 Gate に提示（roadmap64-68/doc163-167・CI 88→91→93 green）。
 - [[案Bプラス並行前進とPhase3.5_Phase4開始]] — 人間Gateが案B+を採択：Phase 3 は AI Growth Engine v0 としてクローズ準備・C19/C21/C22 は Phase 3.5 として正本化（捨てない）・Phase 4（AI社員OS/3Dオフィス）と並行前進・Phase 4 完了条件に Growth Channel 接続を必須化。Stream A=広告 read model＋AI下書き（PR #4・CI 96 green）、Stream B=AI社員の証拠由来状態を3Dオフィスで可視化（PR #5）。外部操作は封印のまま・台帳同期は PENDING 継続（roadmap69-71/audit168-170）。
-- [[知識/完全機能台帳/index|完全機能台帳 v1（生成鏡像）]] — Codex が原典から再生成した完全機能台帳の Obsidian 閲覧鏡像（50カテゴリ・原子機能2,553件・Stable ID 7,485件・正本は GitHub `docs/function-master/`・PR #7）。
+- [[知識/完全機能台帳/00_完全機能台帳インデックス|完全機能台帳 v1（生成鏡像）]] — Codex が原典から再生成した完全機能台帳の Obsidian 閲覧鏡像（50カテゴリ・原子機能2,553件・Stable ID 7,485件・正本は GitHub `docs/function-master/`・PR #7）。
 - [[Codex協調統合v58]] — Claude×Codex の協調開発が GitHub 正本で始動：完全機能台帳 v1（Stable ID 7,485）を検証して受領（原典未取得のため SOURCE_RECHECK_WAITING を正直に維持）・自動引き継ぎ Hook 統合・Codex 指摘の High 2件（秘密マスク漏れ・例外握り潰し）を否定テスト付きで修正・境界 Medium 6件対応・3Dオフィスのプロフィール可視化改善（roadmap69§0追補/78・PR #7/#8/#9）。
 - [[Codex指摘クローズv62]] — v6.1 復旧を Codex がレビューして CHANGES REQUIRED：値内部 escaped quote の秘密漏れ（High）を bounded scanner へ設計し直し・クラッシュ判定を単一正本に統一・ビルドバッジを OWNER/ADMIN role へ限定・AI社員8名 parity＋実在別テナント404・NAV 明示契約67・証拠段階の言い過ぎ是正・MVP先行/Wave1-5 方針正本化（Codex 再監査まで GO 提案なし・audit176 v6.2/roadmap80/PR #14）。
 - [[完全復旧と4軸ロードマップv61]] — 「4機能が消えた」の正体は配信系譜（コードは統合ブランチに存在・利用者画面は main を配信）と判明：復旧ブランチで秘密マスク3経路・クラッシュ残骸の二重実行誤判定・AI社員と3Dオフィスの人物正本を赤テスト先行で修正・NAV 静的契約67＋build識別バッジ・4軸Phase＋AI社員開発環境/Salesforce/MoneyForward台帳を証拠段階と方式で正本化（main/本番は人間GO後のみ・audit176/roadmap80/PR #14）。
@@ -162,3 +162,20 @@
 - 監査記録: `369/docs/audit/*`。
 - ロードマップ: `369/docs/roadmap/*`（長期構想・Phase 2・Feature Registry・各種Matrix）。
 - 利用量一覧: `369/docs/audit/usage_event_emit_matrix.md`。
+
+## Codex独立QA・同期
+
+- [[CodexV74Phase完了ゲート]] — P3-GROWTH、P3-Q2C、P35-CHANNELS、P4-WORKFORCEを固定SHAで分離監査し、blocking P2と再開条件をHOLDのまま正本化。
+- [[WIPSyncManifestV74]] — WIPごとのGit SHA、tree、CI/artifact、Codex判定、app/vault commit、note hash、人間Gateを追跡する原子同期台帳。
+- [[CodexV72最大自律再監査]] — PR #18 Release Path合格、C19冪等性P2 HOLD、Phase 4実Redis/Preview証拠待ちを固定SHAで独立監査。
+- [[PhaseReadinessMatrixV3]] — Phase 3/3.5/4、4軸、競合カテゴリ、Evidence段階、人間Gateを1枚で可視化。
+- [[競合FitGapV72]] — Salesforce、Money Forward、freee、人事労務、電子帳簿を公式資料と既存Function IDで保守的に分類。
+- [[SyncManifestV72]] — app/vault Draft鏡像とmain/Production未同期範囲を分離したV72同期台帳。
+- [[CodexV70独立再監査]] — V70固定headの実PostgreSQL、CI、21画像、mobile機能回帰、Phase 4途中headを独立監査し、CHANGES_REQUIREDと再開条件を記録。
+- [[CodexV70先行監査]] — V70 fixed head受領前にHuman Preview証拠を整合し、実DB・mobile・Phase 4の独立監査条件を固定。
+- [[SyncManifestV70]] — app/vault/main/PreviewのV70先行同期状態とrelease Gate。
+- [[CodexV69独立再監査]] — V69固定headのGrammar、transaction、artifact、Preview、Phase Gateの独立本監査。
+- [[CodexV69先行監査]] — V69修正前headのGrammar 4経路、Phase 3.5 transaction、CI、Preview lineageの先行監査。
+- [[SyncManifestV69]] — app/vault/main/PreviewのV69同期状態と固定head受領後のGate。
+- [[CodexV68独立再監査]] — V68固定headの4経路Grammar P1、CI、artifact、Phase Gateの独立再監査。
+- [[SyncManifestV68]] — app/vault/main/履歴のV68同期状態と再開Gate。

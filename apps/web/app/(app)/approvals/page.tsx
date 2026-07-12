@@ -127,6 +127,18 @@ export default async function ApprovalsPage({
                     </a>
                   </div>
                 ) : null}
+                {a.type === 'quote_issue' && a.entityId ? (
+                  <div className="mt-1 text-xs">
+                    {/* P3-Q2C: 見積発行承認の元見積へ。承認で発行確定→請求書化が可能になる。 */}
+                    <a
+                      href={`/quotes/${a.entityId}`}
+                      className="text-blue-700 underline"
+                      data-testid={`approval-quote-deeplink-${a.entityId}`}
+                    >
+                      元の見積を開く（/quotes）
+                    </a>
+                  </div>
+                ) : null}
                 {canApprove ? (
                   <form action={decideApprovalAction} className="mt-2 flex flex-wrap items-center gap-2">
                     <input type="hidden" name="approvalId" value={a.id} />

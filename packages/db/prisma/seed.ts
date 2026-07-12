@@ -260,6 +260,7 @@ async function main() {
   }
 
   // ---- Quotes / Contracts / Invoices ----
+  const seededQuotes: { id: string }[] = []; // P3-Q2C: 承認・変換デモで実 id を参照するため保持
   for (let i = 0; i < 4; i++) {
     const d = deals[i]!;
     const subtotal = d.amount;
@@ -289,6 +290,7 @@ async function main() {
         },
       },
     });
+    seededQuotes.push(q);
     if (i === 0) {
       await prisma.contract.create({
         data: { tenantId, customerId: customers[0]!.id, dealId: d.id, number: `C-2026-${i}`, title: `${d.title} 契約`, status: 'active', startDate: addDays(-5), endDate: addDays(60), renewalDate: addDays(50), autoRenew: true, value: q.total,
@@ -302,6 +304,8 @@ async function main() {
         tenantId,
         customerId: customers[i]!.id,
         dealId: d.id,
+        // P3-Q2C: i===0 の見積(approved)→請求(PAID) を連携し「見積→請求→入金」の一気通貫デモにする。
+        quoteId: i === 0 ? q.id : undefined,
         number: `INV-2026-${200 + i}`,
         status: i === 2 ? 'OVERDUE' : i === 0 ? 'PAID' : 'SENT',
         issueDate: addDays(-40 + i * 5),
@@ -570,7 +574,8 @@ async function main() {
   // ---- Approvals (extra) ----
   await prisma.approvalRequest.createMany({
     data: [
-      { tenantId, type: 'quote_issue', title: '見積発行承認: 企業展示会ブース設営', summary: '値引き22%・粗利低下のため承認が必要', entityType: 'Quote', entityId: 'Q-2026-101', requestedById: salesUser.id, assigneeRole: 'EXECUTIVE', riskLevel: 'HIGH', status: 'PENDING' },
+      // P3-Q2C: entityId は実 Quote.id（従来は番号文字列 'Q-2026-101' で承認しても Quote が遷移しなかった）。
+      { tenantId, type: 'quote_issue', title: '見積発行承認: 企業展示会ブース設営', summary: '値引き22%・粗利低下のため承認が必要', entityType: 'Quote', entityId: seededQuotes[1]!.id, requestedById: salesUser.id, assigneeRole: 'EXECUTIVE', riskLevel: 'HIGH', status: 'PENDING' },
       { tenantId, type: 'invoice_send', title: '請求書送付承認: 学校イベント備品レンタル', summary: '請求書INV-2026-202の送付', entityType: 'Invoice', entityId: 'INV-2026-202', requestedById: salesUser.id, assigneeRole: 'DEPARTMENT_MANAGER', riskLevel: 'MEDIUM', status: 'PENDING' },
     ],
   });

@@ -62,7 +62,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const invoice = await prisma.invoice.findFirst({
     where: { id, tenantId: user.tenantId },
     // 顧客は宛先表示の name と可視判定の label のみ取得（連絡先等 PII の over-fetch 防止）。
-    include: { lineItems: true, payments: { orderBy: { paidAt: 'desc' } }, customer: { select: { name: true, label: true } }, receivable: true },
+    include: { lineItems: true, payments: { orderBy: { paidAt: 'desc' } }, customer: { select: { name: true, label: true } }, receivable: true, quote: { select: { id: true, number: true } } },
   });
   if (!invoice) notFound();
   const canUpdate = hasPermission(user, 'invoice', 'update');
@@ -106,6 +106,17 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           </div>
         }
       />
+
+      {/* P3-Q2C: この請求書が見積から生成された場合、生成元見積への逆リンク（見積↔請求の往復導線）。 */}
+      {invoice.quote ? (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md bg-secondary/40 px-3 py-2 text-sm" data-testid="invoice-source-quote">
+          この請求書は見積
+          <Link href={`/quotes/${invoice.quote.id}`} className="font-medium underline" data-testid="invoice-source-quote-link">
+            {invoice.quote.number}
+          </Link>
+          から作成されました。
+        </div>
+      ) : null}
 
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="合計(税込)" value={formatJpy(toNumber(invoice.total))} />

@@ -9,6 +9,7 @@ import { isSuppressed } from '@hokko/shared';
 import { getEmailProvider, isExternalSendEnabled } from '@hokko/integrations';
 import { decideContentReviewCore, type BridgeDb } from '@/lib/content-review-bridge';
 import { decideSuggestionReviewCore, type SuggestionBridgeDb } from '@/lib/suggestion-review-bridge';
+import { decideQuoteIssueCore, type QuoteIssueBridgeDb } from '@/lib/quote-issue-bridge';
 import { decideAiGateCore, type GateBridgeDb } from '@/lib/ai-gate-bridge';
 
 // Phase 4 安全実行 Bridge（v7.0 Lane P4・roadmap82）: AI 承認ゲートへの人間の approve/reject。
@@ -114,6 +115,33 @@ export async function decideApprovalAction(formData: FormData) {
     }
     revalidatePath('/approvals');
     revalidatePath('/marketing/ads');
+    if (r.outcome === 'forbidden') redirect('/approvals?denied=1');
+    redirect('/approvals'); // decided / already（冪等）とも一覧へ
+  }
+
+  // P3-Q2C 見積発行承認: content_review / ad_suggestion_review と同型の単一 transaction 決定。
+  // 承認で Quote pending_approval→approved（発行確定・請求書化が可能に）／却下→rejected。
+  // 従来はここに分岐が無く汎用 CAS で ApprovalRequest だけ確定し Quote が取り残されていた（dangling half-slice）。
+  // 承認しても外部送信・請求書化・課金は発生しない（見積の社内ステータス確定のみ）。
+  if (approval.type === 'quote_issue') {
+    let r;
+    try {
+      r = await decideQuoteIssueCore(prisma as unknown as QuoteIssueBridgeDb, {
+        tenantId: user.tenantId,
+        approvalId,
+        entityId: approval.entityId,
+        decision: decision === 'approve' ? 'approve' : 'reject',
+        decidedById: user.userId,
+        note,
+        approvalTitle: approval.title,
+        actorIsAi: user.isAi,
+      });
+    } catch {
+      revalidatePath('/approvals');
+      redirect('/approvals?error=quote_transition');
+    }
+    revalidatePath('/approvals');
+    revalidatePath('/quotes');
     if (r.outcome === 'forbidden') redirect('/approvals?denied=1');
     redirect('/approvals'); // decided / already（冪等）とも一覧へ
   }

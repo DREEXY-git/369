@@ -6,8 +6,9 @@ import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Table, Th, Td, Badge, Button, Stat } from '@/components/ui';
 import { AccessDenied } from '@/components/access-denied';
-import { formatJpy, formatDate } from '@hokko/shared';
+import { formatJpy, formatDate, canConvertQuoteToInvoice } from '@hokko/shared';
 import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
+import { convertQuoteToInvoiceAction } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,6 +49,16 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
 
   const gm = toNumber(quote.grossMarginRate);
 
+  // P3-Q2C: この見積から生成済みの請求書（1件・逆参照）。変換可否・請求書化ボタンの出し分けに使う。
+  const linkedInvoice = await prisma.invoice.findFirst({
+    where: { quoteId: quote.id, tenantId: user.tenantId },
+    select: { id: true, number: true, status: true },
+  });
+  // 変換は財務作成境界（invoice:create かつ finance:read）。AI は不可。approved のみ変換可。
+  const canConvert =
+    !user.isAi && hasPermission(user, 'invoice', 'create') && hasPermission(user, 'finance', 'read');
+  const convertible = canConvert && canConvertQuoteToInvoice(quote.status) && !linkedInvoice;
+
   return (
     <div>
       <PageHeader
@@ -65,6 +76,26 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
       {quote.status === 'pending_approval' ? (
         <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
           この見積は発行に承認が必要です。<Link href="/approvals" className="font-medium underline">承認待ち一覧</Link>で処理してください。
+        </div>
+      ) : null}
+
+      {/* P3-Q2C 見積→請求 変換: approved かつ未変換なら請求書化ボタン、変換済みなら請求書への導線。 */}
+      {linkedInvoice ? (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md bg-green-50 px-3 py-2 text-sm text-green-800" data-testid={`quote-linked-invoice-${quote.id}`}>
+          <Badge tone="green">請求書化済み</Badge>
+          この見積から請求書
+          <Link href={`/invoices/${linkedInvoice.id}`} className="font-medium underline" data-testid="quote-linked-invoice-link">
+            {linkedInvoice.number}
+          </Link>
+          （{linkedInvoice.status}）を作成済みです。
+        </div>
+      ) : convertible ? (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+          <span>この見積は発行確定済みです。内容を引き継いで請求書（下書き）を作成できます（外部送信はしません）。</span>
+          <form action={convertQuoteToInvoiceAction}>
+            <input type="hidden" name="quoteId" value={quote.id} />
+            <Button type="submit" data-testid="quote-convert-to-invoice">この見積から請求書を作成</Button>
+          </form>
         </div>
       ) : null}
 

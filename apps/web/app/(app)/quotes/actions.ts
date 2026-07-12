@@ -2,10 +2,16 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { computeQuoteTotals, requiresApproval, isLowMargin } from '@hokko/shared';
+import { computeQuoteTotals, requiresApproval, isLowMargin, canConvertQuoteToInvoice, buildInvoiceDraftFromQuote } from '@hokko/shared';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
+import { toNumber } from '@/lib/utils';
 import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
+
+/** Prisma unique violation（P2002）判定。 */
+function isUniqueViolation(e: unknown): boolean {
+  return typeof e === 'object' && e !== null && (e as { code?: string }).code === 'P2002';
+}
 
 interface LineInput {
   name: string;
@@ -142,4 +148,103 @@ export async function createQuoteAction(formData: FormData) {
 
   revalidatePath('/quotes');
   redirect(`/quotes/${quote.id}`);
+}
+
+/**
+ * P3-Q2C: 承認確定済み（approved）の見積から DRAFT 請求書を生成し、双方を Invoice.quoteId で連携する。
+ * 見積〜入金の流れの「真ん中の欠落」を塞ぐ変換ホップ。**外部送信・実支払・課金・実 LLM は一切なし**
+ * （生成物は DRAFT 請求書の下書きで、発行/送信は従来どおり invoices 側の別アクション＋承認を経る）。
+ *  - 権限: invoice:create かつ finance:read（財務作成境界・createInvoiceAction と対称）。AI は不可（isAi 拒否）。
+ *  - 変換可否: canConvertQuoteToInvoice（approved のみ）。既変換は Invoice.quoteId の unique 制約が
+ *    DB レベルの並行 barrier になり、敗者/再送は既存請求書へ冪等に収束（新規行を作らない）。
+ *  - 金額: buildInvoiceDraftFromQuote で値引きを明細へ按分（サーバ権威計算・クライアント値は信用しない）。
+ */
+export async function convertQuoteToInvoiceAction(formData: FormData) {
+  const user = await requireUser();
+  // 請求書の作成は finance 機密。UI 非表示だけに頼らず server 側でも invoice:create かつ finance:read を必須化。
+  // AI ロールは requireUser の isAi で一律拒否（承認・生成・実行を持たない不変条件の二重防御）。
+  if (user.isAi || !hasPermission(user, 'invoice', 'create') || !hasPermission(user, 'finance', 'read')) {
+    redirect('/quotes?denied=1');
+  }
+  const quoteId = String(formData.get('quoteId') ?? '');
+
+  const quote = await prisma.quote.findFirst({
+    where: { id: quoteId, tenantId: user.tenantId },
+    include: { lineItems: true, deal: { select: { customerId: true } } },
+  });
+  if (!quote) redirect('/quotes?error=notfound');
+
+  // 発行確定（approved）でなければ変換しない（draft/pending_approval/rejected/sent は不可・fail-closed）。
+  if (!canConvertQuoteToInvoice(quote!.status)) redirect(`/quotes/${quoteId}?error=not_convertible`);
+
+  // 冪等: 既に請求書化済みなら既存へ（並行/再送でも新規は作らない）。
+  const existing = await prisma.invoice.findFirst({
+    where: { quoteId: quote!.id, tenantId: user.tenantId },
+    select: { id: true },
+  });
+  if (existing) redirect(`/invoices/${existing.id}?from_quote=already`);
+
+  const draft = buildInvoiceDraftFromQuote(
+    { discountRate: toNumber(quote!.discountRate), taxRate: toNumber(quote!.taxRate) },
+    quote!.lineItems.map((li) => ({
+      name: li.name,
+      quantity: toNumber(li.quantity),
+      unitPrice: toNumber(li.unitPrice),
+      amount: toNumber(li.amount),
+    })),
+  );
+
+  const count = await prisma.invoice.count({ where: { tenantId: user.tenantId } });
+  const number = `INV-${new Date().getFullYear()}-${String(200 + count + 1)}`;
+  const customerId = quote!.customerId ?? quote!.deal?.customerId ?? null;
+
+  let invoiceId: string;
+  try {
+    const invoice = await prisma.invoice.create({
+      data: {
+        tenantId: user.tenantId,
+        customerId,
+        dealId: quote!.dealId,
+        quoteId: quote!.id, // unique 制約 ＝ 1見積→最大1請求の並行 barrier
+        number,
+        status: 'DRAFT',
+        dueDate: new Date(Date.now() + 30 * 86400000),
+        subtotal: draft.subtotal,
+        taxAmount: draft.taxAmount,
+        total: draft.total,
+        paidAmount: 0,
+        lineItems: {
+          create: draft.lineItems.map((i) => ({
+            tenantId: user.tenantId,
+            name: i.name,
+            quantity: i.quantity,
+            unitPrice: i.unitPrice,
+            amount: i.amount,
+          })),
+        },
+      },
+    });
+    invoiceId = invoice.id;
+  } catch (e) {
+    if (isUniqueViolation(e)) {
+      // 並行変換の敗者: 勝者の請求書が既に quoteId を占有。既存へ収束（行は増えない）。
+      const won = await prisma.invoice.findFirst({ where: { quoteId: quote!.id, tenantId: user.tenantId }, select: { id: true } });
+      if (won) redirect(`/invoices/${won.id}?from_quote=already`);
+    }
+    throw e;
+  }
+
+  await writeAudit({
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    action: 'invoice_create_from_quote',
+    entityType: 'Invoice',
+    entityId: invoiceId,
+    summary: `見積 ${quote!.number} から請求書 ${number} を作成（DRAFT・${draft.total.toLocaleString()}円・外部送信なし）`,
+  });
+
+  revalidatePath('/quotes');
+  revalidatePath(`/quotes/${quoteId}`);
+  revalidatePath('/invoices');
+  redirect(`/invoices/${invoiceId}?from_quote=1`);
 }

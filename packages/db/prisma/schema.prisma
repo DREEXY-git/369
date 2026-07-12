@@ -750,6 +750,7 @@ model Quote {
 
   deal      Deal?           @relation(fields: [dealId], references: [id], onDelete: SetNull)
   lineItems QuoteLineItem[]
+  invoices  Invoice[] // P3-Q2C: この見積から生成された請求書（通常1件・逆参照）
 
   @@index([tenantId])
 }
@@ -825,6 +826,7 @@ model Invoice {
   tenantId   String
   customerId String?
   dealId     String?
+  quoteId    String?       @unique // P3-Q2C: 生成元の見積（1見積→最大1請求）。null 複数可（手入力/InvoiceCandidate 由来）。unique が変換の並行 barrier。
   number     String
   status     InvoiceStatus @default(DRAFT)
   issueDate  DateTime?
@@ -837,6 +839,7 @@ model Invoice {
   updatedAt  DateTime      @updatedAt
 
   customer   Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  quote      Quote?            @relation(fields: [quoteId], references: [id], onDelete: SetNull)
   lineItems  InvoiceLineItem[]
   payments   Payment[]
   receivable Receivable?

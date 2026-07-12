@@ -6,6 +6,9 @@ import {
   canSendInvoice,
   isInvoiceSent,
   summarizeCashflowActualVsExpected,
+  canConvertQuoteToInvoice,
+  quoteStatusOnIssueDecision,
+  buildInvoiceDraftFromQuote,
 } from '../finance';
 import { requiresApproval } from '../approval';
 import { isGrowthEventType, growthCategoryOf } from '../growth';
@@ -70,6 +73,70 @@ describe('Cashflow — actual vs expected', () => {
       { type: 'cashflow_expected', direction: 'outflow', amount: 80000, status: 'approved' },
     ]);
     expect(s.paymentShortfallWarning).toBe(true);
+  });
+});
+
+describe('P3-Q2C — 見積発行承認の決定後ステータス', () => {
+  it('approve → approved / reject → rejected', () => {
+    expect(quoteStatusOnIssueDecision('approve')).toEqual({ status: 'approved' });
+    expect(quoteStatusOnIssueDecision('reject')).toEqual({ status: 'rejected' });
+  });
+});
+
+describe('P3-Q2C — 請求書へ変換できる見積ステータス', () => {
+  it('approved のみ変換可（他は不可・fail-closed）', () => {
+    expect(canConvertQuoteToInvoice('approved')).toBe(true);
+    for (const s of ['draft', 'pending_approval', 'rejected', 'sent', 'accepted', '']) {
+      expect(canConvertQuoteToInvoice(s)).toBe(false);
+    }
+  });
+});
+
+describe('P3-Q2C — 見積→請求書ドラフトの金額導出（値引きを明細へ按分）', () => {
+  it('値引きなし: 明細をそのまま写し subtotal/税/合計が整合する', () => {
+    const d = buildInvoiceDraftFromQuote(
+      { discountRate: 0, taxRate: 10 },
+      [
+        { name: 'A', quantity: 1, unitPrice: 70000, amount: 70000 },
+        { name: 'B', quantity: 1, unitPrice: 30000, amount: 30000 },
+      ],
+    );
+    expect(d.subtotal).toBe(100000);
+    expect(d.taxAmount).toBe(10000);
+    expect(d.total).toBe(110000);
+    expect(d.lineItems).toEqual([
+      { name: 'A', quantity: 1, unitPrice: 70000, amount: 70000 },
+      { name: 'B', quantity: 1, unitPrice: 30000, amount: 30000 },
+    ]);
+  });
+
+  it('値引き20%: 各明細に factor を掛け Σ(行金額)=subtotal・税/合計が一致', () => {
+    const d = buildInvoiceDraftFromQuote(
+      { discountRate: 20, taxRate: 10 },
+      [
+        { name: 'A', quantity: 1, unitPrice: 70000, amount: 70000 },
+        { name: 'B', quantity: 1, unitPrice: 30000, amount: 30000 },
+      ],
+    );
+    // 70000*0.8=56000, 30000*0.8=24000
+    expect(d.lineItems.map((l) => l.amount)).toEqual([56000, 24000]);
+    expect(d.subtotal).toBe(80000);
+    expect(d.taxAmount).toBe(8000);
+    expect(d.total).toBe(88000);
+    // 内訳合計と小計は常に一致（丸めは行単位で確定）。
+    expect(d.lineItems.reduce((s, l) => s + l.amount, 0)).toBe(d.subtotal);
+  });
+
+  it('端数を含む値引き: 2桁で丸め、内訳合計＝小計・合計＝小計＋税を維持', () => {
+    const d = buildInvoiceDraftFromQuote(
+      { discountRate: 15, taxRate: 10 },
+      [{ name: 'X', quantity: 3, unitPrice: 3333, amount: 9999 }],
+    );
+    // 9999*0.85 = 8499.15
+    expect(d.subtotal).toBe(8499.15);
+    expect(d.taxAmount).toBe(849.92); // round2(849.915)
+    expect(d.total).toBe(9349.07);
+    expect(d.lineItems.reduce((s, l) => s + l.amount, 0)).toBe(d.subtotal);
   });
 });
 

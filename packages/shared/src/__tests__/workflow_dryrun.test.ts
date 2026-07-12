@@ -54,6 +54,13 @@ describe('parseWorkflowInput — Zod 検証・allowlist・上限', () => {
     }
   });
 
+  it('P2-1: NFKC正規化＋空白除去で難読化した危険語も BLOCKED として検出（「支 払」「支　払」）', () => {
+    // 空白挿入・全角空白による難読化を危険 Action として検出する（正規化は検出補助）。
+    for (const obf of ['支 払を実行する', '支　払を実行', 'ｄａｔａを削除する']) {
+      expect(plan(obf).steps[0]!.classification, obf).toBe('BLOCKED');
+    }
+  });
+
   it('決定論: 同一入力は常に同一プラン', () => {
     const text = '下書きを作成\n顧客へメール送信\n台帳に記録';
     expect(plan(text)).toEqual(plan(text));
@@ -86,10 +93,22 @@ describe('dryRunWorkflow — 外部作用ゼロの仮想実行', () => {
     expect(r.steps.map((s) => s.status)).toEqual(['SIMULATED', 'BLOCKED', 'NOT_REACHED']);
   });
 
-  it('UNRECOGNIZED は除外して次へ進む（実行計画に含めない）', () => {
+  it('P2-1 fail-closed: allowlist 外の操作は REQUIRES_HUMAN_REVIEW で停止し completed にしない（以降 NOT_REACHED）', () => {
+    // Codex 独立 probe: 未知/危険曖昧な操作が SKIPPED_UNRECOGNIZED → completed になっていた fail-open の是正。
     const r = dryRunWorkflow(plan('謎の操作\n台帳に記録'));
-    expect(r.steps.map((s) => s.status)).toEqual(['SKIPPED_UNRECOGNIZED', 'SIMULATED']);
-    expect(r.outcome).toBe('completed');
+    expect(r.steps.map((s) => s.status)).toEqual(['REQUIRES_HUMAN_REVIEW', 'NOT_REACHED']);
+    expect(r.outcome).toBe('needs_human_review');
+    expect(r.outcome).not.toBe('completed');
+    expect(r.summary).toContain('人間のレビューが必要');
+  });
+
+  it('P2-1: Codex 指摘の未知入力（英語支払/第三者提供/外部転送）はいずれも completed にならず停止する', () => {
+    for (const t of ['pay customer', '個人情報を第三者へ提供する', '顧客データを外部へ転送する']) {
+      const r = dryRunWorkflow(plan(t));
+      expect(r.outcome, t).not.toBe('completed');
+      // 停止（BLOCKED＝危険語検出 or REQUIRES_HUMAN_REVIEW＝未知）で、SIMULATED 完了にはならない。
+      expect(['blocked', 'needs_human_review'], t).toContain(r.outcome);
+    }
   });
 
   it('性能境界（timeout 相当）: 上限いっぱいの入力でも 1 秒未満で決定論的に完了', () => {

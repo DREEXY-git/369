@@ -112,8 +112,13 @@ export function parseWorkflowInput(raw: unknown): ParseWorkflowResult {
   if (lines.length > WORKFLOW_INPUT_LIMITS.maxSteps) {
     return { ok: false, errors: [`ステップは${WORKFLOW_INPUT_LIMITS.maxSteps}行までです（${lines.length}行入力）`] };
   }
+  // v7.2 R2（Codex CHANGE_REQUEST_V72_WORKFLOW P2-1）: keyword 突き合わせは NFKC 正規化＋空白除去で行い、
+  // 全角/半角の違いや空白挿入（ASCII 空白・全角空白）による難読化を危険 Action として検出できるようにする。
+  // ただし正規化はあくまで検出の補助であり、これで一致しない未知入力は下の fail-closed で REQUIRES_HUMAN_REVIEW。
+  const normalizeForMatch = (s: string) => s.normalize('NFKC').replace(/\s+/g, '');
   const steps: WorkflowStep[] = lines.map((line, index) => {
-    const hit = WORKFLOW_ACTION_CATALOG.find((entry) => entry.keywords.some((k) => line.includes(k)));
+    const nline = normalizeForMatch(line);
+    const hit = WORKFLOW_ACTION_CATALOG.find((entry) => entry.keywords.some((k) => nline.includes(normalizeForMatch(k))));
     if (!hit) {
       return {
         index,
@@ -146,7 +151,9 @@ export function parseWorkflowInput(raw: unknown): ParseWorkflowResult {
 
 // ── Dry Run（仮想実行・外部作用ゼロ） ────────────────────────────────────────
 
-export type DryRunStepStatus = 'SIMULATED' | 'REQUIRES_APPROVAL' | 'BLOCKED' | 'NOT_REACHED' | 'SKIPPED_UNRECOGNIZED';
+// v7.2 R2（Codex CHANGE_REQUEST_V72_WORKFLOW P2-1）: 旧 SKIPPED_UNRECOGNIZED（= fail-open で最後まで
+// completed）を廃し、allowlist 外は REQUIRES_HUMAN_REVIEW で停止する（危険操作を「安全」と誤認させない）。
+export type DryRunStepStatus = 'SIMULATED' | 'REQUIRES_APPROVAL' | 'BLOCKED' | 'NOT_REACHED' | 'REQUIRES_HUMAN_REVIEW';
 
 export interface DryRunStepResult {
   index: number;
@@ -157,21 +164,25 @@ export interface DryRunStepResult {
 
 export interface DryRunResult {
   steps: DryRunStepResult[];
-  /** completed = 最後まで仮想実行 / paused = 人間承認待ちで停止 / blocked = 危険 Action で停止。 */
-  outcome: 'completed' | 'paused_for_approval' | 'blocked';
+  /**
+   * completed = 最後まで仮想実行 / paused_for_approval = 人間承認待ちで停止 / blocked = 危険 Action で停止 /
+   * needs_human_review = allowlist 外の操作があり人間レビューが必要で停止（fail-closed・completed にしない）。
+   */
+  outcome: 'completed' | 'paused_for_approval' | 'blocked' | 'needs_human_review';
   summary: string;
 }
 
 /**
- * 仮想実行（決定論）: 上から順に評価し、
+ * 仮想実行（決定論・fail-closed）: 上から順に評価し、
  * - DRY_RUN_OK → SIMULATED（実際には何も実行しない）
- * - UNRECOGNIZED → SKIPPED_UNRECOGNIZED（実行計画に含めず次へ）
+ * - UNRECOGNIZED → REQUIRES_HUMAN_REVIEW でその場停止（allowlist 外を「安全に完了」と誤認させない・
+ *   以降は NOT_REACHED）。正規化（NFKC/空白）は突き合わせの補助であって未知入力を通す根拠にしない。
  * - REQUIRES_APPROVAL → その場で停止（以降は NOT_REACHED・承認なしで進む結果を作らない）
  * - BLOCKED → その場で停止（以降は NOT_REACHED）
  */
 export function dryRunWorkflow(plan: WorkflowPlan): DryRunResult {
   const results: DryRunStepResult[] = [];
-  let halted: 'paused_for_approval' | 'blocked' | null = null;
+  let halted: 'paused_for_approval' | 'blocked' | 'needs_human_review' | null = null;
   for (const step of plan.steps) {
     if (halted) {
       results.push({ index: step.index, actionLabel: step.actionLabel, status: 'NOT_REACHED', note: '前段で停止したため未評価' });
@@ -180,7 +191,14 @@ export function dryRunWorkflow(plan: WorkflowPlan): DryRunResult {
     if (step.classification === 'DRY_RUN_OK') {
       results.push({ index: step.index, actionLabel: step.actionLabel, status: 'SIMULATED', note: '仮想実行（実際には何も実行していません）' });
     } else if (step.classification === 'UNRECOGNIZED') {
-      results.push({ index: step.index, actionLabel: step.actionLabel, status: 'SKIPPED_UNRECOGNIZED', note: 'allowlist に無いため計画から除外' });
+      // fail-closed: 対応表に無い操作は「安全に完了」と表示せず、人間レビューが必要として停止する。
+      results.push({
+        index: step.index,
+        actionLabel: step.actionLabel,
+        status: 'REQUIRES_HUMAN_REVIEW',
+        note: 'allowlist に無い操作のため自動では安全判定できません（人間のレビューが必要・ここで停止）',
+      });
+      halted = 'needs_human_review';
     } else if (step.classification === 'REQUIRES_APPROVAL') {
       results.push({ index: step.index, actionLabel: step.actionLabel, status: 'REQUIRES_APPROVAL', note: '人間の承認ステップが必要（ここで停止）' });
       halted = 'paused_for_approval';
@@ -195,6 +213,8 @@ export function dryRunWorkflow(plan: WorkflowPlan): DryRunResult {
       ? '最後まで仮想実行しました（実際には何も実行していません）'
       : outcome === 'paused_for_approval'
         ? '人間の承認が必要なステップで停止しました（承認なしで先へ進む結果は作りません）'
-        : '危険な操作（人間 Gate）で停止しました（この操作は自動化できません）';
+        : outcome === 'blocked'
+          ? '危険な操作（人間 Gate）で停止しました（この操作は自動化できません）'
+          : '認識できない操作があり、人間のレビューが必要です（安全のため completed にはしません）';
   return { steps: results, outcome, summary };
 }

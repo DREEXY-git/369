@@ -6,6 +6,9 @@ import { prisma } from '@hokko/db';
 // Workflow Dry Run（v7.2 Lane D）の実 UI E2E。
 // dry-run のみ（DB 更新・enqueue・外部送信・実 LLM・課金ゼロ）・危険 Action=BLOCKED・
 // 承認 Action=REQUIRES_APPROVAL 停止・Zod/上限/malformed・tenant/RBAC・AI 拒否・a11y・mobile。
+// v7.2 R2（Codex CHANGE_REQUEST_V72_WORKFLOW comment 4951991086）:
+// - P2-1 fail-closed: allowlist 外は REQUIRES_HUMAN_REVIEW で停止し completed にしない。
+// - P2-2: 入力は client-local state のみで処理し URL / 履歴へ業務文を残さない（旧 GET フォーム廃止）。
 
 const PARTNER_EMAIL = `partner-wf-${process.pid}-${Date.now()}@ikezaki.local`;
 const AI_STAFF_EMAIL = `ai-staff-wf-${process.pid}-${Date.now()}@ikezaki.local`;
@@ -20,10 +23,17 @@ async function login(page: Page, email: string) {
   await page.waitForURL('**/dashboard');
 }
 
-/** dry-run が DB を一切変更しないことの証拠（並列 worker の他 spec と干渉しない決定論検査）。
- *  tenant 全体の行数 before/after は並列実行中の他 spec の書き込みで揺れるため使わない。 */
+/** フォームを a11y ラベル経由で埋めて Dry Run を実行する（URL には何も載せない・client-local）。 */
+async function fillAndRun(page: Page, opts: { name?: string; trigger?: string; condition?: string; actions: string }) {
+  await page.getByLabel(/フロー名/).fill(opts.name ?? 'テストフロー');
+  if (opts.trigger) await page.getByLabel(/きっかけ/).selectOption(opts.trigger);
+  if (opts.condition) await page.getByLabel(/条件/).fill(opts.condition);
+  await page.getByLabel(/やりたいこと/).fill(opts.actions);
+  await page.getByTestId('wf-submit').click();
+}
+
+/** dry-run が DB を一切変更しないことの証拠（並列 worker の他 spec と干渉しない決定論検査）。 */
 async function assertNoWorkflowWrites() {
-  // workflow に帰属し得るレコードが1件も存在しない（マーカー恒常ゼロ）。
   expect(await prisma.auditLog.count({ where: { tenantId, OR: [{ entityType: { contains: 'orkflow' } }, { summary: { contains: 'ワークフロー' } }, { summary: { contains: 'Dry Run' } }] } })).toBe(0);
   expect(await prisma.approvalRequest.count({ where: { tenantId, type: { contains: 'workflow' } } })).toBe(0);
   expect(await prisma.usageEvent.count({ where: { tenantId, eventType: { contains: 'workflow' } } })).toBe(0);
@@ -64,12 +74,14 @@ test.describe('Workflow Dry Run（v7.2 Lane D・read-only）', () => {
     await login(page, 'ceo@ikezaki.local');
     await page.goto('/workflows');
     // a11y: すべての入力に label が紐づく（getByLabel で到達できることが証拠）。
-    await page.getByLabel(/フロー名/).fill('新規リード初動フロー');
-    await page.getByLabel(/きっかけ/).selectOption('lead_created');
-    await page.getByLabel(/条件/).fill('金額が10万円以上');
-    await page.getByLabel(/やりたいこと/).fill('お礼メールの下書きを作成\n顧客へメール送信\n対応内容を台帳に記録');
-    await page.getByTestId('wf-submit').click();
-    await page.waitForURL(/\/workflows\?/);
+    await fillAndRun(page, {
+      name: '新規リード初動フロー',
+      trigger: 'lead_created',
+      condition: '金額が10万円以上',
+      actions: 'お礼メールの下書きを作成\n顧客へメール送信\n対応内容を台帳に記録',
+    });
+    // 結果は client-local に描画（URL 遷移しない）。outcome の出現を待つ。
+    await expect(page.getByTestId('wf-outcome')).toBeVisible();
 
     // フロー案: 承認ステップの明示＋risk 表示。
     await expect(page.getByTestId('wf-step-0')).toContainText('DRY_RUN_OK');
@@ -83,36 +95,82 @@ test.describe('Workflow Dry Run（v7.2 Lane D・read-only）', () => {
     await expect(page.getByTestId('wf-result-2')).toContainText('未到達');
     // 実行系ボタン（承認/実行/保存）が存在しない。
     expect(await page.getByRole('button', { name: /実行する|保存|承認|enqueue/ }).count()).toBe(0);
-    // DB 不変の構造的証拠①: page module は DB（@/lib/db・@hokko/db・prisma）も Server Action（'use server'）も
-    // import しない＝auth 以外に DB へ到達する経路がソース上存在しない。
-    const src = readFileSync(resolve(dirname(test.info().file), '../../app/(app)/workflows/page.tsx'), 'utf8');
-    expect(src).not.toContain("@/lib/db");
-    expect(src).not.toContain('@hokko/db');
-    expect(src).not.toContain('use server');
-    expect(src).not.toMatch(/\bprisma\b/);
+    // DB 不変の構造的証拠①: page/クライアント本体とも DB（@/lib/db・@hokko/db・prisma）も Server Action
+    // （'use server'）も import しない＝auth 以外に DB へ到達する経路がソース上存在しない。
+    for (const rel of ['../../app/(app)/workflows/page.tsx', '../../app/(app)/workflows/dry-run-client.tsx']) {
+      const src = readFileSync(resolve(dirname(test.info().file), rel), 'utf8');
+      expect(src, `${rel} imports db`).not.toContain('@/lib/db');
+      expect(src, `${rel} imports @hokko/db`).not.toContain('@hokko/db');
+      expect(src, `${rel} has use server`).not.toContain('use server');
+      expect(src, `${rel} references prisma`).not.toMatch(/\bprisma\b/);
+    }
     // 証拠②: workflow に帰属し得るレコードが DB に1件も存在しない（並列 worker と干渉しない恒常ゼロ検査）。
     await assertNoWorkflowWrites();
   });
 
   test('危険 Action（支払/削除/予算/公開）は必ず BLOCKED で停止', async ({ page }) => {
     await login(page, 'ceo@ikezaki.local');
-    await page.goto('/workflows?name=x&trigger=manual&actionsText=' + encodeURIComponent('台帳に記録\n支払を実行する\n通知する'));
+    await page.goto('/workflows');
+    await fillAndRun(page, { actions: '台帳に記録\n支払を実行する\n通知する' });
     await expect(page.getByTestId('wf-step-1')).toContainText('BLOCKED');
     await expect(page.getByTestId('wf-outcome')).toHaveText('blocked');
     await expect(page.getByTestId('wf-result-1')).toContainText('BLOCKED');
     await expect(page.getByTestId('wf-result-2')).toContainText('未到達');
   });
 
+  test('P2-1 fail-closed: allowlist 外/難読化した危険操作は completed にせず停止表示する', async ({ page }) => {
+    await login(page, 'ceo@ikezaki.local');
+    // 未知の操作（Codex 指摘: 第三者提供）は REQUIRES_HUMAN_REVIEW で停止・以降 NOT_REACHED。
+    await page.goto('/workflows');
+    await fillAndRun(page, { actions: '台帳に記録\n個人情報を第三者へ提供する\n通知する' });
+    await expect(page.getByTestId('wf-outcome')).toHaveText('needs_human_review');
+    await expect(page.getByTestId('wf-result-1')).toContainText('REQUIRES_HUMAN_REVIEW');
+    await expect(page.getByTestId('wf-result-2')).toContainText('未到達');
+    // 空白で難読化した支払は危険 Action として BLOCKED（正規化検出）・completed にしない。
+    await page.goto('/workflows');
+    await fillAndRun(page, { actions: '支 払を実行する' });
+    await expect(page.getByTestId('wf-outcome')).toHaveText('blocked');
+    // 英語の未知操作も completed にならない（少なくとも停止する）。
+    await page.goto('/workflows');
+    await fillAndRun(page, { actions: 'pay customer now' });
+    await expect(page.getByTestId('wf-outcome')).not.toHaveText('completed');
+  });
+
+  test('P2-2: 業務文は URL / 履歴に残らない（client-local state のみで dry-run）', async ({ page }) => {
+    await login(page, 'ceo@ikezaki.local');
+    await page.goto('/workflows');
+    const SENTINEL = 'WF-SECRET-BUSINESS-TEXT-V74';
+    await fillAndRun(page, { name: SENTINEL, condition: SENTINEL, actions: `${SENTINEL} を台帳に記録` });
+    // dry-run は機能する（入力行が案に反映される）。
+    await expect(page.getByTestId('wf-outcome')).toBeVisible();
+    await expect(page.getByTestId('wf-step-0')).toContainText(SENTINEL); // 画面には出る（DOM 内）
+    // ただし URL には業務文が一切載らず、/workflows のまま（GET 送信していない）。
+    expect(page.url(), 'URL に業務文が載っている').not.toContain(SENTINEL);
+    expect(new URL(page.url()).search, 'query string に入力が載っている').toBe('');
+    expect(page.url()).toMatch(/\/workflows$/);
+  });
+
   test('malformed / 上限超過は黙って切り詰めず型付きエラー（XSS 文字列も安全に表示）', async ({ page }) => {
     await login(page, 'ceo@ikezaki.local');
+    await page.goto('/workflows');
     const eleven = Array.from({ length: 11 }, (_, i) => `記録${i}`).join('\n');
-    await page.goto('/workflows?name=x&trigger=manual&actionsText=' + encodeURIComponent(eleven));
+    await fillAndRun(page, { actions: eleven });
     await expect(page.getByTestId('wf-errors')).toContainText('10行まで');
     await expect(page.getByTestId('wf-outcome')).toHaveCount(0);
-    // 不正 trigger と script 断片も安全（エラー表示のみ・実行されない）。
-    await page.goto('/workflows?name=<script>alert(1)</script>&trigger=evil&actionsText=' + encodeURIComponent('記録'));
+    // 空入力はエラー（実行しない）。
+    await page.goto('/workflows');
+    await page.getByLabel(/フロー名/).fill('x');
+    await page.getByTestId('wf-submit').click();
     await expect(page.getByTestId('wf-errors')).toBeVisible();
     await expect(page.getByTestId('wf-outcome')).toHaveCount(0);
+    // script 断片は inert text として安全に描画され、実行されない（dialog は発火しない）。
+    let dialogFired = false;
+    page.on('dialog', async (d) => { dialogFired = true; await d.dismiss(); });
+    await page.goto('/workflows');
+    await fillAndRun(page, { name: 'x', actions: '<script>alert(1)</script> を台帳に記録' });
+    await expect(page.getByTestId('wf-outcome')).toBeVisible();
+    await expect(page.getByTestId('wf-step-0')).toContainText('<script>alert(1)</script>');
+    expect(dialogFired, 'XSS が実行された').toBe(false);
   });
 
   test('AI ロールは生成を実行できない: 通常 AI はページ遮断・AI＋dashboard:read 誤設定でも生成は denied（二重防御）', async ({ page }) => {
@@ -127,7 +185,7 @@ test.describe('Workflow Dry Run（v7.2 Lane D・read-only）', () => {
     await login(page, AI_STAFF_EMAIL);
     await page.goto('/workflows');
     await expect(page.getByTestId('wf-form')).toBeVisible();
-    await page.goto('/workflows?name=ai&trigger=manual&actionsText=' + encodeURIComponent('記録'));
+    await fillAndRun(page, { name: 'ai', actions: '記録' });
     await expect(page.getByTestId('wf-ai-denied')).toBeVisible();
     await expect(page.getByTestId('wf-outcome')).toHaveCount(0);
   });
@@ -145,7 +203,9 @@ test.describe('Workflow Dry Run（v7.2 Lane D・read-only）', () => {
     await page.getByTestId('cp-workflows-link').click();
     await page.waitForURL('**/workflows');
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/workflows?name=x&trigger=manual&actionsText=' + encodeURIComponent('下書きを作成\n顧客へメール送信'));
+    await page.goto('/workflows');
+    await fillAndRun(page, { actions: '下書きを作成\n顧客へメール送信' });
+    await expect(page.getByTestId('wf-outcome')).toBeVisible();
     for (const id of ['wf-form', 'wf-plan', 'wf-dryrun']) {
       const el = page.getByTestId(id);
       await expect(el).toBeVisible();
@@ -157,7 +217,9 @@ test.describe('Workflow Dry Run（v7.2 Lane D・read-only）', () => {
     expect(clipped).toBeLessThanOrEqual(1);
     await page.getByTestId('wf-dryrun').screenshot({ path: 'test-results/wf-dryrun-mobile-390.png' });
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page.goto('/workflows?name=x&trigger=manual&actionsText=' + encodeURIComponent('下書きを作成\n顧客へメール送信\n台帳に記録'));
+    await page.goto('/workflows');
+    await fillAndRun(page, { actions: '下書きを作成\n顧客へメール送信\n台帳に記録' });
+    await expect(page.getByTestId('wf-outcome')).toBeVisible();
     await page.getByTestId('wf-plan').screenshot({ path: 'test-results/wf-plan-desktop.png' });
     await page.getByTestId('wf-dryrun').screenshot({ path: 'test-results/wf-dryrun-desktop.png' });
   });

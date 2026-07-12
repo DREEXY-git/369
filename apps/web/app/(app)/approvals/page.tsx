@@ -4,7 +4,8 @@ import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, Badge, Button, Input, EmptyState } from '@/components/ui';
 import { SeverityBadge } from '@/components/badges';
 import { AccessDenied } from '@/components/access-denied';
-import { decideApprovalAction } from './actions';
+import { decideApprovalAction, decideAiGateAction } from './actions';
+import Link from 'next/link';
 import { formatDateTime } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
@@ -18,6 +19,7 @@ const TYPE_LABEL: Record<string, string> = {
   contract_sign: '契約締結',
   payment_execute: '支払実行',
   content_review: 'コンテンツ承認（review-only）',
+  ai_run_resume: 'AI承認ゲートの判断（内部処理のみ）',
 };
 
 export default async function ApprovalsPage() {
@@ -48,6 +50,16 @@ export default async function ApprovalsPage() {
       take: 20,
     }),
   ]);
+  // AI 社員詳細への deep link 用に、gate の run → agentId を tenant スコープの最小 select で解決する
+  // （input/output/error は取得しない・roadmap82）。
+  const gateRunIds = aiGates.map((g) => g.runId).filter((v): v is string => Boolean(v));
+  const gateRuns = gateRunIds.length
+    ? await prisma.aIAgentRun.findMany({
+        where: { id: { in: gateRunIds }, tenantId: user.tenantId },
+        select: { id: true, agentId: true },
+      })
+    : [];
+  const agentIdByRun = new Map(gateRuns.map((r) => [r.id, r.agentId]));
 
   return (
     <div>
@@ -92,26 +104,48 @@ export default async function ApprovalsPage() {
         </CardContent>
       </Card>
 
-      <h2 className="mb-2 text-sm font-semibold">AI 実行の承認ゲート（read-only）</h2>
+      <h2 className="mb-2 text-sm font-semibold">AI 実行の承認ゲート（人間の判断）</h2>
       <Card className="mb-4" data-testid="ai-approval-gates">
         <CardContent className="space-y-1.5 pt-4">
           <p className="text-xs text-muted-foreground">
-            AI 実行が人間の判断待ちで停止している記録です。AI は自己承認しません。この一覧からの承認・却下は
-            判断導線（bridge）の設計 Gate が完了するまで提供されません（現在 read-only）。
+            AI 実行が人間の判断待ちで停止している記録です。AI は自己承認しません。承認しても実行されるのは
+            内部処理のみで、外部送信・実 LLM・課金は発生しません（roadmap82・実 queue 再投入は別 Gate）。
           </p>
           {aiGates.length === 0 ? (
             <EmptyState title="判断待ちの AI 承認ゲートはありません" />
           ) : (
-            aiGates.map((g) => (
-              <div key={g.id} className="rounded-md border p-2.5 text-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone="purple">AIゲート</Badge>
-                  <span className="font-medium">{g.action}</span>
-                  <span className="ml-auto text-xs text-muted-foreground">{formatDateTime(g.createdAt)}</span>
+            aiGates.map((g) => {
+              const agentId = g.runId ? agentIdByRun.get(g.runId) : undefined;
+              return (
+                <div key={g.id} className="rounded-md border p-2.5 text-sm" data-testid={`ai-gate-${g.id}`}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone="purple">AIゲート</Badge>
+                    <span className="font-medium">{g.action}</span>
+                    <span className="ml-auto text-xs text-muted-foreground">{formatDateTime(g.createdAt)}</span>
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">{g.reason}</div>
+                  {agentId ? (
+                    <div className="mt-1 text-xs">
+                      <Link href={`/ai-agents/${agentId}`} className="text-blue-700 underline" data-testid={`ai-gate-agent-link-${g.id}`}>
+                        対象の AI 社員詳細を開く
+                      </Link>
+                    </div>
+                  ) : null}
+                  {canApprove ? (
+                    <form action={decideAiGateAction} className="mt-2 flex flex-wrap items-center gap-2">
+                      <input type="hidden" name="gateId" value={g.id} />
+                      <Input name="note" placeholder="判断メモ（任意）" className="max-w-xs" />
+                      <Button type="submit" name="decision" value="approve" data-testid={`ai-gate-approve-${g.id}`}>
+                        承認（内部再開）
+                      </Button>
+                      <Button type="submit" name="decision" value="reject" variant="danger" data-testid={`ai-gate-reject-${g.id}`}>
+                        却下
+                      </Button>
+                    </form>
+                  ) : null}
                 </div>
-                <div className="mt-0.5 text-xs text-muted-foreground">{g.reason}</div>
-              </div>
-            ))
+              );
+            })
           )}
         </CardContent>
       </Card>

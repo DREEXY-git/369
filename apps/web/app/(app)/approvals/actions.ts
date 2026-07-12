@@ -8,6 +8,43 @@ import { recordUsageEvent } from '@/lib/usage-events';
 import { isSuppressed } from '@hokko/shared';
 import { getEmailProvider, isExternalSendEnabled } from '@hokko/integrations';
 import { decideContentReviewCore, type BridgeDb } from '@/lib/content-review-bridge';
+import { decideAiGateCore, type GateBridgeDb } from '@/lib/ai-gate-bridge';
+
+// Phase 4 安全実行 Bridge（v7.0 Lane P4・roadmap82）: AI 承認ゲートへの人間の approve/reject。
+// approve = run を内部処理のみで再開・完了（外部作用なし）。reject = run 終了（再開不可）。
+// gate CAS → run 遷移 count===1 → ApprovalRequest 1:1 決定レコード → 監査 を単一 transaction で確定。
+export async function decideAiGateAction(formData: FormData) {
+  const user = await requireUser();
+  // 判断は人間のみ（AI は approval:approve が誤設定で付与されていても action 境界で拒否）。
+  if (!hasPermission(user, 'approval', 'approve') || user.isAi) redirect('/approvals?denied=1');
+
+  const gateId = String(formData.get('gateId') ?? '').trim();
+  const decision = String(formData.get('decision') ?? '');
+  const note = String(formData.get('note') ?? '');
+  if (!/^[a-z0-9]{20,40}$/i.test(gateId) || (decision !== 'approve' && decision !== 'reject')) {
+    redirect('/approvals?error=input');
+  }
+
+  let r;
+  try {
+    r = await decideAiGateCore(prisma as unknown as GateBridgeDb, {
+      tenantId: user.tenantId,
+      gateId,
+      decision: decision === 'approve' ? 'approve' : 'reject',
+      decidedById: user.userId,
+      note,
+      actorIsAi: user.isAi,
+    });
+  } catch {
+    // run 消失/terminal/競合 → 全体 rollback 済み（gate は PENDING のまま）。
+    revalidatePath('/approvals');
+    redirect('/approvals?error=gate_transition');
+  }
+  revalidatePath('/approvals');
+  revalidatePath('/ai-office');
+  if (r.outcome === 'forbidden') redirect('/approvals?denied=1');
+  redirect('/approvals');
+}
 
 export async function decideApprovalAction(formData: FormData) {
   const user = await requireUser();

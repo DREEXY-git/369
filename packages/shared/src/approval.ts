@@ -35,7 +35,9 @@ export type ApprovalAction =
   | 'stocktake_adjust' // 大幅棚卸差異の在庫反映（閾値以上で承認）
   | 'purchase_order_issue' // 高額発注の確定（閾値以上で承認）
   // Phase 3.5 承認ブリッジ（roadmap81）— review-only。公開/外部送信/CMS/実LLM/課金は伴わない社内承認状態のみ。
-  | 'content_review'; // C21 コンテンツ下書きの人間レビュー申請
+  | 'content_review' // C21 コンテンツ下書きの人間レビュー申請
+  // Phase 4 安全実行 Bridge（roadmap82）— AI 承認ゲートの人間判断。approve でも内部処理のみ（外部作用なし）。
+  | 'ai_run_resume';
 
 export interface ApprovalContext {
   actorIsAi?: boolean;
@@ -72,6 +74,7 @@ const ALWAYS_APPROVE: ApprovalAction[] = [
   'inventory_force_release',
   'damage_charge_finalize',
   'content_review', // C21 コンテンツ下書きのレビューは常に人間承認（AI は申請/決定を持たない）
+  'ai_run_resume', // AI 承認ゲートの判断は常に人間（AI は自己承認しない）
 ];
 
 export const QUOTE_AUTO_APPROVE_LIMIT = 500_000; // 円。これ以上は承認必須。

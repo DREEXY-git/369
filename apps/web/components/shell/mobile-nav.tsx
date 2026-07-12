@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import { NAV } from './nav';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { cn } from '@/lib/utils';
 
 export function MobileNav({ allowedHrefs }: { allowedHrefs?: string[] }) {
@@ -146,6 +147,15 @@ export function MobileNav({ allowedHrefs }: { allowedHrefs?: string[] }) {
                 </div>
               ))}
             </nav>
+
+            {/* v7.0 R2（Codex P2 comment 4951029653）: <sm では topbar の ThemeToggle を隠すため、
+                drawer 内へ実操作を復旧（機能消失の是正）。表示設定グループとして footer に常設。 */}
+            <div className="border-t border-white/10 px-3 py-2.5">
+              <div className="px-2.5 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted">
+                表示設定
+              </div>
+              <ThemeToggle variant="drawer" testId="drawer-theme-toggle" />
+            </div>
               </div>
             </div>,
             document.body,

@@ -7,6 +7,7 @@ import { prisma, writeAudit } from '@/lib/db';
 import { recordUsageEvent } from '@/lib/usage-events';
 import { isSuppressed } from '@hokko/shared';
 import { getEmailProvider, isExternalSendEnabled } from '@hokko/integrations';
+import { decideContentReviewCore, type BridgeDb } from '@/lib/content-review-bridge';
 
 export async function decideApprovalAction(formData: FormData) {
   const user = await requireUser();
@@ -14,18 +15,52 @@ export async function decideApprovalAction(formData: FormData) {
   const decision = String(formData.get('decision') ?? '');
   const note = String(formData.get('note') ?? '');
 
-  if (!hasPermission(user, 'approval', 'approve')) redirect('/approvals?denied=1');
+  // v6.9（Codex r3565885990）: 承認の決定は人間のみ。AI ロールは approval:approve が誤設定で
+  // 付与されていても action 境界で一律拒否する（不変条件・RBAC とは独立の二重防御）。
+  if (!hasPermission(user, 'approval', 'approve') || user.isAi) redirect('/approvals?denied=1');
 
   const approval = await prisma.approvalRequest.findFirst({
     where: { id: approvalId, tenantId: user.tenantId, status: 'PENDING' },
   });
   if (!approval) redirect('/approvals');
 
+  // v6.9（Codex r3565885992）: content_review は「ApprovalRequest CAS → ContentAsset 更新 count===1 →
+  // 監査」を単一 transaction で確定する（承認だけ確定して対象が pending のまま残る不整合を禁止）。
+  // 外部作用（送信/公開/CMS/実LLM/課金）はこの分岐に存在しない（review-only）。
+  if (approval.type === 'content_review') {
+    let r;
+    try {
+      r = await decideContentReviewCore(prisma as unknown as BridgeDb, {
+        tenantId: user.tenantId,
+        approvalId,
+        entityId: approval.entityId,
+        decision: decision === 'approve' ? 'approve' : 'reject',
+        decidedById: user.userId,
+        note,
+        approvalTitle: approval.title,
+        actorIsAi: user.isAi,
+      });
+    } catch {
+      // 対象消失・別 tenant・状態不整合 → 全体 rollback 済み（PENDING のまま）。理由を UI へ返す。
+      revalidatePath('/approvals');
+      redirect('/approvals?error=content_transition');
+    }
+    revalidatePath('/approvals');
+    revalidatePath('/marketing/content');
+    if (r.outcome === 'forbidden') redirect('/approvals?denied=1');
+    redirect('/approvals'); // decided / already（冪等）とも一覧へ
+  }
+
   const status = decision === 'approve' ? 'APPROVED' : 'REJECTED';
-  await prisma.approvalRequest.update({
-    where: { id: approvalId },
+  // 決定は原子的 CAS（PENDING のときのみ→決定）。二重 submit / 同時決定は count===0 で弾き、
+  // 副作用（送信・状態遷移）は CAS の勝者だけが実行する＝1回だけ反映（冪等）。
+  // 外部送信を伴う type（outreach_send 等）の副作用は DB transaction に入れない（メール送信は
+  // rollback 不能な外部作用のため・従来どおり CAS 勝者が transaction 外で実行）。
+  const decided = await prisma.approvalRequest.updateMany({
+    where: { id: approvalId, tenantId: user.tenantId, status: 'PENDING' },
     data: { status, decidedById: user.userId, decidedAt: new Date(), decisionNote: note },
   });
+  if (decided.count === 0) redirect('/approvals'); // 既に決定済み（別 submit が反映済み）。
 
   // 承認対象が営業メール送信の場合の処理（送信ゲート）
   if (approval.type === 'outreach_send' && approval.entityId) {

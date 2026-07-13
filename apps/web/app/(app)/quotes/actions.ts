@@ -7,11 +7,7 @@ import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
-
-/** Prisma unique violation（P2002）判定。 */
-function isUniqueViolation(e: unknown): boolean {
-  return typeof e === 'object' && e !== null && (e as { code?: string }).code === 'P2002';
-}
+import { convertQuoteToInvoiceCore, type ConvertBridgeDb } from '@/lib/quote-convert-bridge';
 
 interface LineInput {
   name: string;
@@ -88,62 +84,69 @@ export async function createQuoteAction(formData: FormData) {
   const needsApproval =
     requiresApproval('quote_issue', { amount: totals.total }) || isLowMargin(totals.grossMarginRate);
 
-  const quote = await prisma.quote.create({
-    data: {
-      tenantId: user.tenantId,
-      customerId,
-      dealId,
-      number,
-      title,
-      status: needsApproval ? 'pending_approval' : 'draft',
-      subtotal,
-      cost,
-      discountRate,
-      taxRate,
-      total: totals.total,
-      grossMargin: totals.grossMargin,
-      grossMarginRate: totals.grossMarginRate,
-      validUntil: new Date(Date.now() + 30 * 86400000),
-      lineItems: {
-        create: items.map((i) => ({
-          tenantId: user.tenantId,
-          name: i.name,
-          quantity: i.qty,
-          unitPrice: i.unitPrice,
-          unitCost: i.unitCost,
-          amount: i.qty * i.unitPrice,
-        })),
-      },
-    },
-  });
-
-  if (needsApproval) {
-    const reason = isLowMargin(totals.grossMarginRate)
-      ? `粗利率 ${totals.grossMarginRate}%（低粗利）`
-      : `金額 ${totals.total.toLocaleString()} 円`;
-    await prisma.approvalRequest.create({
+  // Codex V75 Q2C P2-1: Quote＋（必要時）ApprovalRequest＋監査を単一 transaction で確定する。
+  // 従来は別処理で、ApprovalRequest/監査失敗時に pending_approval の見積だけが孤児化しえた。
+  // all-or-nothing にし、失敗時は全 rollback（利用者は再作成できる・承認待ちの孤児を残さない）。
+  const reason = isLowMargin(totals.grossMarginRate)
+    ? `粗利率 ${totals.grossMarginRate}%（低粗利）`
+    : `金額 ${totals.total.toLocaleString()} 円`;
+  const quote = await prisma.$transaction(async (tx) => {
+    const q = await tx.quote.create({
       data: {
         tenantId: user.tenantId,
-        type: 'quote_issue',
-        title: `見積発行承認: ${title}`,
-        summary: `${number} / ${reason} のため承認が必要`,
-        entityType: 'Quote',
-        entityId: quote.id,
-        requestedById: user.userId,
-        assigneeRole: 'DEPARTMENT_MANAGER',
-        riskLevel: totals.grossMarginRate < 0 ? 'HIGH' : 'MEDIUM',
-        status: 'PENDING',
+        customerId,
+        dealId,
+        number,
+        title,
+        status: needsApproval ? 'pending_approval' : 'draft',
+        subtotal,
+        cost,
+        discountRate,
+        taxRate,
+        total: totals.total,
+        grossMargin: totals.grossMargin,
+        grossMarginRate: totals.grossMarginRate,
+        validUntil: new Date(Date.now() + 30 * 86400000),
+        lineItems: {
+          create: items.map((i) => ({
+            tenantId: user.tenantId,
+            name: i.name,
+            quantity: i.qty,
+            unitPrice: i.unitPrice,
+            unitCost: i.unitCost,
+            amount: i.qty * i.unitPrice,
+          })),
+        },
       },
     });
-  }
-
-  await writeAudit({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    action: 'create',
-    entityType: 'Quote',
-    entityId: quote.id,
-    summary: `見積「${title}」を作成（合計 ${totals.total.toLocaleString()}円・粗利率 ${totals.grossMarginRate}%）`,
+    if (needsApproval) {
+      await tx.approvalRequest.create({
+        data: {
+          tenantId: user.tenantId,
+          type: 'quote_issue',
+          title: `見積発行承認: ${title}`,
+          summary: `${number} / ${reason} のため承認が必要`,
+          entityType: 'Quote',
+          entityId: q.id,
+          requestedById: user.userId,
+          assigneeRole: 'DEPARTMENT_MANAGER',
+          riskLevel: totals.grossMarginRate < 0 ? 'HIGH' : 'MEDIUM',
+          status: 'PENDING',
+        },
+      });
+    }
+    await tx.auditLog.create({
+      data: {
+        tenantId: user.tenantId,
+        actorId: user.userId,
+        actorType: 'user',
+        action: 'create',
+        entityType: 'Quote',
+        entityId: q.id,
+        summary: `見積「${title}」を作成（合計 ${totals.total.toLocaleString()}円・粗利率 ${totals.grossMarginRate}%）`,
+      },
+    });
+    return q;
   });
 
   revalidatePath('/quotes');
@@ -170,7 +173,7 @@ export async function convertQuoteToInvoiceAction(formData: FormData) {
 
   const quote = await prisma.quote.findFirst({
     where: { id: quoteId, tenantId: user.tenantId },
-    include: { lineItems: true, deal: { select: { customerId: true } } },
+    include: { lineItems: true },
   });
   if (!quote) redirect('/quotes?error=notfound');
 
@@ -184,6 +187,27 @@ export async function convertQuoteToInvoiceAction(formData: FormData) {
   });
   if (existing) redirect(`/invoices/${existing.id}?from_quote=already`);
 
+  // Codex V75 Q2C P2-3: 関連 customer/deal を「変換の場でも」tenant＋可視ラベルで再検証する
+  // （見積作成時に検証済みでも、データ不整合や後発の越境参照を invoice/監査へ複製しない・fail-closed で null）。
+  // customer は quote.customerId → 無ければ deal.customerId の順で解決し、それぞれ tenant スコープで実在確認。
+  let dealId: string | null = null;
+  if (quote!.dealId) {
+    const d = await prisma.deal.findFirst({
+      where: { id: quote!.dealId, tenantId: user.tenantId, customer: { label: { in: visibleCustomerLabels(user.roles) } } },
+      select: { id: true, customerId: true },
+    });
+    dealId = d?.id ?? null;
+  }
+  let customerId: string | null = null;
+  const candidateCustomerId = quote!.customerId ?? (dealId ? (await prisma.deal.findFirst({ where: { id: dealId, tenantId: user.tenantId }, select: { customerId: true } }))?.customerId ?? null : null);
+  if (candidateCustomerId) {
+    const c = await prisma.customer.findFirst({
+      where: { id: candidateCustomerId, tenantId: user.tenantId, label: { in: visibleCustomerLabels(user.roles) } },
+      select: { id: true },
+    });
+    customerId = c?.id ?? null;
+  }
+
   const draft = buildInvoiceDraftFromQuote(
     { discountRate: toNumber(quote!.discountRate), taxRate: toNumber(quote!.taxRate) },
     quote!.lineItems.map((li) => ({
@@ -196,55 +220,30 @@ export async function convertQuoteToInvoiceAction(formData: FormData) {
 
   const count = await prisma.invoice.count({ where: { tenantId: user.tenantId } });
   const number = `INV-${new Date().getFullYear()}-${String(200 + count + 1)}`;
-  const customerId = quote!.customerId ?? quote!.deal?.customerId ?? null;
 
-  let invoiceId: string;
-  try {
-    const invoice = await prisma.invoice.create({
-      data: {
-        tenantId: user.tenantId,
-        customerId,
-        dealId: quote!.dealId,
-        quoteId: quote!.id, // unique 制約 ＝ 1見積→最大1請求の並行 barrier
-        number,
-        status: 'DRAFT',
-        dueDate: new Date(Date.now() + 30 * 86400000),
-        subtotal: draft.subtotal,
-        taxAmount: draft.taxAmount,
-        total: draft.total,
-        paidAmount: 0,
-        lineItems: {
-          create: draft.lineItems.map((i) => ({
-            tenantId: user.tenantId,
-            name: i.name,
-            quantity: i.quantity,
-            unitPrice: i.unitPrice,
-            amount: i.amount,
-          })),
-        },
-      },
-    });
-    invoiceId = invoice.id;
-  } catch (e) {
-    if (isUniqueViolation(e)) {
-      // 並行変換の敗者: 勝者の請求書が既に quoteId を占有。既存へ収束（行は増えない）。
-      const won = await prisma.invoice.findFirst({ where: { quoteId: quote!.id, tenantId: user.tenantId }, select: { id: true } });
-      if (won) redirect(`/invoices/${won.id}?from_quote=already`);
-    }
-    throw e;
-  }
-
-  await writeAudit({
+  // Codex V75 Q2C P2-2: Invoice+lineItems+監査を単一 transaction で確定（監査失敗でも孤児を残さない）。
+  const r = await convertQuoteToInvoiceCore(prisma as unknown as ConvertBridgeDb, {
     tenantId: user.tenantId,
     actorId: user.userId,
-    action: 'invoice_create_from_quote',
-    entityType: 'Invoice',
-    entityId: invoiceId,
-    summary: `見積 ${quote!.number} から請求書 ${number} を作成（DRAFT・${draft.total.toLocaleString()}円・外部送信なし）`,
+    actorIsAi: user.isAi,
+    quoteId: quote!.id,
+    quoteNumber: quote!.number,
+    invoiceNumber: number,
+    customerId,
+    dealId,
+    dueDate: new Date(Date.now() + 30 * 86400000),
+    draft,
   });
+  if (r.outcome === 'forbidden') redirect('/quotes?denied=1');
+  if (r.outcome === 'already') {
+    // 並行変換の敗者/再送: 勝者の請求書へ収束（新規行は作られていない）。
+    const won = await prisma.invoice.findFirst({ where: { quoteId: quote!.id, tenantId: user.tenantId }, select: { id: true } });
+    if (won) redirect(`/invoices/${won.id}?from_quote=already`);
+    redirect('/quotes?error=convert');
+  }
 
   revalidatePath('/quotes');
   revalidatePath(`/quotes/${quoteId}`);
   revalidatePath('/invoices');
-  redirect(`/invoices/${invoiceId}?from_quote=1`);
+  redirect(`/invoices/${r.invoiceId}?from_quote=1`);
 }

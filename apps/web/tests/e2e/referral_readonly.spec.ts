@@ -143,11 +143,18 @@ test.describe('C22 紹介・リファラル read-only（v7.2 Lane B）', () => {
   });
 
   test('AI ロール: 分析の閲覧は可・プレビュー link 非表示・直接 URL は拒否（DataAccessLog も作られない）', async ({ page }) => {
+    await prisma.dataAccessLog.deleteMany({ where: { tenantId, entityType: 'ReferralAnalysis' } });
     await login(page, 'ai-sales@ikezaki.local');
     await page.goto('/growth/referral');
     await expect(page.getByTestId(`referral-candidate-${customerId}`)).toBeVisible(); // 閲覧分析は可
     await expect(page.getByTestId(`referral-preview-link-${customerId}`)).toHaveCount(0); // 生成導線なし
     const aiUser = await prisma.user.findFirst({ where: { tenantId, email: 'ai-sales@ikezaki.local' }, select: { id: true } });
+    // 責任主体の正確性: AI ロールの一覧閲覧は actorType='ai_agent' で記録される（'user' に誤帰属しない）。
+    const aiListLogs = await prisma.dataAccessLog.findMany({
+      where: { tenantId, entityType: 'ReferralAnalysis', actorId: aiUser!.id, purpose: 'referral_candidate_list' },
+    });
+    expect(aiListLogs.length).toBeGreaterThanOrEqual(1);
+    for (const log of aiListLogs) expect(log.actorType, 'AI 閲覧の責任主体は ai_agent').toBe('ai_agent');
     await page.goto(`/growth/referral?preview=${customerId}`);
     await expect(page.getByTestId('referral-preview-denied')).toBeVisible();
     await expect(page.getByTestId('referral-preview')).toHaveCount(0);
@@ -239,6 +246,7 @@ test.describe('C22 紹介・リファラル read-only（v7.2 Lane B）', () => {
       expect(json, '一覧監査に foreign sentinel が入っている').not.toContain(FOREIGN_CUSTOMER_SENTINEL);
       expect(json).toMatch(/scanned|candidates/); // 件数メタ
       expect(json).toContain('churnRisk'); // どの機密 field を読んだかのメタ（値ではなく field 名）
+      expect(log.actorType, '人間閲覧の責任主体は user').toBe('user'); // 責任主体の正確性
     }
   });
 });

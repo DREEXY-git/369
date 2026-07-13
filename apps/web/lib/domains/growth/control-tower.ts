@@ -95,13 +95,14 @@ export async function getControlTowerData(
 
   if (canViewFinance) {
     // finance 機密（原価・粗利・未回収の件数）に触れた閲覧＝機密閲覧として記録。
+    // 触れた情報は財務機密のため FINANCIAL_CONFIDENTIAL で分類する（社内=INTERNAL では機密度を過小評価する）。
     await writeDataAccess({
       tenantId,
       actorId,
       entityType: 'GrowthControlTower',
       entityId: null,
       action: 'confidential_view',
-      label: 'INTERNAL',
+      label: 'FINANCIAL_CONFIDENTIAL',
       purpose: 'growth_control_tower_view',
       policyDecision: 'allow',
       metadata: auditMetadata,

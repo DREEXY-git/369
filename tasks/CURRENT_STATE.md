@@ -23,6 +23,12 @@
 
 ## Phase の現在地
 
+- **【最新・本番 = P3-Q2C（見積〜入金）を本番反映済み・base commit `3ec1527`】（2026-07-13）**: 直近の本番リリース系列を時系列で記録（各 merge は人間承認済み・すべて外部送信/実支払/課金/実LLM/削除なし）。
+  1. **完成済み4機能を順次本番統合**（PR #33 RC / #34 C19 / #35 P4+CP+WF・`c8dc1f4`）: C22（`/growth/referral` read-only）／C19（広告改善案 承認ブリッジ・`MarketingSuggestion.approvalStatus` 列非破壊追加）／Phase4 `ai_run_resume`（承認=再開待ちのみ・実行/外部送信/DB変更ゼロ）＋Control Plane `/ai-control`＋Workflow Dry Run `/workflows`（read-only）。
+  2. **P3-Q2C 見積→請求 変換**（PR #37・`Invoice.quoteId @unique` 非破壊追加）: `quote_issue` 承認で Quote pending_approval→approved、approved 見積から DRAFT 請求書を生成し双方向リンク。
+  3. **Q2C hardening**（PR #39・Codex V75 Q2C HOLD 対応・schema変更なし）: createQuote/convert を単一 transaction 化（孤児0）、convert で customer/deal を tenant 再検証、P2002 catch を quoteId 限定。実PG失敗注入証拠。
+  4. **P3-Q2C A/B/C**（PR #40・`3ec1527`・追加のみ非破壊マイグレーション1本 = Receiptテーブル+督促stage/scheduledAt列）: A 領収書発行（PAID→`issueReceiptCore` 単一transaction・AI拒否・`/print/receipts`）／B 売掛エイジング（`/finance/receivables` read-only・finance:read gate）／C 督促多段（第1〜3段・全段威圧なし・自動送信なし）。NAV導線 67→68。
+  - Evidence: 各 merge で unit（最新 568）・typecheck/lint/build clean・E2E（実PostgreSQL・実UI）緑・CI stage1+stage3_e2e success。既知の並列flake `ads_suggestion_bridge:87`（C19・main上）は再実行で緑になるが恒久修正が次タスク。**Codex 独立監査は使用制限で後追い（V75 Q2C HOLD は PR #39 で解消済み）**。禁止Gate（本番DB破壊/Secrets/実顧客PII/外部送信/課金/実支払）は全て非接触。
 - **Phase 1: 正式完了（Phase 1-50・判定根拠は doc24 の GO）。完了基準 commit: `e95f887`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/25_phase1_completion_record.md`）。
 - **Phase X: 完了済み（Phase X-CLOSE-01・判定 GO）。完了基準 commit: `70d4d06`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/32_phase_x_completion_record.md`）。恒久資産=E2E smoke green 回帰ゲート（11/11）＋roadmap 9本＋Feature Registry＋各種 Matrix＋Phase 2 entry review。
 - **Phase 2-A: 正式完了（Phase 2-A-CLOSE・判定 GO・2026-07-04）。完了対象の最新本番確認GO済みプロダクト基準: Phase 2-A-3c-2 / `85f1bf3`**（詳細 `docs/audit/48_phase2a_completion_record.md`・doc14 §45）。Company Brain foundation＝「器（schema）→ read-only 可視化 → 人間書き込み2テーブル → AI参照＋ai_reference ログ」がすべて本番確認GOまで完了。HOLD 2件は追記主義で解消済み。高機密・外部LLM解禁・3c-5・後続3テーブル・Phase 8・ENSHiN OS外部発信は後続別承認。以下は Phase 2-A 各段の当時記録。

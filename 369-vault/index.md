@@ -155,6 +155,8 @@
 - [[完全復旧と4軸ロードマップv61]] — 「4機能が消えた」の正体は配信系譜（コードは統合ブランチに存在・利用者画面は main を配信）と判明：復旧ブランチで秘密マスク3経路・クラッシュ残骸の二重実行誤判定・AI社員と3Dオフィスの人物正本を赤テスト先行で修正・NAV 静的契約67＋build識別バッジ・4軸Phase＋AI社員開発環境/Salesforce/MoneyForward台帳を証拠段階と方式で正本化（main/本番は人間GO後のみ・audit176/roadmap80/PR #14）。
 - [[三系統前進v56]] — v5.6 で三系統を同時前進：Evidence ID を EVID- 接頭辞に補正（正式 Function ID と混同しない）・C21 SEO/Content v0（未根拠クレームは AI が生成しない・注入で生成中止・CI 99 green）・Agent Control Plane v0（AI 実行の遷移許可表・巻き戻し禁止・stale を働いていると見せない・schema 変更なし・CI 100 green・スクリーンショット artifact 開始）・Work Evidence Cockpit v0（成果は証拠5区分のみ・削減時間は baseline なしでは「計測なし」・PR #6 新規・CI 103 green）・C22 Referral は Gate 設計のみ（roadmap72-76/audit171-174）。
 
+ - [[Codex V77 最新main再監査]] — main `a758d17`（PR #39/#40/#41統合後）を再監査。PR headのCI証拠と最新main直接証拠を分離し、Q2C・C19・Phase 4・Production/Redis/Previewの残存Gapを`CHANGES_REQUIRED / RELEASE HOLD`として正本化。
+
 ## 🔗 コード側の正（source of truth）
 
 - 現在地: `369` リポジトリの `tasks/CURRENT_STATE.md`＋git refs。

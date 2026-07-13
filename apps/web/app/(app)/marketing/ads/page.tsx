@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
@@ -18,6 +17,7 @@ import {
 } from '@hokko/shared';
 import { generateAdsImprovementDraftAction } from '../actions';
 import { requestAdSuggestionApprovalAction } from './actions';
+import { IdempotencyKeyField } from './idempotency-key-field';
 
 export const dynamic = 'force-dynamic';
 
@@ -177,13 +177,10 @@ export default async function AdsReadModelPage({ searchParams }: { searchParams:
                         {canGenerate ? (
                           <form action={generateAdsImprovementDraftAction}>
                             <input type="hidden" name="campaignId" value={c.id} />
-                            {/* 冪等キー = MarketingSuggestion の決定的 PK（render ごとに発行）。同一フォームの
-                                再送信（二重クリック/ブラウザ再送/並行）は DB の PK unique 制約で 1 件に収束する。 */}
-                            <input
-                              type="hidden"
-                              name="idempotencyKey"
-                              value={`c${randomUUID().replace(/-/g, '').slice(0, 24)}`}
-                            />
+                            {/* 冪等キー = MarketingSuggestion の決定的 PK。クライアント mount 時に1度だけ発行する
+                                （SSR に乱数を焼かず hydration mismatch を排除）。同一フォームの再送信（二重クリック/
+                                ブラウザ再送/並行）は同一キーとなり DB の PK unique 制約で 1 件に収束する。 */}
+                            <IdempotencyKeyField />
                             <Button type="submit" variant="outline" data-testid="ads-generate-draft">下書きを生成</Button>
                           </form>
                         ) : (

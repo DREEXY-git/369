@@ -23,8 +23,8 @@ function extractHrefs(src: string): string[] {
 
 // v6.1 で main(63) から追加された「復旧4導線」。これらが欠けると red。
 const RECOVERED_HREFS = ['/growth/control-tower', '/marketing/ads', '/marketing/content', '/ai-office'];
-const EXPECTED_NAV_COUNT = 67;
-const MAIN_BASELINE_COUNT = 63;
+const EXPECTED_NAV_COUNT = 68; // P3-Q2C-B: 売掛エイジング（/finance/receivables）を追加
+const MAIN_BASELINE_COUNT = 64; // 63 + 売掛エイジング（恒久導線として baseline に編入）
 
 // v6.2 WIP-5: OWNER が見る href の**明示契約**（順序込み）。1件を別 route へ置換すると件数が同じでも red になる。
 const EXPECTED_HREFS: readonly string[] = [
@@ -35,7 +35,7 @@ const EXPECTED_HREFS: readonly string[] = [
   '/leadmap/campaigns', '/leadmap/leads', '/leadmap/map', '/leadmap/pipeline', '/leadmap/routes',
   '/quotes', '/contracts', '/invoices',
   '/finance', '/finance/bridge', '/finance/journal-candidates', '/finance/invoice-candidates',
-  '/finance/cashflow', '/finance/profit-leaks',
+  '/finance/cashflow', '/finance/receivables', '/finance/profit-leaks',
   '/operations', '/operations/events', '/operations/inventory-movements', '/operations/stocktakes',
   '/operations/purchase-orders', '/operations/reorder', '/operations/logistics',
   '/inventory', '/inventory/lease', '/inventory/profitability',

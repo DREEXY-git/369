@@ -9,6 +9,9 @@ import { requestInvoiceExternalSend, executeInvoiceExternalSend } from '@/lib/do
 import { recordInvoicePayment } from '@/lib/domains/finance/payments';
 import { createDunningDraft, requestDunningSend, executeDunningSend } from '@/lib/domains/finance/dunning';
 import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
+import { toNumber } from '@/lib/utils';
+import { canIssueReceipt } from '@hokko/shared';
+import { issueReceiptCore, type ReceiptBridgeDb } from '@/lib/receipt-bridge';
 
 interface LineInput {
   name: string;
@@ -170,6 +173,44 @@ export async function recordPaymentAction(formData: FormData) {
   const res = await recordInvoicePayment({ tenantId: user.tenantId, userId: user.userId }, id, amount, method);
   revalidatePath(`/invoices/${id}`);
   redirect(res.ok ? `/invoices/${id}?paid=1` : `/invoices/${id}?error=${res.reason}`);
+}
+
+/**
+ * P3-Q2C-A: 入金済み(PAID)請求書から領収書を発行する。**外部送信・課金・実支払は一切なし**（内部記録＋印刷用）。
+ *  - 権限: invoice:update かつ finance:read（財務機密・他 finance action と統一）。AI は不可（isAi 拒否）。
+ *  - PAID のみ発行可（canIssueReceipt）。Receipt.invoiceId の unique が並行/再送 barrier で冪等。
+ *  - Receipt+監査を単一 transaction で確定（issueReceiptCore・監査失敗でも孤児 0）。
+ */
+export async function issueReceiptAction(formData: FormData) {
+  const user = await requireUser();
+  const id = String(formData.get('id') ?? '');
+  if (user.isAi || !hasPermission(user, 'invoice', 'update') || !hasPermission(user, 'finance', 'read')) {
+    redirect(`/invoices/${id}?denied=1`);
+  }
+  const inv = await prisma.invoice.findFirst({ where: { id, tenantId: user.tenantId }, select: { id: true, number: true, status: true, total: true, paidAmount: true } });
+  if (!inv) redirect('/invoices?error=notfound');
+  if (!canIssueReceipt(inv!.status)) redirect(`/invoices/${id}?error=not_paid#receipt`);
+
+  const existing = await prisma.receipt.findFirst({ where: { invoiceId: id, tenantId: user.tenantId }, select: { id: true } });
+  if (existing) redirect(`/invoices/${id}?receipt=already#receipt`);
+
+  const count = await prisma.receipt.count({ where: { tenantId: user.tenantId } });
+  const number = `RCT-${new Date().getFullYear()}-${String(1 + count)}`;
+  const amount = toNumber(inv!.paidAmount) || toNumber(inv!.total);
+
+  const r = await issueReceiptCore(prisma as unknown as ReceiptBridgeDb, {
+    tenantId: user.tenantId,
+    actorId: user.userId,
+    actorIsAi: user.isAi,
+    invoiceId: id,
+    invoiceNumber: inv!.number,
+    receiptNumber: number,
+    amount,
+    method: 'bank',
+  });
+  if (r.outcome === 'forbidden') redirect(`/invoices/${id}?denied=1`);
+  revalidatePath(`/invoices/${id}`);
+  redirect(`/invoices/${id}?receipt=${r.outcome === 'created' ? 'issued' : 'already'}#receipt`);
 }
 
 /** 督促（お支払い状況の確認）下書きを作成。未回収/延滞のみ。業務ロジックは lib/domains/finance/dunning.ts。 */

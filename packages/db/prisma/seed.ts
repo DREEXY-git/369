@@ -319,6 +319,8 @@ async function main() {
     });
     if (i === 0) {
       await prisma.payment.create({ data: { tenantId, invoiceId: inv.id, amount: inv.total, method: 'bank' } });
+      // P3-Q2C-A: 入金済み請求の領収書デモ（外部送信・課金なし・内部記録）。
+      await prisma.receipt.create({ data: { tenantId, invoiceId: inv.id, number: 'RCT-2026-1', amount: inv.total, method: 'bank' } });
     }
     if (i === 2) {
       await prisma.receivable.create({

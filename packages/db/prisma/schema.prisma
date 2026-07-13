@@ -843,8 +843,25 @@ model Invoice {
   lineItems  InvoiceLineItem[]
   payments   Payment[]
   receivable Receivable?
+  receipt    Receipt? // P3-Q2C-A: 入金済み請求の領収書（1請求→最大1領収書）
 
   @@index([tenantId, status])
+}
+
+// P3-Q2C-A 領収書（Receipt）: 入金済み(PAID)請求書から発行する内部記録。外部送信・課金・実支払は伴わない。
+model Receipt {
+  id         String   @id @default(cuid())
+  tenantId   String
+  invoiceId  String   @unique // 1請求→最大1領収書（発行の並行 barrier）。
+  number     String
+  amount     Decimal  @db.Decimal(14, 2)
+  method     String   @default("bank")
+  issuedById String?
+  issuedAt   DateTime @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
 }
 
 model InvoiceLineItem {
@@ -896,6 +913,8 @@ model CollectionReminder {
   receivableId String
   draftMessage String
   status       String   @default("draft")
+  stage        Int      @default(1) // P3-Q2C-C 督促段数（1=やんわり確認→上がるほど丁寧に強め・最大3）
+  scheduledAt  DateTime? // P3-Q2C-C 予定送付日（表示のみ・自動送信はしない）
   createdAt    DateTime @default(now())
 
   receivable Receivable @relation(fields: [receivableId], references: [id], onDelete: Cascade)

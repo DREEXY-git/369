@@ -29,6 +29,7 @@ export const NAV_PAGE_GATES: Record<string, readonly [resource: string, action: 
   '/finance/journal-candidates': ['finance', 'read'],
   '/finance/invoice-candidates': ['finance', 'read'],
   '/finance/cashflow': ['finance', 'read'],
+  '/finance/receivables': ['finance', 'read'],
   '/finance/profit-leaks': ['finance', 'read'],
   '/ai-agents': ['dashboard', 'read'],
   '/ai-office': ['dashboard', 'read'],

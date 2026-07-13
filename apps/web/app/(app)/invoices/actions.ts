@@ -168,9 +168,11 @@ export async function recordPaymentAction(formData: FormData) {
   const id = String(formData.get('id') ?? '');
   // 入金記録は finance 機密（Invoice/Receivable/FinanceEvent 連動）。server 側で finance:read も必須化（STAFF 直叩き遮断）。
   if (!hasPermission(user, 'invoice', 'update') || !hasPermission(user, 'finance', 'read')) redirect(`/invoices/${id}?denied=1`);
+  // AI は財務実績の確定（入金記録）を持たない。権限が誤って付与されても二重防御で拒否。
+  if (user.isAi) redirect(`/invoices/${id}?denied=1`);
   const amount = Math.max(0, Number(formData.get('amount') ?? 0) || 0);
   const method = String(formData.get('method') ?? 'bank');
-  const res = await recordInvoicePayment({ tenantId: user.tenantId, userId: user.userId }, id, amount, method);
+  const res = await recordInvoicePayment({ tenantId: user.tenantId, userId: user.userId }, id, amount, method, { actorIsAi: user.isAi });
   revalidatePath(`/invoices/${id}`);
   redirect(res.ok ? `/invoices/${id}?paid=1` : `/invoices/${id}?error=${res.reason}`);
 }

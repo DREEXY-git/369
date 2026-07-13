@@ -475,3 +475,93 @@ export function buildInvoiceDraftFromQuote(
   const total = round2(subtotal + taxAmount);
   return { subtotal, taxAmount, total, lineItems };
 }
+
+// ============ P3-Q2C-A: 領収書（Receipt）発行 — 純判定 ============
+
+/**
+ * その請求書から領収書を発行してよいか（純判定）。
+ * 発行できるのは全額入金済み（PAID）の請求書のみ。DRAFT/ISSUED/SENT/PARTIALLY_PAID/OVERDUE/VOID は不可。
+ * 「既に発行済みか」は別軸（Receipt.invoiceId の unique 制約と存在確認）で担保する。
+ */
+export function canIssueReceipt(invoiceStatus: string): boolean {
+  return invoiceStatus === 'PAID';
+}
+
+// ============ P3-Q2C-B: 売掛エイジング（AR aging）— 純集計 ============
+
+export type AgingBucketKey = 'current' | 'd1_30' | 'd31_60' | 'd61_90' | 'd90plus';
+
+export interface AgingBucket {
+  key: AgingBucketKey;
+  label: string;
+  count: number;
+  amount: number;
+}
+
+export interface ReceivableAgingInput {
+  /** 未回収額（invoice.total - paidAmount, 0 下限）。 */
+  outstanding: number;
+  dueDate: Date | string | null;
+}
+
+export interface ReceivableAgingSummary {
+  buckets: AgingBucket[];
+  totalOutstanding: number;
+  count: number;
+  overdueAmount: number; // current を除く延滞分の合計
+}
+
+const AGING_LABELS: Record<AgingBucketKey, string> = {
+  current: '期日内 / 未到来',
+  d1_30: '1〜30日 超過',
+  d31_60: '31〜60日 超過',
+  d61_90: '61〜90日 超過',
+  d90plus: '91日以上 超過',
+};
+
+const DAY_MS = 86_400_000;
+
+/** 経過日数からバケットキーを決める（0 以下＝期日内/未到来）。 */
+export function agingBucketOf(overdueDays: number): AgingBucketKey {
+  if (overdueDays <= 0) return 'current';
+  if (overdueDays <= 30) return 'd1_30';
+  if (overdueDays <= 60) return 'd31_60';
+  if (overdueDays <= 90) return 'd61_90';
+  return 'd90plus';
+}
+
+/**
+ * 売掛（未回収）を経過日数バケットで集計する純関数。dueDate が null は「未到来」扱い（current）。
+ * outstanding が 0 以下の行は集計から除外（回収済み）。金額・件数は値に依存せずバケット定義のみで決まる。
+ */
+export function bucketReceivablesByAge(
+  items: ReceivableAgingInput[],
+  now: Date,
+): ReceivableAgingSummary {
+  const order: AgingBucketKey[] = ['current', 'd1_30', 'd31_60', 'd61_90', 'd90plus'];
+  const acc: Record<AgingBucketKey, { count: number; amount: number }> = {
+    current: { count: 0, amount: 0 },
+    d1_30: { count: 0, amount: 0 },
+    d31_60: { count: 0, amount: 0 },
+    d61_90: { count: 0, amount: 0 },
+    d90plus: { count: 0, amount: 0 },
+  };
+  let totalOutstanding = 0;
+  let count = 0;
+  let overdueAmount = 0;
+  const nowMs = now.getTime();
+  for (const it of items) {
+    const amount = Math.max(0, Number(it.outstanding) || 0);
+    if (amount <= 0) continue;
+    const due = it.dueDate ? new Date(it.dueDate).getTime() : NaN;
+    const overdueDays = Number.isNaN(due) ? 0 : Math.floor((nowMs - due) / DAY_MS);
+    const key = agingBucketOf(overdueDays);
+    acc[key].count += 1;
+    acc[key].amount = round2(acc[key].amount + amount);
+    totalOutstanding = round2(totalOutstanding + amount);
+    count += 1;
+    if (key !== 'current') overdueAmount = round2(overdueAmount + amount);
+  }
+  const buckets = order.map((key) => ({ key, label: AGING_LABELS[key], count: acc[key].count, amount: acc[key].amount }));
+  return { buckets, totalOutstanding, count, overdueAmount };
+}

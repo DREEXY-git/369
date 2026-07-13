@@ -120,6 +120,7 @@ export const NAV: NavGroup[] = [
       { label: '仕訳候補', href: '/finance/journal-candidates', icon: BookText },
       { label: '請求候補', href: '/finance/invoice-candidates', icon: Receipt },
       { label: '資金繰り', href: '/finance/cashflow', icon: CalendarClock },
+      { label: '売掛エイジング', href: '/finance/receivables', icon: TrendingDown },
       { label: '利益漏れ検知', href: '/finance/profit-leaks', icon: TrendingDown },
     ],
   },

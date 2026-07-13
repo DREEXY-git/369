@@ -12,7 +12,7 @@ import { requireApprovalForDangerousAction } from '@/lib/approval';
 import { prepareExternalPayload } from '@/lib/safe-external-send';
 import { assertAiToolAllowed } from '@/lib/ai-safety-server';
 import { toNumber } from '@/lib/utils';
-import { buildDunningDraft, isDunningEligible } from '@hokko/shared';
+import { buildDunningDraft, isDunningEligible, nextDunningStage, dunningStageMeta } from '@hokko/shared';
 import { getEmailProvider, isExternalSendEnabled } from '@hokko/integrations';
 
 export interface Actor {
@@ -41,7 +41,7 @@ interface InvoiceWithRel {
   receivable: { id: string; status: string } | null;
 }
 
-function draftBodyFromInvoice(inv: InvoiceWithRel, companyName: string): { subject: string; body: string } {
+function draftBodyFromInvoice(inv: InvoiceWithRel, companyName: string, stage = 1): { subject: string; body: string } {
   const total = toNumber(inv.total);
   const paid = toNumber(inv.paidAmount);
   return buildDunningDraft({
@@ -52,7 +52,16 @@ function draftBodyFromInvoice(inv: InvoiceWithRel, companyName: string): { subje
     paidAmount: paid,
     outstanding: Math.max(total - paid, 0),
     dueDate: inv.dueDate,
+    stage, // P3-Q2C-C 督促段数（上がるほど丁寧に強め・威圧なし）
   });
+}
+
+/** この売掛について、次に作成する督促の段数（送信/記録済みの回数 +1・最大3）。 */
+async function computeNextDunningStage(tenantId: string, receivableId: string): Promise<number> {
+  const sentCount = await prisma.collectionReminder.count({
+    where: { tenantId, receivableId, status: { in: ['sent', 'logged'] } },
+  });
+  return nextDunningStage(sentCount);
 }
 
 export interface DunningContext {
@@ -62,7 +71,9 @@ export interface DunningContext {
   outstanding: number;
   recipient: string | null; // 顧客メール（無ければ null → 送信不可）
   draft: { subject: string; body: string } | null; // 対象時のみ
-  reminder: { id: string; status: string; draftMessage: string; createdAt: Date } | null; // 最新下書き
+  reminder: { id: string; status: string; draftMessage: string; createdAt: Date; stage: number } | null; // 最新下書き
+  stage: number; // P3-Q2C-C 次に作成/現在の督促段数
+  stageLabel: string; // 段数の画面ラベル
   pendingApprovalId: string | null; // PENDING の dunning_send
   approvedApprovalId: string | null; // APPROVED かつ未実行
 }
@@ -99,14 +110,19 @@ export async function getDunningContext(actor: Actor, invoiceId: string): Promis
 
   const companyName = eligible ? await resolveCompanyName(actor.tenantId) : FALLBACK_COMPANY_NAME;
 
+  // P3-Q2C-C: 現在の下書きが有れば その段数、無ければ「次に作成する段数」で preview を出す。
+  const stage = reminder?.stage ?? (inv.receivable ? await computeNextDunningStage(actor.tenantId, inv.receivable.id) : 1);
+
   return {
     eligible,
     invoiceId: inv.id,
     invoiceNumber: inv.number,
     outstanding: Math.max(total - paid, 0),
     recipient: inv.customer?.email ?? null,
-    draft: eligible ? draftBodyFromInvoice(inv, companyName) : null,
-    reminder: reminder ? { id: reminder.id, status: reminder.status, draftMessage: reminder.draftMessage, createdAt: reminder.createdAt } : null,
+    draft: eligible ? draftBodyFromInvoice(inv, companyName, stage) : null,
+    reminder: reminder ? { id: reminder.id, status: reminder.status, draftMessage: reminder.draftMessage, createdAt: reminder.createdAt, stage: reminder.stage } : null,
+    stage,
+    stageLabel: dunningStageMeta(stage).label,
     pendingApprovalId,
     approvedApprovalId,
   };
@@ -131,11 +147,13 @@ export async function createDunningDraft(actor: Actor, invoiceId: string): Promi
   if (existing) return { ok: true, reminderId: existing.id };
 
   const companyName = await resolveCompanyName(actor.tenantId);
-  const { body } = draftBodyFromInvoice(inv, companyName);
+  // P3-Q2C-C: 次段数を送信済み回数から算出（初回=1・以降 送信ごとに +1・最大3）。文面も段数に応じ丁寧に強め。
+  const stage = await computeNextDunningStage(actor.tenantId, inv.receivable.id);
+  const { body } = draftBodyFromInvoice(inv, companyName, stage);
   const reminder = await prisma.collectionReminder.create({
-    data: { tenantId: actor.tenantId, receivableId: inv.receivable.id, draftMessage: body, status: 'draft' },
+    data: { tenantId: actor.tenantId, receivableId: inv.receivable.id, draftMessage: body, status: 'draft', stage },
   });
-  await writeAudit({ tenantId: actor.tenantId, actorId: actor.userId, action: 'dunning_draft_create', entityType: 'CollectionReminder', entityId: reminder.id, summary: `督促下書きを作成: 請求書 ${inv.number}` });
+  await writeAudit({ tenantId: actor.tenantId, actorId: actor.userId, action: 'dunning_draft_create', entityType: 'CollectionReminder', entityId: reminder.id, summary: `督促下書き(第${stage}段)を作成: 請求書 ${inv.number}` });
   return { ok: true, reminderId: reminder.id };
 }
 

@@ -15,7 +15,9 @@ import {
   createDunningDraftAction,
   requestDunningSendApprovalAction,
   executeApprovedDunningSendAction,
+  issueReceiptAction,
 } from '../actions';
+import { canIssueReceipt } from '@hokko/shared';
 import { getDunningContext } from '@/lib/domains/finance/dunning';
 import { formatJpy, formatDate, formatDateTime, isOverdue, canSendInvoice } from '@hokko/shared';
 import { canSeeCustomerLabel } from '@/lib/security/customer-visibility';
@@ -62,7 +64,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const invoice = await prisma.invoice.findFirst({
     where: { id, tenantId: user.tenantId },
     // 顧客は宛先表示の name と可視判定の label のみ取得（連絡先等 PII の over-fetch 防止）。
-    include: { lineItems: true, payments: { orderBy: { paidAt: 'desc' } }, customer: { select: { name: true, label: true } }, receivable: true, quote: { select: { id: true, number: true } } },
+    include: { lineItems: true, payments: { orderBy: { paidAt: 'desc' } }, customer: { select: { name: true, label: true } }, receivable: true, quote: { select: { id: true, number: true } }, receipt: { select: { id: true, number: true } } },
   });
   if (!invoice) notFound();
   const canUpdate = hasPermission(user, 'invoice', 'update');
@@ -204,6 +206,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             <Card id="dunning" className="scroll-mt-4 border-amber-200">
               <CardHeader><CardTitle>入金確認・督促（お支払い状況の確認）</CardTitle></CardHeader>
               <CardContent className="space-y-2 text-sm">
+                {/* P3-Q2C-C: 督促の段数（送信ごとに丁寧に強め・最大3・威圧なし）。 */}
+                <div><Badge tone={dunning.stage >= 3 ? 'red' : dunning.stage === 2 ? 'amber' : 'slate'} data-testid="dunning-stage">第{dunning.stage}段: {dunning.stageLabel}</Badge></div>
                 <p className="text-xs text-muted-foreground">未回収 {formatJpy(dunning.outstanding)}。外部送信は必ず承認後（AIは送信しません）。督促メールの実送信は EXTERNAL_SEND_ENABLED 有効時のみ、無効時は記録（ログ）のみ。</p>
                 {dunning.recipient ? null : (
                   <p className="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">送信先メールアドレスが未登録です（下書き作成・申請は可能ですが、送信は実行できません）。</p>
@@ -247,6 +251,30 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               ))}
             </CardContent>
           </Card>
+
+          {/* P3-Q2C-A: 領収書。PAID のみ発行可。発行済みは番号＋印刷導線。外部送信・課金なし。 */}
+          {canViewFinance && (canIssueReceipt(invoice.status) || invoice.receipt) ? (
+            <Card id="receipt" className="scroll-mt-4">
+              <CardHeader><CardTitle>領収書</CardTitle></CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                {invoice.receipt ? (
+                  <div className="flex flex-wrap items-center gap-2" data-testid="invoice-receipt">
+                    <Badge tone="green">発行済み</Badge>
+                    <span className="font-medium">{invoice.receipt.number}</span>
+                    <Link href={`/print/receipts/${invoice.receipt.id}`} target="_blank" className="text-blue-700 underline" data-testid="invoice-receipt-print">印刷 / PDF</Link>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-xs text-muted-foreground">全額入金済みの請求書から領収書を発行できます（内部記録・外部送信なし）。</p>
+                    <form action={issueReceiptAction}>
+                      <input type="hidden" name="id" value={invoice.id} />
+                      <Button type="submit" className="w-full" disabled={!canUpdate} data-testid="invoice-issue-receipt">領収書を発行</Button>
+                    </form>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
 
           {invoice.receivable ? (
             <Card>

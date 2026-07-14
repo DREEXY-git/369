@@ -1,7 +1,7 @@
 // 候補 → 正式データの変換サービス（承認後にのみ実行）。Phase 1-9。
 // 正式/候補の境界はこのファイルだけ。candidate.status で冪等（posted/sent 済は再実行不可）。
 // 設計ルール: docs/audit/12_maintenance_architecture.md。
-import { prisma, writeAudit } from '@/lib/db';
+import { prisma } from '@/lib/db';
 import { writeConfidentialViewLog } from '@/lib/audit';
 import { emitGrowthEvent } from '@/lib/growth';
 import { toNumber } from '@/lib/utils';
@@ -23,6 +23,15 @@ export interface FormalizeResult {
   reason?: string;
   journalEntryId?: string;
   invoiceId?: string;
+}
+
+/** 候補 CAS が敗北した（＝別の確定が先行）ことを示す tx 内 sentinel。tx をロールバックしつつ
+ *  「already」を呼び出し元へ返すために使う（実 DB エラーとは区別する）。 */
+class FormalizeConflict extends Error {
+  constructor(public reason: string) {
+    super(reason);
+    this.name = 'FormalizeConflict';
+  }
 }
 
 /** 勘定科目名から Account を解決（無ければ最小作成）。 */
@@ -48,23 +57,50 @@ export async function finalizeJournalCandidate(actor: Actor, candidateId: string
   ]);
   const lines = journalEntryLinesFor(jc.debitAccount, jc.creditAccount, amount);
 
-  const entry = await prisma.journalEntry.create({
-    data: {
-      tenantId: actor.tenantId,
-      date: new Date(),
-      memo: jc.description,
-      source: 'finance_bridge',
-      lines: {
-        create: [
-          { tenantId: actor.tenantId, accountId: debit.id, debit: lines[0]!.debit, credit: 0 },
-          { tenantId: actor.tenantId, accountId: credit.id, debit: 0, credit: lines[1]!.credit },
-        ],
-      },
-    },
-  });
-  await prisma.journalCandidate.update({ where: { id: candidateId }, data: { status: 'posted', journalEntryId: entry.id } });
+  // 原子性＋並行/二重確定の防止: JournalEntry 作成・候補の posted 化・監査を単一 $transaction。
+  // 候補の status CAS（status≠posted かつ journalEntryId=null のときだけ更新）を barrier にして、
+  // 並行 finalize / 二重 submit で JournalEntry が二重計上されないようにする（count≠1 は entry ごと rollback）。
+  let entryId: string;
+  try {
+    entryId = await prisma.$transaction(async (tx) => {
+      const entry = await tx.journalEntry.create({
+        data: {
+          tenantId: actor.tenantId,
+          date: new Date(),
+          memo: jc.description,
+          source: 'finance_bridge',
+          lines: {
+            create: [
+              { tenantId: actor.tenantId, accountId: debit.id, debit: lines[0]!.debit, credit: 0 },
+              { tenantId: actor.tenantId, accountId: credit.id, debit: 0, credit: lines[1]!.credit },
+            ],
+          },
+        },
+      });
+      const claim = await tx.journalCandidate.updateMany({
+        where: { id: candidateId, tenantId: actor.tenantId, status: { not: 'posted' }, journalEntryId: null },
+        data: { status: 'posted', journalEntryId: entry.id },
+      });
+      if (claim.count !== 1) throw new FormalizeConflict('already-posted');
+      await tx.auditLog.create({
+        data: {
+          tenantId: actor.tenantId,
+          actorId: actor.userId ?? null,
+          actorType: 'user',
+          action: 'journal_finalize',
+          entityType: 'JournalEntry',
+          entityId: entry.id,
+          summary: `仕訳候補を正式化: ${jc.description}（${amount}円）`,
+        },
+      });
+      return entry.id;
+    });
+  } catch (e) {
+    if (e instanceof FormalizeConflict) return { ok: false, reason: e.reason };
+    throw e;
+  }
+  const entry = { id: entryId };
 
-  await writeAudit({ tenantId: actor.tenantId, actorId: actor.userId, action: 'journal_finalize', entityType: 'JournalEntry', entityId: entry.id, summary: `仕訳候補を正式化: ${jc.description}（${amount}円）` });
   await writeConfidentialViewLog({ tenantId: actor.tenantId, actorId: actor.userId, entityType: 'JournalEntry', entityId: entry.id, label: 'FINANCIAL_CONFIDENTIAL' as ConfidentialityLabel, purpose: '正式仕訳の作成' });
   await emitGrowthEvent({
     tenantId: actor.tenantId,
@@ -90,27 +126,54 @@ export async function finalizeInvoiceCandidate(actor: Actor, candidateId: string
   if (total <= 0) return { ok: false, reason: 'invalid-amount' };
 
   const number = `INV-${Date.now().toString().slice(-8)}`;
-  // 正式 Invoice は status=ISSUED（内部発行）。外部送信は次Phase（prepareExternalPayload＋送信ゲート）。
-  const invoice = await prisma.invoice.create({
-    data: {
-      tenantId: actor.tenantId,
-      customerId: ic.customerId,
-      number,
-      status: 'ISSUED',
-      issueDate: new Date(),
-      dueDate: ic.dueAt,
-      subtotal,
-      taxAmount,
-      total,
-      lineItems: { create: [{ tenantId: actor.tenantId, name: ic.title, quantity: 1, unitPrice: subtotal, amount: subtotal }] },
-    },
-  });
-  const receivable = await prisma.receivable.create({
-    data: { tenantId: actor.tenantId, invoiceId: invoice.id, amount: total, dueDate: ic.dueAt, status: 'open' },
-  });
-  await prisma.invoiceCandidate.update({ where: { id: candidateId }, data: { status: 'sent', invoiceId: invoice.id } });
+  // 原子性＋並行/二重確定の防止: Invoice(+lineItems)・Receivable・候補の sent 化・監査を単一 $transaction。
+  // 候補 status CAS（status≠sent かつ invoiceId=null のときだけ更新）を barrier にして二重請求を防ぐ
+  // （count≠1 は Invoice/Receivable ごと rollback）。正式 Invoice は status=ISSUED（内部発行・外部送信は別Phase）。
+  let ids: { invoiceId: string; receivableId: string };
+  try {
+    ids = await prisma.$transaction(async (tx) => {
+      const invoice = await tx.invoice.create({
+        data: {
+          tenantId: actor.tenantId,
+          customerId: ic.customerId,
+          number,
+          status: 'ISSUED',
+          issueDate: new Date(),
+          dueDate: ic.dueAt,
+          subtotal,
+          taxAmount,
+          total,
+          lineItems: { create: [{ tenantId: actor.tenantId, name: ic.title, quantity: 1, unitPrice: subtotal, amount: subtotal }] },
+        },
+      });
+      const receivable = await tx.receivable.create({
+        data: { tenantId: actor.tenantId, invoiceId: invoice.id, amount: total, dueDate: ic.dueAt, status: 'open' },
+      });
+      const claim = await tx.invoiceCandidate.updateMany({
+        where: { id: candidateId, tenantId: actor.tenantId, status: { not: 'sent' }, invoiceId: null },
+        data: { status: 'sent', invoiceId: invoice.id },
+      });
+      if (claim.count !== 1) throw new FormalizeConflict('already-formalized');
+      await tx.auditLog.create({
+        data: {
+          tenantId: actor.tenantId,
+          actorId: actor.userId ?? null,
+          actorType: 'user',
+          action: 'invoice_finalize',
+          entityType: 'Invoice',
+          entityId: invoice.id,
+          summary: `請求候補を正式化: ${ic.title}（${total}円・${number}）`,
+        },
+      });
+      return { invoiceId: invoice.id, receivableId: receivable.id };
+    });
+  } catch (e) {
+    if (e instanceof FormalizeConflict) return { ok: false, reason: e.reason };
+    throw e;
+  }
+  const invoice = { id: ids.invoiceId };
+  const receivable = { id: ids.receivableId };
 
-  await writeAudit({ tenantId: actor.tenantId, actorId: actor.userId, action: 'invoice_finalize', entityType: 'Invoice', entityId: invoice.id, summary: `請求候補を正式化: ${ic.title}（${total}円・${number}）` });
   await writeConfidentialViewLog({ tenantId: actor.tenantId, actorId: actor.userId, entityType: 'Invoice', entityId: invoice.id, label: 'FINANCIAL_CONFIDENTIAL' as ConfidentialityLabel, purpose: '正式請求書の作成' });
   await emitGrowthEvent({
     tenantId: actor.tenantId,

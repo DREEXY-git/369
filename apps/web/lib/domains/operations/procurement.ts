@@ -21,6 +21,11 @@ export interface ConfirmPurchaseOrderResult {
 export async function confirmPurchaseOrder(actor: Actor, poId: string): Promise<ConfirmPurchaseOrderResult> {
   const po = await prisma.purchaseOrder.findFirst({ where: { id: poId, tenantId: actor.tenantId } });
   if (!po) return { found: false, requiresApproval: false };
+  // 発注確定は draft からのみ許可する（STATE2 C2）。ordered/received/cancelled/pending_approval を
+  // draft 前提の無条件 update で上書きすると、received 済み PO を ordered へ差し戻し、
+  // receivePurchaseOrder の status CAS（ordered→received）を再成立させて在庫を二重計上できてしまう。
+  // 確定ボタンは UI 上 draft のみ表示されるが、Server Action は直接 POST で到達可能なため server 側で弾く。
+  if (po.status !== 'draft') return { found: true, requiresApproval: po.status === 'pending_approval' };
   const amount = toNumber(po.totalAmount);
 
   const gate = await requireApprovalForDangerousAction({
@@ -35,10 +40,20 @@ export async function confirmPurchaseOrder(actor: Actor, poId: string): Promise<
     payloadAfter: { purchaseOrderId: poId },
   });
   if (gate.requiresApproval) {
-    await prisma.purchaseOrder.update({ where: { id: poId }, data: { status: 'pending_approval', approvalId: gate.approvalId } });
+    // draft → pending_approval を条件付き単一更新で claim（並行二重確定を1本に絞る）。差し戻しは起きない。
+    const claim = await prisma.purchaseOrder.updateMany({
+      where: { id: poId, tenantId: actor.tenantId, status: 'draft' },
+      data: { status: 'pending_approval', approvalId: gate.approvalId },
+    });
+    if (claim.count !== 1) return { found: true, requiresApproval: true };
     return { found: true, requiresApproval: true };
   }
-  await prisma.purchaseOrder.update({ where: { id: poId }, data: { status: 'ordered' } });
+  // draft → ordered を条件付き単一更新で claim（received 等からの差し戻し不可・並行は1本に収束）。
+  const orderedClaim = await prisma.purchaseOrder.updateMany({
+    where: { id: poId, tenantId: actor.tenantId, status: 'draft' },
+    data: { status: 'ordered' },
+  });
+  if (orderedClaim.count !== 1) return { found: true, requiresApproval: false };
   await emitGrowthEvent({
     tenantId: actor.tenantId,
     type: 'inventory.purchase_order.created',

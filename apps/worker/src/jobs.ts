@@ -1,4 +1,4 @@
-import { prisma, processOutboxBatch, recordUsageEventCore } from '@hokko/db';
+import { prisma, processOutboxBatch, recordUsageEventCore, transitionOverdueReceivables } from '@hokko/db';
 import { runWithAgentLifecycle } from './agent-lifecycle';
 import {
   generateMorningReport,
@@ -36,6 +36,7 @@ export const JOB_NAMES = [
   'CUSTOMER_INSIGHT_JOB',
   'OUTREACH_REPLY_CLASSIFICATION_JOB',
   'OUTBOX_DISPATCH_JOB',
+  'RECEIVABLE_OVERDUE_JOB',
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -95,6 +96,13 @@ export const JOB_HANDLERS: Record<JobName, Handler> = {
     );
     if (lc.skipped) return { skipped: lc.skipped };
     return lc.result;
+  },
+
+  // 期日超過の受取債権を open→overdue に自動遷移する（定期実行）。冪等・集合更新・監査つき。
+  // これが無いと期日超過の売掛が永久に open のままとなり、延滞集計・異常検知・督促対象に載らない。
+  RECEIVABLE_OVERDUE_JOB: async ({ tenantId }) => {
+    const res = await transitionOverdueReceivables({ tenantId });
+    return res;
   },
 
   ANOMALY_DETECTION_JOB: async ({ tenantId }) => {

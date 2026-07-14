@@ -134,6 +134,51 @@ export async function requestInvoiceExternalSendApprovalAction(formData: FormDat
   redirect(res.ok ? `/invoices/${id}?send_requested=1` : `/invoices/${id}?error=${res.reason}`);
 }
 
+/** 請求書VOID（無効化）を申請（承認後に無効化）。未入金の誤発行請求書のみ対象。承認必須・AI不可。
+ *  実際の無効化は /approvals の承認（decideApprovalAction の invoice_void 分岐）で単一 transaction で行う。 */
+export async function requestInvoiceVoidApprovalAction(formData: FormData) {
+  const user = await requireUser();
+  const id = String(formData.get('id') ?? '');
+  // VOID 申請は finance 機密の危険操作。invoice:update + finance:read を必須化し、AI は不可。
+  if (!hasPermission(user, 'invoice', 'update') || !hasPermission(user, 'finance', 'read') || user.isAi) {
+    redirect(`/invoices/${id}?denied=1`);
+  }
+  const inv = await prisma.invoice.findFirst({
+    where: { id, tenantId: user.tenantId },
+    select: { id: true, number: true, status: true, paidAmount: true },
+  });
+  if (!inv) redirect('/invoices');
+  // 未入金（paidAmount=0）かつ発行済み（DRAFT/VOID/PAID 以外）のみ VOID 申請可能。
+  if (toNumber(inv!.paidAmount) > 0 || inv!.status === 'DRAFT' || inv!.status === 'VOID' || inv!.status === 'PAID') {
+    redirect(`/invoices/${id}?error=not_voidable`);
+  }
+  // 既存の PENDING な VOID 申請があれば二重申請しない（冪等）。
+  const existing = await prisma.approvalRequest.findFirst({
+    where: { tenantId: user.tenantId, type: 'invoice_void', entityId: id, status: 'PENDING' },
+    select: { id: true },
+  });
+  if (existing) redirect(`/invoices/${id}?void_requested=1`);
+
+  await prisma.approvalRequest.create({
+    data: {
+      tenantId: user.tenantId,
+      type: 'invoice_void',
+      title: `請求書VOID承認: ${inv!.number}`,
+      summary: `未入金の請求書 ${inv!.number} を無効化（VOID）します。`,
+      entityType: 'Invoice',
+      entityId: id,
+      requestedById: user.userId,
+      assigneeRole: 'DEPARTMENT_MANAGER',
+      riskLevel: 'HIGH',
+      status: 'PENDING',
+    },
+  });
+  await writeAudit({ tenantId: user.tenantId, actorId: user.userId, action: 'update', entityType: 'Invoice', entityId: id, summary: `請求書 ${inv!.number} のVOID承認を申請` });
+  revalidatePath(`/invoices/${id}`);
+  revalidatePath('/approvals');
+  redirect(`/invoices/${id}?void_requested=1`);
+}
+
 /** 承認済み請求書を外部送信（→SENT）。業務ロジックは invoice-send.ts。二重実行防止は executeApprovedAction。 */
 export async function executeApprovedInvoiceExternalSendAction(formData: FormData) {
   const user = await requireUser();

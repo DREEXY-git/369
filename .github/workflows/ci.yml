@@ -231,16 +231,33 @@ jobs:
       - name: Install Playwright browser (chromium)
         run: pnpm --filter @hokko/web exec playwright install --with-deps chromium
 
-      - name: Run E2E (playwright)
-        run: pnpm --filter @hokko/web exec playwright test
-
-      # EMERGENCY Gate-0 R3（V83 P2-2・Codex #4965315275）: 会議 race の再発防止を固定 head の CI で証明する。
-      # 対象 spec を --repeat-each=5 --retries=0 で反復実行し、1回でも flaky なら失敗する（rerun 依存にしない）。
+      # EMERGENCY Gate-0 R4（V84・Codex #4966445912）: 会議 repeat Gate を full E2E より「前」に実行する。
+      # Playwright は各実行の開始時に既定 output dir（test-results）を掃除するため、repeat Gate を後段に置くと
+      # full E2E が test-results に書き出した証拠 PNG を消してから upload が走り、success artifact が 0 件になっていた
+      #（`if-no-files-found: ignore` のため silent green 化）。repeat Gate を先に走らせ、full E2E を「最後の」
+      # Playwright 実行にすることで、証拠 PNG を upload step まで確実に保全する（別 output dir 案の代替＝reorder 案）。
+      # なお R3（V83 P2-2・Codex #4965315275）の会議 race 再発防止 Gate（--repeat-each=5 --retries=0）は非弱体化で維持。
       - name: Meeting atomicity flake repeat gate (--repeat-each=5 --retries=0)
         run: pnpm --filter @hokko/web exec playwright test meeting_atomicity_evidence --repeat-each=5 --retries=0
 
-      # F2 診断（doc137/roadmap38）: 失敗時の html report + trace zip + screenshot を artifact 化。
-      # test-results/ に trace/screenshot、playwright-report/ に html が出力される（config で設定）。
+      - name: Run E2E (playwright)
+        run: pnpm --filter @hokko/web exec playwright test
+
+      # EMERGENCY Gate-0 R4（成功時の視覚 Evidence・責務=success 専用）: full E2E が最後の Playwright 実行のため
+      # test-results の証拠 PNG（3D オフィス desktop/mobile・AI社員 parity 等）は保全されている。
+      # if-no-files-found: error にして 0 PNG を stage3 failure にし、artifact 0 の silent green を防ぐ。
+      # 対象は seed の DEMO データのみ（実顧客 PII なし）。名前は run ID 付き・短 retention。
+      - name: Upload E2E evidence screenshots (success)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots-${{ github.run_id }}
+          path: apps/web/test-results/**/*.png
+          retention-days: 3
+          if-no-files-found: error
+
+      # F2 診断（失敗時の責務分離・doc137/roadmap38）: 失敗時のみ html report + trace zip + screenshot を
+      # 別 artifact として保全する（success 証拠 upload とは step を分離）。report は常に生成されるため warn。
       - name: Upload Playwright report and traces on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -250,19 +267,7 @@ jobs:
             apps/web/playwright-report
             apps/web/test-results
           retention-days: 7
-          if-no-files-found: ignore
-
-      # 証拠スクリーンショット（roadmap74 §9）: e2e が撮る 3D オフィス desktop/mobile の PNG を
-      # 成否に関わらず artifact 化する（失敗時は失敗診断画像も同梱される）。
-      # 対象は seed の DEMO データのみ（実顧客 PII なし）。名前は run ID 付き・短 retention。
-      - name: Upload E2E evidence screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-screenshots-${{ github.run_id }}
-          path: apps/web/test-results/**/*.png
-          retention-days: 3
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
   # EMERGENCY Gate-0 R2（V83 6.4）: 3 job（stage1 / stage2_integration / stage3_e2e）を全て要求する
   # 単一の安定 check。どれかが failure/cancelled/skipped なら release_gate は失敗する。

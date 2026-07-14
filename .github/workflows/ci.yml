@@ -7,11 +7,12 @@
 # AIコストなし・runtime解禁なし・secrets不要・本番非接触。
 name: CI
 
+# EMERGENCY Gate-0 R2（V83 6.4）: 同一 SHA の push run と pull_request run の二重実行を解消する。
+# branch（claude/**）の CI は pull_request イベントを唯一の正本にする（push は main のみ＝post-merge 正本）。
 on:
   push:
     branches:
       - main
-      - claude/**
   pull_request:
     branches:
       - main
@@ -52,6 +53,16 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+
+      # EMERGENCY Gate-0 R2（V83 6.4）: critical な integration/E2E に条件付き skip/only/fixme が無いことを source scan。
+      # 1件でもあれば失敗（silent skip による証拠消失を防ぐ）。"test-only wrapper" 等の hyphen 文字列は非該当。
+      - name: No critical skip/only/fixme in integration/E2E
+        run: |
+          if grep -rnE '(test|it|describe)\.(skip|only|fixme)\(' \
+              apps/web/tests/e2e packages/db/src/__tests__ apps/worker/src/__tests__; then
+            echo "::error::critical skip/only/fixme found in integration/E2E tests"; exit 1
+          fi
+          echo "OK: no critical skip/only/fixme"
 
   # Stage 2: 統合テスト（実 PostgreSQL + 実 Redis）。EMERGENCY Gate-0（V82）。
   # 従来 `*.itest.ts` は root vitest から除外され CI 未実行だった（Codex #4964735182 P2）。
@@ -127,15 +138,17 @@ jobs:
       - name: Seed demo data
         run: pnpm db:seed
 
-      # Codex #4964735182 P2: integration job が実際に収集する itest 件数をログへ出す（silent 0 実行の防止）。
-      - name: Report integration test file counts
+      # Codex #4964735182 P2: integration job が実際に収集する itest 件数をログへ出し、0 件収集は失敗にする。
+      - name: Report integration test file counts (fail on 0)
         run: |
-          echo "db integration (*.itest.ts):"
-          ls packages/db/src/__tests__/*.itest.ts | wc -l
+          dbc=$(ls packages/db/src/__tests__/*.itest.ts 2>/dev/null | wc -l)
+          wkc=$(ls apps/worker/src/__tests__/*.itest.ts 2>/dev/null | wc -l)
+          echo "db integration (*.itest.ts): $dbc"
           ls packages/db/src/__tests__/*.itest.ts
-          echo "worker integration (*.itest.ts):"
-          ls apps/worker/src/__tests__/*.itest.ts | wc -l
+          echo "worker integration (*.itest.ts): $wkc"
           ls apps/worker/src/__tests__/*.itest.ts
+          test "$dbc" -gt 0 || { echo "::error::0 db itest collected"; exit 1; }
+          test "$wkc" -gt 0 || { echo "::error::0 worker itest collected"; exit 1; }
 
       - name: DB integration tests (ephemeral Postgres)
         run: pnpm --filter @hokko/db test:integration
@@ -245,3 +258,19 @@ jobs:
           path: apps/web/test-results/**/*.png
           retention-days: 3
           if-no-files-found: ignore
+
+  # EMERGENCY Gate-0 R2（V83 6.4）: 3 job（stage1 / stage2_integration / stage3_e2e）を全て要求する
+  # 単一の安定 check。どれかが failure/cancelled/skipped なら release_gate は失敗する。
+  # branch protection で要求しやすい固定 check 名（release_gate）にする（必須化は人間の Repository Settings 操作＝人間 Gate）。
+  release_gate:
+    runs-on: ubuntu-latest
+    needs: [stage1, stage2_integration, stage3_e2e]
+    if: always()
+    steps:
+      - name: Require all gates to succeed
+        run: |
+          echo "stage1=${{ needs.stage1.result }} stage2_integration=${{ needs.stage2_integration.result }} stage3_e2e=${{ needs.stage3_e2e.result }}"
+          test "${{ needs.stage1.result }}" = "success" || { echo "::error::stage1 not success"; exit 1; }
+          test "${{ needs.stage2_integration.result }}" = "success" || { echo "::error::stage2_integration not success"; exit 1; }
+          test "${{ needs.stage3_e2e.result }}" = "success" || { echo "::error::stage3_e2e not success"; exit 1; }
+          echo "release_gate: all required jobs success"

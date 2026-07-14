@@ -26,7 +26,9 @@ async function mkReceivable(tenantId: string, tag: string, status: string, dueDa
 }
 
 async function cleanup() {
-  await prisma.auditLog.deleteMany({ where: { tenantId: { in: [T1, T2] } } });
+  // Codex #4965087729 P2 hygiene: tenant 全体ではなく本テストが作る action のみを削除する
+  //（合成 tenant T1/T2 だが、tenant 全体削除の型を残さない）。
+  await prisma.auditLog.deleteMany({ where: { tenantId: { in: [T1, T2] }, action: 'receivable_overdue_transition' } });
   await prisma.receivable.deleteMany({ where: { tenantId: { in: [T1, T2] } } });
   await prisma.invoice.deleteMany({ where: { tenantId: { in: [T1, T2] } } });
 }

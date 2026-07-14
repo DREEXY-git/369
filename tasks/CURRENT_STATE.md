@@ -9,7 +9,7 @@
 - **未解消 P1 の型**: ①業務状態＋必須監査が非原子（別 transaction）②非必須 event を commit 後 await（失敗で不整合・retry 修復不能）③`findFirst→create` の TOCTOU（並行二重 PENDING）④`FOR UPDATE` 後も lock 前 snapshot で判定⑤related ID の tenant 未検証⑥財務証跡（Payment）の物理削除⑦`safeAiInput` を Provider 呼出し後に実行⑧`*.itest.ts` が CI 未実行・test cleanup が tenant 全体 Audit 削除。
 - **修正順序（混在禁止・1 WIP=1固定SHA=1 Draft PR=1 Codex再監査）**: Gate-0 CI → Lane-FINANCE(#45→#46→#51→#53) → Lane-INVENTORY(#47→#48→#50) → Lane-CRM(#49) → Lane-MEETING(#52) → Lane-P4(#44) → 統合RC dry-run。#54 は append-only reversal schema 承認まで HOLD。
 - **人間 Gate（自動実行しない）**: schema/migration 適用・CI workflow の main 反映・main merge・Production deploy/rollback・Production DB/queue/worker・Secrets・実LLM・外部送信・課金。
-- **Gate-0（進行中）**: `claude/emergency-ci-gate-v82` — CI に `stage2_integration`（ephemeral PostgreSQL+Redis で `@hokko/db`／`@hokko/worker` の `test:integration` を実行・収集 itest 件数をログ出力）を追加。ローカル ephemeral 検証: db 26 files/163 tests・worker 9 tests green。Draft PR で提出、Codex 再監査待ち。
+- **Gate-0 R2（進行中・PR #55）**: `claude/emergency-ci-gate-v82`。R1 で `stage2_integration`（ephemeral PostgreSQL+Redis で `@hokko/db`／`@hokko/worker` の `test:integration`）追加。R2 で Codex #4965087729 対応=①会議E2E race 根治（upload 除外の詳細URL待機＋URL/DB/tenant/title 一致＋失敗経路の否定テスト）②critical silent skip 0（quote_collections_abc・ai_agents_parity×2 を fail-fast assert 化）③cleanup 衛生（wave2 itest を action 限定・worker config stale コメント修正・`TEST_HYGIENE_BACKLOG` 固定）④`release_gate` 集約 job／push:main のみで二重run解消／skip-only-fixme source scan／0件収集失敗化。ローカル: 対象E2E 16/16・db 26/163・worker 9 green、typecheck/lint(0 error)。**必須 check 化＝人間 Repository Settings（EVIDENCE_GAP）**。`CLAUDE_FIXED_V83_GATE0_R2` 提出後 freeze、`CODEX_PASS_V83_GATE0_R2` まで次 Lane に進まない。
 
 ## 状態管理ルール
 

@@ -2,6 +2,15 @@
 
 > 現在地の「1枚サマリー」。今の真実だけを書きます。長い経緯は `tasks/PROGRESS.md`、詳細監査は `docs/audit/` を参照。
 
+## 🔴 EMERGENCY FIX V82（最優先・現在の真実・2026-07-14）
+
+- **RELEASE HOLD**: `main=35b0640` を固定し **EMERGENCY_FIX**（rollback/revert/main merge/Production 変更なし）。「Wave 1/2 完了」「Production 安全」「脆弱性ゼロ」は**撤回**。
+- **背景**: Codex が PR #44〜#54 に `CHANGES_REQUIRED`／`POST_MERGE_INCIDENT` を記録。既知 P1 を含む `f2ef4d1` 系譜が Production/Ready で公開済み（人間スクショ確認）。正本: PR#53 comment `#4964987100`（CODEX_EMERGENCY_REMEDIATION_PLAN_V82）。
+- **未解消 P1 の型**: ①業務状態＋必須監査が非原子（別 transaction）②非必須 event を commit 後 await（失敗で不整合・retry 修復不能）③`findFirst→create` の TOCTOU（並行二重 PENDING）④`FOR UPDATE` 後も lock 前 snapshot で判定⑤related ID の tenant 未検証⑥財務証跡（Payment）の物理削除⑦`safeAiInput` を Provider 呼出し後に実行⑧`*.itest.ts` が CI 未実行・test cleanup が tenant 全体 Audit 削除。
+- **修正順序（混在禁止・1 WIP=1固定SHA=1 Draft PR=1 Codex再監査）**: Gate-0 CI → Lane-FINANCE(#45→#46→#51→#53) → Lane-INVENTORY(#47→#48→#50) → Lane-CRM(#49) → Lane-MEETING(#52) → Lane-P4(#44) → 統合RC dry-run。#54 は append-only reversal schema 承認まで HOLD。
+- **人間 Gate（自動実行しない）**: schema/migration 適用・CI workflow の main 反映・main merge・Production deploy/rollback・Production DB/queue/worker・Secrets・実LLM・外部送信・課金。
+- **Gate-0 R4（進行中・PR #55・唯一の最優先WIP）**: `claude/emergency-ci-gate-v82`。R1=`stage2_integration`（ephemeral PostgreSQL+Redis で `@hokko/db`／`@hokko/worker` の `test:integration`）追加。R2=会議E2E race 根治・critical silent skip 0・cleanup 衛生・`release_gate` 集約／push:main のみ／skip-only-fixme scan／0件収集失敗化。R3=共有 seed tenant の広域 cleanup 全廃（作成 id 限定・snapshot 差分）・会議 flake 反復 Gate（`--repeat-each=5 --retries=0`）を CI 本文で証明。**R4（Codex #4966445912 対応）=success artifact 0 件の根本修正**: 会議 repeat Gate を full E2E の「前」へ移動し full E2E を最後の Playwright 実行にして証拠 PNG（test-results）を保全、success 証拠 upload を `if-no-files-found: error`（0 PNG=stage3 failure）にし failure 診断 upload と責務分離。**`CODEX_PASS_V83_GATE0_R3` は存在しない**（採用しない）。**`release_gate` の branch protection required 化＝人間 Repository Settings（HUMAN_CONFIGURATION_REQUIRED / EVIDENCE_GAP）**。新 full SHA の PR-event CI で 4 jobs green＋artifact≥1 を確認後 `CLAUDE_FIXED_V84_GATE0_R4` 提出→freeze、Codex R4 PASS＋人間 main merge まで次 Lane（FINANCE #45）へ進まない。
+
 ## 状態管理ルール
 
 - このファイルは**現在地の1枚サマリー**であり、履歴の集積ではありません。

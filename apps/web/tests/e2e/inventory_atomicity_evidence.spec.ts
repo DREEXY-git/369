@@ -59,7 +59,9 @@ test('在庫破損防止: 同一資産への並列入庫を FOR UPDATE で直列
     expect(moveCount, '移動台帳は 6 件').toBe(6);
     expect(finalAsset!.quantity, 'quantity は入庫合計と一致（lost update なし）').toBe(6);
   } finally {
-    await prisma.auditLog.deleteMany({ where: { tenantId: t, entityType: 'InventoryMovement' } });
+    // cleanup は本テストが作成した行だけに限定（共有 seed tenant の entityType 全削除をしない・Codex #4965315275 P2-1）。
+    const moves = await prisma.inventoryMovement.findMany({ where: { assetId: asset.id }, select: { id: true } });
+    await prisma.auditLog.deleteMany({ where: { entityType: 'InventoryMovement', entityId: { in: moves.map((m) => m.id) } } });
     await prisma.inventoryMovement.deleteMany({ where: { assetId: asset.id } });
     await prisma.productAsset.deleteMany({ where: { id: asset.id } });
   }

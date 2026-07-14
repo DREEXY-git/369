@@ -77,7 +77,9 @@ test('二重引当防止: 在庫1の資産への並列リース予約を FOR UPD
     expect(lines.length, '作成された予約ラインは高々1件（二重引当なし）').toBeLessThanOrEqual(1);
     expect(totalReserved, '引当数量合計は在庫1以下').toBeLessThanOrEqual(1);
   } finally {
-    await prisma.auditLog.deleteMany({ where: { tenantId: t, entityType: 'InventoryMovement' } });
+    // cleanup は本テストが作成した行だけに限定（共有 seed tenant の entityType 全削除をしない・Codex #4965315275 P2-1）。
+    const moves = await prisma.inventoryMovement.findMany({ where: { assetId: asset.id }, select: { id: true } });
+    await prisma.auditLog.deleteMany({ where: { entityType: 'InventoryMovement', entityId: { in: moves.map((m) => m.id) } } });
     await prisma.inventoryMovement.deleteMany({ where: { assetId: asset.id } });
     await prisma.leaseReservationLine.deleteMany({ where: { reservationId: reservation.id } });
     await prisma.leaseReservation.deleteMany({ where: { id: reservation.id } });

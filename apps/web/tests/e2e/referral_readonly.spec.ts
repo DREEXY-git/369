@@ -19,6 +19,10 @@ let customerId = '';
 let foreignTenantId = '';
 let foreignCustomerId = '';
 const fixtureUserIds: string[] = [];
+// 実行前 snapshot（seed/兄弟の ReferralAnalysis DataAccessLog id）。cleanup は「実行中に新規作成された id」
+// だけを削除する（共有 seed tenant の entityType 全削除をしない・Codex #4965315275 P2-1）。本 spec は
+// ReferralAnalysis ログの唯一の生成元で worker 内直列実行のため、id notIn baseline = 本 spec 生成分。
+let baselineReferralLogIds: string[] = [];
 
 async function login(page: Page, email: string) {
   await page.goto('/login');
@@ -33,6 +37,10 @@ test.describe('C22 紹介・リファラル read-only（v7.2 Lane B）', () => {
     const ceo = await prisma.user.findFirst({ where: { email: 'ceo@ikezaki.local' }, select: { tenantId: true, passwordHash: true } });
     if (!ceo) throw new Error('seed ceo not found');
     tenantId = ceo.tenantId;
+    // 実行前 snapshot（このあと生成される ReferralAnalysis ログを cleanup で差分特定するため）。
+    baselineReferralLogIds = (
+      await prisma.dataAccessLog.findMany({ where: { tenantId, entityType: 'ReferralAnalysis' }, select: { id: true } })
+    ).map((r) => r.id);
     // 決定論 fixture: 成約実績あり・rank A・active・直近接触 → 必ず候補になる。
     const customer = await prisma.customer.create({
       data: {
@@ -77,7 +85,7 @@ test.describe('C22 紹介・リファラル read-only（v7.2 Lane B）', () => {
   test.afterAll(async () => {
     await prisma.dataAccessLog.deleteMany({ where: { tenantId, entityId: customerId } });
     // P2-3: 一覧閲覧の metadata-only 監査（entityType='ReferralAnalysis'）も片付ける。
-    await prisma.dataAccessLog.deleteMany({ where: { tenantId, entityType: 'ReferralAnalysis' } });
+    await prisma.dataAccessLog.deleteMany({ where: { tenantId, entityType: 'ReferralAnalysis', id: { notIn: baselineReferralLogIds } } });
     await prisma.deal.deleteMany({ where: { tenantId, customerId } });
     await prisma.customer.deleteMany({ where: { id: customerId } });
     if (foreignCustomerId) {
@@ -143,7 +151,7 @@ test.describe('C22 紹介・リファラル read-only（v7.2 Lane B）', () => {
   });
 
   test('AI ロール: 分析の閲覧は可・プレビュー link 非表示・直接 URL は拒否（DataAccessLog も作られない）', async ({ page }) => {
-    await prisma.dataAccessLog.deleteMany({ where: { tenantId, entityType: 'ReferralAnalysis' } });
+    await prisma.dataAccessLog.deleteMany({ where: { tenantId, entityType: 'ReferralAnalysis', id: { notIn: baselineReferralLogIds } } });
     await login(page, 'ai-sales@ikezaki.local');
     await page.goto('/growth/referral');
     await expect(page.getByTestId(`referral-candidate-${customerId}`)).toBeVisible(); // 閲覧分析は可
@@ -231,7 +239,7 @@ test.describe('C22 紹介・リファラル read-only（v7.2 Lane B）', () => {
 
   test('P2-3: 候補一覧の閲覧は metadata-only で監査される（名前・sentinel を含まない・件数と field のみ）', async ({ page }) => {
     // 監査の存在を確実にするため直前の ReferralAnalysis ログを消してから1回閲覧する。
-    await prisma.dataAccessLog.deleteMany({ where: { tenantId, entityType: 'ReferralAnalysis' } });
+    await prisma.dataAccessLog.deleteMany({ where: { tenantId, entityType: 'ReferralAnalysis', id: { notIn: baselineReferralLogIds } } });
     await login(page, 'ceo@ikezaki.local');
     await page.goto('/growth/referral');
     await expect(page.getByTestId(`referral-candidate-${customerId}`)).toBeVisible();

@@ -53,6 +53,16 @@ async function main() {
   );
   console.log(`   OUTBOX_DISPATCH_JOB を ${OUTBOX_INTERVAL_MS}ms 間隔で定期実行します。`);
 
+  // 受取債権の期日超過 → overdue 自動遷移を定期実行（既定 24h）。全テナント対象（tenantId: 'system'）。
+  // updateMany の条件付き集合更新のため冪等（重複実行しても二重遷移しない）。
+  const OVERDUE_INTERVAL_MS = Number(process.env.RECEIVABLE_OVERDUE_INTERVAL_MS || 24 * 60 * 60 * 1000);
+  await queue.add(
+    'RECEIVABLE_OVERDUE_JOB',
+    { tenantId: 'system' },
+    { repeat: { every: OVERDUE_INTERVAL_MS }, removeOnComplete: 50, removeOnFail: 50 },
+  );
+  console.log(`   RECEIVABLE_OVERDUE_JOB を ${OVERDUE_INTERVAL_MS}ms 間隔で定期実行します。`);
+
   // 開発時はデモジョブを投入して動作を確認
   if (process.env.NODE_ENV !== 'production') {
     const tenant = await prisma.tenant.findFirst();

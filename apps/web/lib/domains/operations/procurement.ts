@@ -52,10 +52,22 @@ export async function confirmPurchaseOrder(actor: Actor, poId: string): Promise<
   return { found: true, requiresApproval: false };
 }
 
-/** 入庫処理。各ラインの数量を ProductAsset へ入庫（InventoryMovement type=receive）。 */
+/** 入庫処理。各ラインの数量を ProductAsset へ入庫（InventoryMovement type=receive）。
+ *  二重入庫（在庫水増し）の根絶: status を `ordered → received` へ**条件付き単一更新でclaim**してから
+ *  入庫処理を行う。二重クリック / リトライ / 並行呼び出しは claim.count=0 となり入庫をスキップ（冪等）。
+ *  claim を勝ち取った1回だけが InventoryMovement を発行するため、同一 PO の再入庫で在庫が水増しされない。
+ *  （applyInventoryMovement 自体は PR#47 で行ロック＋単一transaction 済み＝各入庫は原子的。） */
 export async function receivePurchaseOrder(actor: Actor, poId: string): Promise<boolean> {
   const po = await prisma.purchaseOrder.findFirst({ where: { id: poId, tenantId: actor.tenantId }, include: { lines: true } });
   if (!po) return false;
+
+  // ordered のときのみ received へ遷移させる atomic claim。ここで勝者を1本に絞り、二重入庫を構造的に排除する。
+  const claim = await prisma.purchaseOrder.updateMany({
+    where: { id: poId, tenantId: actor.tenantId, status: 'ordered' },
+    data: { status: 'received', receivedAt: new Date() },
+  });
+  if (claim.count !== 1) return false; // 既に received / cancelled / 未確定（draft・承認待ち）→ no-op（二重入庫なし）。
+
   for (const l of po.lines) {
     if (l.assetId) {
       await applyInventoryMovement({
@@ -69,7 +81,7 @@ export async function receivePurchaseOrder(actor: Actor, poId: string): Promise<
     }
     await prisma.purchaseOrderLine.update({ where: { id: l.id }, data: { receivedQuantity: l.quantity } });
   }
-  await prisma.purchaseOrder.update({ where: { id: poId }, data: { status: 'received', receivedAt: new Date() } });
+  // status/receivedAt は上の claim で確定済み（重複更新しない）。
   await emitGrowthEvent({
     tenantId: actor.tenantId,
     type: 'inventory.purchase_order.received',

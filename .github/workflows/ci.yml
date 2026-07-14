@@ -234,6 +234,11 @@ jobs:
       - name: Run E2E (playwright)
         run: pnpm --filter @hokko/web exec playwright test
 
+      # EMERGENCY Gate-0 R3（V83 P2-2・Codex #4965315275）: 会議 race の再発防止を固定 head の CI で証明する。
+      # 対象 spec を --repeat-each=5 --retries=0 で反復実行し、1回でも flaky なら失敗する（rerun 依存にしない）。
+      - name: Meeting atomicity flake repeat gate (--repeat-each=5 --retries=0)
+        run: pnpm --filter @hokko/web exec playwright test meeting_atomicity_evidence --repeat-each=5 --retries=0
+
       # F2 診断（doc137/roadmap38）: 失敗時の html report + trace zip + screenshot を artifact 化。
       # test-results/ に trace/screenshot、playwright-report/ に html が出力される（config で設定）。
       - name: Upload Playwright report and traces on failure

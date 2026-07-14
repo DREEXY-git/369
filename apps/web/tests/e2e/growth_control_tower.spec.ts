@@ -153,26 +153,38 @@ test('担当者には成果金額が表示されず権限案内になる（redac
 test('Control Tower 閲覧の DataAccessLog は権限に応じて機密度が正しく分類される', async ({ page }) => {
   const ceo = await prisma.user.findFirst({ where: { email: 'ceo@ikezaki.local' }, select: { tenantId: true } });
   const tenantId = ceo!.tenantId;
+  // cleanup を作成 id 限定にするため、共有 seed tenant の entityType 全削除をやめ、閲覧前後の snapshot 差分で
+  // 各フェーズが新規作成したログだけを特定する（Codex #4965315275 P2-1）。mid-test の reset 削除も不要。
+  const gctLogIds = async () =>
+    new Set(
+      (await prisma.dataAccessLog.findMany({ where: { tenantId, entityType: 'GrowthControlTower' }, select: { id: true } })).map((r) => r.id),
+    );
+  const viewLogs = async () =>
+    prisma.dataAccessLog.findMany({ where: { tenantId, entityType: 'GrowthControlTower', purpose: 'growth_control_tower_view' } });
+  const createdIds: string[] = [];
 
   // 財務権限者（社長）の閲覧 → confidential_view / FINANCIAL_CONFIDENTIAL。
-  await prisma.dataAccessLog.deleteMany({ where: { tenantId, entityType: 'GrowthControlTower' } });
+  const before0 = await gctLogIds();
   await login(page, 'ceo@ikezaki.local');
   await page.goto('/growth/control-tower');
   await expect(page.getByRole('heading', { name: 'AI Growth Opportunity Control Tower' })).toBeVisible();
-  const ceoLogs = await prisma.dataAccessLog.findMany({ where: { tenantId, entityType: 'GrowthControlTower', purpose: 'growth_control_tower_view' } });
+  const ceoLogs = (await viewLogs()).filter((l) => !before0.has(l.id));
+  createdIds.push(...ceoLogs.map((l) => l.id));
   expect(ceoLogs.length).toBeGreaterThanOrEqual(1);
   expect(ceoLogs.every((l) => l.action === 'confidential_view'), '財務権限者の閲覧は confidential_view').toBe(true);
   expect(ceoLogs.every((l) => l.label === 'FINANCIAL_CONFIDENTIAL'), '財務機密に触れた閲覧は FINANCIAL_CONFIDENTIAL').toBe(true);
 
   // 財務非表示（担当者）の閲覧 → read / INTERNAL（機密には触れていない）。
-  await prisma.dataAccessLog.deleteMany({ where: { tenantId, entityType: 'GrowthControlTower' } });
+  const before1 = await gctLogIds();
   await login(page, 'sales@ikezaki.local');
   await page.goto('/growth/control-tower');
   await expect(page.getByRole('heading', { name: 'AI Growth Opportunity Control Tower' })).toBeVisible();
-  const staffLogs = await prisma.dataAccessLog.findMany({ where: { tenantId, entityType: 'GrowthControlTower', purpose: 'growth_control_tower_view' } });
+  const staffLogs = (await viewLogs()).filter((l) => !before1.has(l.id));
+  createdIds.push(...staffLogs.map((l) => l.id));
   expect(staffLogs.length).toBeGreaterThanOrEqual(1);
   expect(staffLogs.every((l) => l.action === 'read'), '財務非表示の閲覧は read').toBe(true);
   expect(staffLogs.every((l) => l.label === 'INTERNAL'), '機密に触れない閲覧は INTERNAL').toBe(true);
 
-  await prisma.dataAccessLog.deleteMany({ where: { tenantId, entityType: 'GrowthControlTower' } });
+  // cleanup は本テストが作成した id のみ。
+  await prisma.dataAccessLog.deleteMany({ where: { id: { in: createdIds } } });
 });

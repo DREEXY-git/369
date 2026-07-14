@@ -21,9 +21,6 @@ async function tenantId(): Promise<string> {
   return ceo!.tenantId;
 }
 
-let campaignId = '';
-let leadId = '';
-
 test.afterAll(async () => {
   await prisma.$disconnect();
 });
@@ -34,11 +31,9 @@ test('二重商談化防止: 同一リードへの並列「商談化」を FOR U
   const campaign = await prisma.leadSearchCampaign.create({
     data: { tenantId: t, name: `CONV-CAMP-${stamp}`, region: '札幌市', industry: '美容室' },
   });
-  campaignId = campaign.id;
   const lead = await prisma.localBusinessLead.create({
     data: { tenantId: t, campaignId: campaign.id, name: `CONV-LEAD-${stamp}`, industry: '美容室', stage: 'NEW', priority: 60 },
   });
-  leadId = lead.id;
   try {
     await login(page, 'ceo@ikezaki.local');
     await page.goto(`/leadmap/leads/${lead.id}`);

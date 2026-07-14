@@ -147,23 +147,31 @@ export async function addAssetToLeaseReservationAction(formData: FormData) {
   ]);
   if (!reservation || !asset) redirect('/inventory/lease?error=notfound');
 
-  // 既存の同一資産の予約ウィンドウを集めて重複（在庫超過）を判定
-  const existingLines = await prisma.leaseReservationLine.findMany({
-    where: { tenantId: user.tenantId, assetId },
-    include: { reservation: true },
+  // 二重引当（在庫超過）の防止: 重複判定と予約ラインの作成を単一 $transaction で行い、対象 ProductAsset を
+  // FOR UPDATE でロックしてから既存ラインを「ロック下で」再読取する。これにより同一資産への並行予約が
+  // 直列化され、後続 tx は先行 tx が commit した予約ラインも含めて重複判定できる（従来は check-then-act で
+  // 両方が同じ existing を読み、conflict=false のまま在庫を超過して二重引当できた）。
+  const { conflict, avail } = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "ProductAsset" WHERE id = ${assetId} AND "tenantId" = ${user.tenantId} FOR UPDATE`;
+    const existingLines = await tx.leaseReservationLine.findMany({
+      where: { tenantId: user.tenantId, assetId },
+      include: { reservation: true },
+    });
+    const existing: ReservationWindow[] = existingLines.map((l) => ({
+      assetId,
+      quantity: l.quantity,
+      startAt: l.reservation.startAt,
+      endAt: l.reservation.endAt,
+    }));
+    const window = { startAt: reservation!.startAt, endAt: reservation!.endAt };
+    const conflict = hasReservationConflict({ assetId, quantity, ...window }, existing, asset!.quantity);
+    const avail = availableQuantity(assetId, asset!.quantity, window, existing);
+    // 衝突時はラインを作らずに抜ける（ロックは commit で解放）。
+    if (!conflict) {
+      await tx.leaseReservationLine.create({ data: { tenantId: user.tenantId, reservationId, assetId, quantity } });
+    }
+    return { conflict, avail };
   });
-  const existing: ReservationWindow[] = existingLines.map((l) => ({
-    assetId,
-    quantity: l.quantity,
-    startAt: l.reservation.startAt,
-    endAt: l.reservation.endAt,
-  }));
-  const conflict = hasReservationConflict(
-    { assetId, quantity, startAt: reservation!.startAt, endAt: reservation!.endAt },
-    existing,
-    asset!.quantity,
-  );
-  const avail = availableQuantity(assetId, asset!.quantity, { startAt: reservation!.startAt, endAt: reservation!.endAt }, existing);
 
   await emitGrowthEvent({
     tenantId: user.tenantId,
@@ -177,10 +185,7 @@ export async function addAssetToLeaseReservationAction(formData: FormData) {
 
   if (conflict) redirect(`/inventory/lease?error=conflict&asset=${encodeURIComponent(asset!.name)}`);
 
-  await prisma.leaseReservationLine.create({
-    data: { tenantId: user.tenantId, reservationId, assetId, quantity },
-  });
-  // 在庫を予約状態へ（単一の真実源 InventoryMovement 経由）
+  // 在庫を予約状態へ（単一の真実源 InventoryMovement 経由）。ライン確定後に反映。
   await applyInventoryMovement({
     tenantId: user.tenantId,
     actorId: user.userId,

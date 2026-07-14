@@ -13,6 +13,8 @@
 | Codex verdict | issue comment `4968477754` | post-merge PASS |
 | governance drift | issue comment `4974007406` | open Evidence Gap |
 | observed vault main | `8eab43618c19e6b675f11ef7f43cf33c8cf87177` | stale / V74 generation |
+| app Codex Evidence source | PR #59 / `c2755e8ae867c9cb856a562bccffb22e6d82d511` | vault鏡像の入力commit |
+| vault Codex Evidence | PR #10 / `85ee8c629a3f4af0cedd4304bc088d1f3fbe919c` | Draft、main未統合 |
 
 ## 2. App-side Codex files
 
@@ -23,7 +25,7 @@
 | `docs/coordination/codex/V87_PHASE3_DEFECT_AND_GATE_MATRIX.md` | created in this branch |
 | `docs/coordination/codex/V87_SYNC_MANIFEST.md` | created in this branch |
 
-## 3. Vault-side target
+## 3. Vault-side mirror
 
 Vaultには次の固定情報だけを同期します。
 
@@ -36,17 +38,34 @@ Vaultには次の固定情報だけを同期します。
 
 一時的なローカルWIP、未push head、推測は同期しません。
 
-## 4. Current sync verdict
+| 項目 | 固定値 |
+|---|---|
+| repository | `DREEXY-git/369-vault` |
+| base | `main` / `8eab43618c19e6b675f11ef7f43cf33c8cf87177` |
+| branch | `codex/v87-governance-evidence` |
+| head | `85ee8c629a3f4af0cedd4304bc088d1f3fbe919c` |
+| Draft PR | [#10](https://github.com/DREEXY-git/369-vault/pull/10) |
 
-`APP_CODEX_DRAFT_PREPARED / VAULT_SYNC_PENDING`
+## 4. Content SHA-256
 
-このbranchだけではapp/vault同期完了を主張しません。vault clean branch/Draft PR作成後に次を追記します。
+| Artifact | SHA-256 |
+|---|---|
+| app `V87_PHASE_DIRECTOR_STATE.md` | `67f6d8e8dfb51da2f83fd618c4c9b1b80b747bd74a341ac88c9da43d2bff9730` |
+| vault `CodexV87PhaseDirectorState.md` | `f1e5d0ef51e9b44cb6921df333262e31911da1e71d3d838411ef21d124c37ecf` |
+| app `V87_PHASE3_DEFECT_AND_GATE_MATRIX.md` | `c6e5e5937b71823231b7920d5f5586ef450985b04447b189fec0315ab6bd6bc5` |
+| vault `V87Phase3DefectAndGateMatrix.md` | `ff17770b4ad0da1cf5611cbdc685a39d81b461b30bcfcacfa0332a7dd6eccd9f` |
 
-- vault branch/full SHA
-- app文書とvault noteのcontent SHA-256
-- wikilink到達性
-- orphan count
-- secret scan結果
-- commit graph/base
+## 5. Validation
+
+- vault wikilink: 0 missing
+- new vault note orphan: 0
+- secret pattern: 0
+- app/vault diff check: PASS
+- vault head is a child of fixed vault base
+- both PRs remain Draft and both mains remain unmodified
+
+## 6. Current sync verdict
+
+`APP_CODEX_DRAFT_OPEN / VAULT_DRAFT_OPEN / MAIN_SYNC_PENDING`
 
 app mainとvault mainへのmergeは人間Gateです。

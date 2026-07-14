@@ -309,64 +309,80 @@ export async function convertLeadToCustomerAction(formData: FormData) {
     redirect(`/leadmap/leads/${leadId}?denied=1`);
   }
 
-  const lead = await prisma.localBusinessLead.findFirst({ where: { id: leadId, tenantId: user.tenantId } });
-  if (!lead) redirect('/leadmap/leads');
-  // 既に連携済みなら顧客へ
-  if (lead.customerId) redirect(`/customers/${lead.customerId}`);
+  // 二重商談化（顧客・案件の重複作成）の防止 + 6書き込みの原子化:
+  //  - リード行を FOR UPDATE でロックし、同一リードへの同時「商談化」を直列化する。
+  //  - ロック後に customerId を再読取し、既に連携済みなら何も作らず既存顧客へ（冪等）。
+  //    従来は check-then-act（トランザクション外の if lead.customerId）だったため、並行 submit が
+  //    両方 null を読んで顧客・案件を二重作成し得た。
+  //  - 顧客・案件・タイムライン・リード更新・履歴・監査を単一 $transaction で確定（途中失敗で
+  //    「顧客だけ残る／リード未連携」等の不整合＝次回さらに重複を生む状態を作らない）。
+  const outcome = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "LocalBusinessLead" WHERE id = ${leadId} AND "tenantId" = ${user.tenantId} FOR UPDATE`;
+    const lead = await tx.localBusinessLead.findFirst({ where: { id: leadId, tenantId: user.tenantId } });
+    if (!lead) return { kind: 'not-found' as const };
+    if (lead.customerId) return { kind: 'already' as const, customerId: lead.customerId };
 
-  const customer = await prisma.customer.create({
-    data: {
-      tenantId: user.tenantId,
-      name: lead.name,
-      industry: lead.industry,
-      rank: 'B',
-      ownerId: lead.ownerId ?? user.userId,
-      phone: lead.phone,
-      email: lead.email,
-      address: lead.address,
-      website: lead.website,
-      status: 'prospect',
-      notes: `LeadMap（${lead.city ?? ''} ${lead.industry}）から商談化。優先度 ${lead.priority}。`,
-    },
+    const customer = await tx.customer.create({
+      data: {
+        tenantId: user.tenantId,
+        name: lead.name,
+        industry: lead.industry,
+        rank: 'B',
+        ownerId: lead.ownerId ?? user.userId,
+        phone: lead.phone,
+        email: lead.email,
+        address: lead.address,
+        website: lead.website,
+        status: 'prospect',
+        notes: `LeadMap（${lead.city ?? ''} ${lead.industry}）から商談化。優先度 ${lead.priority}。`,
+      },
+    });
+
+    const deal = await tx.deal.create({
+      data: {
+        tenantId: user.tenantId,
+        customerId: customer.id,
+        title: `${lead.name} 商談（新規開拓）`,
+        ownerId: lead.ownerId ?? user.userId,
+        stage: 'CONTACT',
+        probability: 30,
+        nextAction: '初回ヒアリングの日程調整',
+        source: 'leadmap',
+        leadId: lead.id,
+      },
+    });
+
+    await tx.customerTimelineEvent.create({
+      data: { tenantId: user.tenantId, customerId: customer.id, type: 'deal', title: 'LeadMapから商談化', body: `新規開拓リードを顧客・案件に連携しました。`, actorId: user.userId },
+    });
+    await tx.localBusinessLead.update({
+      where: { id: lead.id },
+      data: { customerId: customer.id, dealId: deal.id, stage: 'APPOINTMENT' },
+    });
+    await tx.leadPipelineStageHistory.create({
+      data: { tenantId: user.tenantId, leadId: lead.id, fromStage: lead.stage, toStage: 'APPOINTMENT', note: '商談化（CRM連携）', changedById: user.userId },
+    });
+    await tx.auditLog.create({
+      data: {
+        tenantId: user.tenantId,
+        actorId: user.userId ?? null,
+        actorType: 'user',
+        action: 'create',
+        entityType: 'Customer',
+        entityId: customer.id,
+        summary: `LeadMapリード「${lead.name}」を商談化（顧客・案件を作成）`,
+      },
+    });
+    return { kind: 'created' as const, customerId: customer.id };
   });
 
-  const deal = await prisma.deal.create({
-    data: {
-      tenantId: user.tenantId,
-      customerId: customer.id,
-      title: `${lead.name} 商談（新規開拓）`,
-      ownerId: lead.ownerId ?? user.userId,
-      stage: 'CONTACT',
-      probability: 30,
-      nextAction: '初回ヒアリングの日程調整',
-      source: 'leadmap',
-      leadId: lead.id,
-    },
-  });
-
-  await prisma.customerTimelineEvent.create({
-    data: { tenantId: user.tenantId, customerId: customer.id, type: 'deal', title: 'LeadMapから商談化', body: `新規開拓リードを顧客・案件に連携しました。`, actorId: user.userId },
-  });
-  await prisma.localBusinessLead.update({
-    where: { id: lead.id },
-    data: { customerId: customer.id, dealId: deal.id, stage: 'APPOINTMENT' },
-  });
-  await prisma.leadPipelineStageHistory.create({
-    data: { tenantId: user.tenantId, leadId: lead.id, fromStage: lead.stage, toStage: 'APPOINTMENT', note: '商談化（CRM連携）', changedById: user.userId },
-  });
-  await writeAudit({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    action: 'create',
-    entityType: 'Customer',
-    entityId: customer.id,
-    summary: `LeadMapリード「${lead.name}」を商談化（顧客・案件を作成）`,
-  });
-
-  revalidatePath(`/leadmap/leads/${lead.id}`);
-  revalidatePath('/customers');
-  revalidatePath('/deals');
-  redirect(`/customers/${customer.id}`);
+  if (outcome.kind === 'not-found') redirect('/leadmap/leads');
+  if (outcome.kind === 'created') {
+    revalidatePath(`/leadmap/leads/${leadId}`);
+    revalidatePath('/customers');
+    revalidatePath('/deals');
+  }
+  redirect(`/customers/${outcome.customerId}`);
 }
 
 /** キャンペーン内の未分析リードを一括でAI分析（LeadMapの半自動化の中核）。 */

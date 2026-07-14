@@ -2,6 +2,15 @@
 
 > 現在地の「1枚サマリー」。今の真実だけを書きます。長い経緯は `tasks/PROGRESS.md`、詳細監査は `docs/audit/` を参照。
 
+## 🔴 EMERGENCY FIX V82（最優先・現在の真実・2026-07-14）
+
+- **RELEASE HOLD**: `main=35b0640` を固定し **EMERGENCY_FIX**（rollback/revert/main merge/Production 変更なし）。「Wave 1/2 完了」「Production 安全」「脆弱性ゼロ」は**撤回**。
+- **背景**: Codex が PR #44〜#54 に `CHANGES_REQUIRED`／`POST_MERGE_INCIDENT` を記録。既知 P1 を含む `f2ef4d1` 系譜が Production/Ready で公開済み（人間スクショ確認）。正本: PR#53 comment `#4964987100`（CODEX_EMERGENCY_REMEDIATION_PLAN_V82）。
+- **未解消 P1 の型**: ①業務状態＋必須監査が非原子（別 transaction）②非必須 event を commit 後 await（失敗で不整合・retry 修復不能）③`findFirst→create` の TOCTOU（並行二重 PENDING）④`FOR UPDATE` 後も lock 前 snapshot で判定⑤related ID の tenant 未検証⑥財務証跡（Payment）の物理削除⑦`safeAiInput` を Provider 呼出し後に実行⑧`*.itest.ts` が CI 未実行・test cleanup が tenant 全体 Audit 削除。
+- **修正順序（混在禁止・1 WIP=1固定SHA=1 Draft PR=1 Codex再監査）**: Gate-0 CI → Lane-FINANCE(#45→#46→#51→#53) → Lane-INVENTORY(#47→#48→#50) → Lane-CRM(#49) → Lane-MEETING(#52) → Lane-P4(#44) → 統合RC dry-run。#54 は append-only reversal schema 承認まで HOLD。
+- **人間 Gate（自動実行しない）**: schema/migration 適用・CI workflow の main 反映・main merge・Production deploy/rollback・Production DB/queue/worker・Secrets・実LLM・外部送信・課金。
+- **Gate-0（進行中）**: `claude/emergency-ci-gate-v82` — CI に `stage2_integration`（ephemeral PostgreSQL+Redis で `@hokko/db`／`@hokko/worker` の `test:integration` を実行・収集 itest 件数をログ出力）を追加。ローカル ephemeral 検証: db 26 files/163 tests・worker 9 tests green。Draft PR で提出、Codex 再監査待ち。
+
 ## 状態管理ルール
 
 - このファイルは**現在地の1枚サマリー**であり、履歴の集積ではありません。

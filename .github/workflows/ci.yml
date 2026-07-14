@@ -53,6 +53,96 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+  # Stage 2: 統合テスト（実 PostgreSQL + 実 Redis）。EMERGENCY Gate-0（V82）。
+  # 従来 `*.itest.ts` は root vitest から除外され CI 未実行だった（Codex #4964735182 P2）。
+  # ここで ephemeral な PostgreSQL/Redis service を立て、実 DB/実 queue 統合テストを実際に走らせる。
+  # 本番 DB/queue 非接続・secrets 不要・外部送信なし・実 LLM なし。stage1 成功後にのみ実行する。
+  stage2_integration:
+    runs-on: ubuntu-latest
+    needs: stage1
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: postgresql://app:app@localhost:5432/ikezaki_os
+      DIRECT_URL: postgresql://app:app@localhost:5432/ikezaki_os
+      # worker 実 queue テストは loopback のみ許可（test 側で host を機械確認）。service redis を 6379 で待受。
+      REDIS_TEST_URL: redis://127.0.0.1:6379
+      LLM_PROVIDER: fake
+      MAIL_PROVIDER: log
+      EXTERNAL_SEND_ENABLED: 'false'
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: ikezaki_os
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d ikezaki_os"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # db スクリプトは dotenv -e ../../.env を読むため CI 専用 .env を生成する（すべて非機密・ephemeral）。
+      - name: Write CI .env (ephemeral, non-secret)
+        run: |
+          cat > .env <<'ENVEOF'
+          DATABASE_URL=postgresql://app:app@localhost:5432/ikezaki_os
+          DIRECT_URL=postgresql://app:app@localhost:5432/ikezaki_os
+          LLM_PROVIDER=fake
+          MAIL_PROVIDER=log
+          EXTERNAL_SEND_ENABLED=false
+          ENVEOF
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Apply migrations (ephemeral DB)
+        run: pnpm db:migrate:deploy
+
+      - name: Seed demo data
+        run: pnpm db:seed
+
+      # Codex #4964735182 P2: integration job が実際に収集する itest 件数をログへ出す（silent 0 実行の防止）。
+      - name: Report integration test file counts
+        run: |
+          echo "db integration (*.itest.ts):"
+          ls packages/db/src/__tests__/*.itest.ts | wc -l
+          ls packages/db/src/__tests__/*.itest.ts
+          echo "worker integration (*.itest.ts):"
+          ls apps/worker/src/__tests__/*.itest.ts | wc -l
+          ls apps/worker/src/__tests__/*.itest.ts
+
+      - name: DB integration tests (ephemeral Postgres)
+        run: pnpm --filter @hokko/db test:integration
+
+      - name: Worker real-queue integration tests (ephemeral Redis)
+        run: pnpm --filter @hokko/worker test:integration
+
   # Stage 3: E2E smoke（playwright）。稼働中 Web（pnpm start）＋ seed 済み ephemeral DB を前提とする。
   # 本番DB非接続・secrets不要・外部送信なし・実LLMなし。stage1 成功後にのみ実行する。
   stage3_e2e:

@@ -93,7 +93,9 @@ export default async function ReferralPage({
     await writeDataAccess({
       tenantId: user.tenantId,
       actorId: user.userId,
-      actorType: 'user',
+      // 候補一覧は AI ロールも閲覧できる（下書きプレビューのみ人間限定）。責任主体を固定 'user' にすると
+      // AI 閲覧が人間の記録として残る。既存作法（lib/security/policy.ts）に合わせ isAi で分岐する。
+      actorType: user.isAi ? 'ai_agent' : 'user',
       entityType: 'ReferralAnalysis',
       action: 'read',
       label: 'INTERNAL',
@@ -125,7 +127,9 @@ export default async function ReferralPage({
         await writeDataAccess({
           tenantId: user.tenantId,
           actorId: user.userId,
-          actorType: 'user',
+          // このプレビュー分岐は人間のみ到達（AI は上流で previewDenied）だが、責任主体の記録作法を
+          // 一覧側と統一しておく（将来 AI 到達経路が増えても誤帰属しない・fail-safe）。
+          actorType: user.isAi ? 'ai_agent' : 'user',
           entityType: 'Customer',
           entityId: hit.result.customerId,
           label: hit.label,

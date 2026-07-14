@@ -10,6 +10,7 @@ import { getEmailProvider, isExternalSendEnabled } from '@hokko/integrations';
 import { decideContentReviewCore, type BridgeDb } from '@/lib/content-review-bridge';
 import { decideSuggestionReviewCore, type SuggestionBridgeDb } from '@/lib/suggestion-review-bridge';
 import { decideQuoteIssueCore, type QuoteIssueBridgeDb } from '@/lib/quote-issue-bridge';
+import { decideInvoiceVoidCore, type InvoiceVoidBridgeDb } from '@/lib/invoice-void-bridge';
 import { decideAiGateCore, type GateBridgeDb } from '@/lib/ai-gate-bridge';
 
 // Phase 4 安全実行 Bridge（v7.0 Lane P4・roadmap82）: AI 承認ゲートへの人間の approve/reject。
@@ -142,6 +143,32 @@ export async function decideApprovalAction(formData: FormData) {
     }
     revalidatePath('/approvals');
     revalidatePath('/quotes');
+    if (r.outcome === 'forbidden') redirect('/approvals?denied=1');
+    redirect('/approvals'); // decided / already（冪等）とも一覧へ
+  }
+
+  // Wave2 請求書VOID承認: 承認で「未入金かつVOID可能」限定の Invoice→VOID＋Receivable void＋
+  // 入金予定 FinanceEvent ignored＋監査を単一 transaction で確定（承認後に入金が入っていたら count!==1 で全 rollback）。
+  // 却下は Invoice 不変。外部送信・課金・削除・実 LLM は行わない（社内の請求ステータス訂正のみ）。
+  if (approval.type === 'invoice_void') {
+    let r;
+    try {
+      r = await decideInvoiceVoidCore(prisma as unknown as InvoiceVoidBridgeDb, {
+        tenantId: user.tenantId,
+        approvalId,
+        entityId: approval.entityId,
+        decision: decision === 'approve' ? 'approve' : 'reject',
+        decidedById: user.userId,
+        note,
+        invoiceLabel: approval.title,
+        actorIsAi: user.isAi,
+      });
+    } catch {
+      revalidatePath('/approvals');
+      redirect('/approvals?error=invoice_void_transition');
+    }
+    revalidatePath('/approvals');
+    revalidatePath('/invoices');
     if (r.outcome === 'forbidden') redirect('/approvals?denied=1');
     redirect('/approvals'); // decided / already（冪等）とも一覧へ
   }

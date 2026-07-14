@@ -16,6 +16,7 @@ import {
   requestDunningSendApprovalAction,
   executeApprovedDunningSendAction,
   issueReceiptAction,
+  requestInvoiceVoidApprovalAction,
 } from '../actions';
 import { canIssueReceipt } from '@hokko/shared';
 import { getDunningContext } from '@/lib/domains/finance/dunning';
@@ -78,14 +79,20 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       ? invoice.customer.name
       : '';
 
-  // 送信承認の状態（承認済みかつ未実行なら送信実行可能）と関連 FinanceEvent。
-  const [sendApproval, financeEvents] = await Promise.all([
+  // 送信承認の状態（承認済みかつ未実行なら送信実行可能）と関連 FinanceEvent、VOID申請の有無。
+  const [sendApproval, financeEvents, voidPending] = await Promise.all([
     prisma.approvalRequest.findFirst({
       where: { tenantId: user.tenantId, entityType: 'Invoice', entityId: invoice.id, requestedForAction: 'invoice_send' },
       orderBy: { createdAt: 'desc' },
     }),
     prisma.financeEvent.findMany({ where: { tenantId: user.tenantId, sourceType: 'Invoice', sourceId: invoice.id }, orderBy: { createdAt: 'desc' }, take: 10 }),
+    prisma.approvalRequest.findFirst({
+      where: { tenantId: user.tenantId, type: 'invoice_void', entityId: invoice.id, status: 'PENDING' },
+      select: { id: true },
+    }),
   ]);
+  // 未入金（paidAmount=0）かつ発行済み（DRAFT/VOID/PAID 以外）のみ VOID 申請可能（承認必須・AI不可）。
+  const voidable = toNumber(invoice.paidAmount) === 0 && !['DRAFT', 'VOID', 'PAID'].includes(invoice.status);
   const canSend = canSendInvoice(invoice.status);
   const sendApproved = sendApproval?.status === 'APPROVED' && !sendApproval.executedAt;
   const sendPending = sendApproval?.status === 'PENDING';
@@ -187,6 +194,26 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               <p className="text-[11px] text-muted-foreground">送信は承認後のみ。送信前にPIIマスク。AIは直接送信しません。{invoice.status === 'DRAFT' ? '（先に発行してください）' : ''}</p>
             </CardContent>
           </Card>
+
+          {/* Wave2: 請求書VOID（無効化）。未入金の誤発行のみ・承認必須・AIは不可。実際の無効化は承認で実行。 */}
+          {canViewFinance && (invoice.status === 'VOID' || voidPending || voidable) ? (
+            <Card data-testid="invoice-void">
+              <CardHeader><CardTitle>請求書VOID（無効化・承認必須）</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {invoice.status === 'VOID' ? (
+                  <Badge tone="slate" data-testid="invoice-void-done">無効化済み（VOID）</Badge>
+                ) : voidPending ? (
+                  <Badge tone="amber" data-testid="invoice-void-pending">VOID承認待ち（/approvals）</Badge>
+                ) : (
+                  <form action={requestInvoiceVoidApprovalAction}>
+                    <input type="hidden" name="id" value={invoice.id} />
+                    <Button type="submit" variant="outline" className="w-full" disabled={!canUpdate} data-testid="invoice-void-request">誤発行のため無効化を申請</Button>
+                  </form>
+                )}
+                <p className="text-[11px] text-muted-foreground">未入金の誤発行請求書のみ対象。承認後に請求書を無効化し、売掛・入金予定を取り消します（AIは無効化しません）。</p>
+              </CardContent>
+            </Card>
+          ) : null}
 
           {invoice.status !== 'PAID' && invoice.status !== 'DRAFT' ? (
             <Card>

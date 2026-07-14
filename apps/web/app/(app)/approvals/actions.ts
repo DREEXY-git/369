@@ -5,7 +5,8 @@ import { redirect } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
 import { recordUsageEvent } from '@/lib/usage-events';
-import { isSuppressed } from '@hokko/shared';
+import { isSuppressed, invoiceStatusAfterPayment, receivableStatusAfterPayment } from '@hokko/shared';
+import { toNumber } from '@/lib/utils';
 import { getEmailProvider, isExternalSendEnabled } from '@hokko/integrations';
 import { decideContentReviewCore, type BridgeDb } from '@/lib/content-review-bridge';
 import { decideSuggestionReviewCore, type SuggestionBridgeDb } from '@/lib/suggestion-review-bridge';
@@ -171,6 +172,58 @@ export async function decideApprovalAction(formData: FormData) {
     revalidatePath('/invoices');
     if (r.outcome === 'forbidden') redirect('/approvals?denied=1');
     redirect('/approvals'); // decided / already（冪等）とも一覧へ
+  }
+
+  // Wave2 入金取消: 承認で対象 Payment を取り消し、paidAmount を残り Payment の SUM から再導出、
+  // Invoice/Receivable ステータスを巻き戻し、相殺の FinanceEvent（outflow・posted）と監査を単一 transaction で確定。
+  // recordInvoicePayment（#45）と同じ FOR UPDATE 直列化で、並行入金/取消の lost update を防ぐ。AI は不可。
+  if (approval.type === 'payment_reversal') {
+    const apprStatus = decision === 'approve' ? 'APPROVED' : 'REJECTED';
+    const invoiceId = approval.entityId;
+    const paymentId = (approval.payloadAfter as { paymentId?: string } | null)?.paymentId ?? '';
+    try {
+      await prisma.$transaction(async (tx) => {
+        const decided = await tx.approvalRequest.updateMany({
+          where: { id: approvalId, tenantId: user.tenantId, status: 'PENDING' },
+          data: { status: apprStatus, decidedById: user.userId, decidedAt: new Date(), decisionNote: note },
+        });
+        if (decided.count === 0) return; // 既に決定済み（冪等）。
+        if (decision === 'approve') {
+          // 対象 Invoice をロックし、並行入金/取消と直列化。
+          await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${invoiceId} AND "tenantId" = ${user.tenantId} FOR UPDATE`;
+          const pay = await tx.payment.findFirst({ where: { id: paymentId, tenantId: user.tenantId, invoiceId }, select: { amount: true } });
+          if (!pay) throw new Error('payment not reversible'); // 既に取消済み等 → 全 rollback。
+          const reversed = toNumber(pay.amount);
+          await tx.payment.delete({ where: { id: paymentId } });
+          const inv = await tx.invoice.findFirst({ where: { id: invoiceId, tenantId: user.tenantId }, select: { total: true, number: true } });
+          const total = toNumber(inv?.total ?? 0);
+          const agg = await tx.payment.aggregate({ where: { tenantId: user.tenantId, invoiceId }, _sum: { amount: true } });
+          const paidSum = toNumber(agg._sum.amount ?? 0);
+          // 全額取消（paidSum=0）は「発行済み未入金」= ISSUED に戻す（invoiceStatusAfterPayment は 0 を
+          // PARTIALLY_PAID と返すため特別扱い）。延滞表示は dueDate から派生するので状態は ISSUED でよい。
+          const nextStatus = paidSum === 0 ? 'ISSUED' : invoiceStatusAfterPayment(total, paidSum);
+          await tx.invoice.update({ where: { id: invoiceId }, data: { paidAmount: paidSum, status: nextStatus } });
+          await tx.receivable.updateMany({ where: { invoiceId, tenantId: user.tenantId }, data: { status: receivableStatusAfterPayment(total, paidSum) } });
+          // 相殺の実績（actual 資金は inflow−outflow で集計されるため outflow で純額を戻す）。
+          await tx.financeEvent.create({
+            data: { tenantId: user.tenantId, type: 'payment_reversal', sourceType: 'Invoice', sourceId: invoiceId, direction: 'outflow', amount: reversed, status: 'posted', occurredAt: new Date(), description: `入金取消: ${inv?.number ?? invoiceId}` },
+          });
+          await tx.auditLog.create({
+            data: { tenantId: user.tenantId, actorId: user.userId, actorType: 'user', action: 'payment_reversal', entityType: 'Invoice', entityId: invoiceId, summary: `入金 ${reversed.toLocaleString()}円 を取消（残額入金 ${paidSum.toLocaleString()}円）` },
+          });
+        } else {
+          await tx.auditLog.create({
+            data: { tenantId: user.tenantId, actorId: user.userId, actorType: 'user', action: 'reject', entityType: 'Invoice', entityId: invoiceId, summary: '入金取消の申請を却下' },
+          });
+        }
+      });
+    } catch {
+      revalidatePath('/approvals');
+      redirect('/approvals?error=payment_reversal_transition');
+    }
+    revalidatePath('/approvals');
+    revalidatePath('/invoices');
+    redirect('/approvals');
   }
 
   const status = decision === 'approve' ? 'APPROVED' : 'REJECTED';

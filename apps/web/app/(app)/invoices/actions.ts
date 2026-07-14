@@ -179,6 +179,50 @@ export async function requestInvoiceVoidApprovalAction(formData: FormData) {
   redirect(`/invoices/${id}?void_requested=1`);
 }
 
+/** 入金取消（誤記録の入金を巻き戻し）を申請（承認後に取消）。承認必須・AI不可。
+ *  実際の取消は /approvals の承認（decideApprovalAction の payment_reversal 分岐）で単一 transaction で行う。 */
+export async function requestPaymentReversalApprovalAction(formData: FormData) {
+  const user = await requireUser();
+  const invoiceId = String(formData.get('id') ?? '');
+  const paymentId = String(formData.get('paymentId') ?? '');
+  // 入金取消申請は finance 機密の危険操作。invoice:update + finance:read を必須化し、AI は不可。
+  if (!hasPermission(user, 'invoice', 'update') || !hasPermission(user, 'finance', 'read') || user.isAi) {
+    redirect(`/invoices/${invoiceId}?denied=1`);
+  }
+  const payment = await prisma.payment.findFirst({
+    where: { id: paymentId, tenantId: user.tenantId, invoiceId },
+    select: { id: true, amount: true },
+  });
+  if (!payment) redirect(`/invoices/${invoiceId}?error=payment_notfound`);
+  const inv = await prisma.invoice.findFirst({ where: { id: invoiceId, tenantId: user.tenantId }, select: { number: true } });
+  // 同一入金への PENDING 取消申請があれば二重申請しない（冪等）。
+  const existing = await prisma.approvalRequest.findFirst({
+    where: { tenantId: user.tenantId, type: 'payment_reversal', entityId: invoiceId, status: 'PENDING', payloadAfter: { path: ['paymentId'], equals: paymentId } },
+    select: { id: true },
+  });
+  if (existing) redirect(`/invoices/${invoiceId}?reversal_requested=1`);
+
+  await prisma.approvalRequest.create({
+    data: {
+      tenantId: user.tenantId,
+      type: 'payment_reversal',
+      title: `入金取消承認: ${inv?.number ?? invoiceId}（${toNumber(payment!.amount).toLocaleString()}円）`,
+      summary: `誤記録の入金 ${toNumber(payment!.amount).toLocaleString()}円 を取り消します。`,
+      entityType: 'Invoice',
+      entityId: invoiceId,
+      requestedById: user.userId,
+      assigneeRole: 'DEPARTMENT_MANAGER',
+      riskLevel: 'HIGH',
+      status: 'PENDING',
+      payloadAfter: { paymentId },
+    },
+  });
+  await writeAudit({ tenantId: user.tenantId, actorId: user.userId, action: 'update', entityType: 'Invoice', entityId: invoiceId, summary: `入金 ${toNumber(payment!.amount).toLocaleString()}円 の取消承認を申請` });
+  revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath('/approvals');
+  redirect(`/invoices/${invoiceId}?reversal_requested=1`);
+}
+
 /** 承認済み請求書を外部送信（→SENT）。業務ロジックは invoice-send.ts。二重実行防止は executeApprovedAction。 */
 export async function executeApprovedInvoiceExternalSendAction(formData: FormData) {
   const user = await requireUser();

@@ -22,6 +22,15 @@ export interface RecordPaymentOptions {
   actorIsAi?: boolean;
 }
 
+/** 入金記録 tx を業務理由（VOID/DRAFT 検出など）で中止する内部エラー。
+ *  throw で $transaction 全体を rollback し、呼び出し側で RecordPaymentResult へ変換する。 */
+class PaymentAbort extends Error {
+  constructor(public readonly reason: string) {
+    super(reason);
+    this.name = 'PaymentAbort';
+  }
+}
+
 /** 正式 Invoice に入金を記録し、Invoice / Receivable / FinanceEvent を連動させる。
  *  堅牢化（P3-Q2C hardening 踏襲）:
  *   - AI は財務実績の確定を持たない → DB 接触前に一律拒否（二重防御）。
@@ -50,46 +59,68 @@ export async function recordInvoicePayment(
 
   const total = toNumber(inv.total);
 
-  const { fullyPaid, paymentId } = await prisma.$transaction(async (tx) => {
-    // 並列/二重入金の直列化: 対象 Invoice 行を FOR UPDATE でロックする。これにより同一請求への
-    // 同時 recordInvoicePayment が直列化され、後続 tx は先行 tx の commit 後の Payment を SUM に含められる
-    // （READ COMMITTED では未コミット insert が見えず SUM だけでは lost update を防げないため）。
-    await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${invoiceId} AND "tenantId" = ${actor.tenantId} FOR UPDATE`;
-    const payment = await tx.payment.create({ data: { tenantId: actor.tenantId, invoiceId, amount, method } });
-    // paidAmount は Payment 実体の合計から再導出（この tx で作成した分＋先行 commit 分を含む・lost update 防止）。
-    const agg = await tx.payment.aggregate({ where: { tenantId: actor.tenantId, invoiceId }, _sum: { amount: true } });
-    const paidSum = toNumber(agg._sum.amount ?? 0);
-    const status = invoiceStatusAfterPayment(total, paidSum);
-    const paidFull = status === 'PAID';
+  let txResult: { fullyPaid: boolean; paymentId: string };
+  try {
+    txResult = await prisma.$transaction(async (tx) => {
+      // 並列/二重入金の直列化 + ロック後の再読込（Codex STATE2 C1 対応）:
+      // 対象 Invoice 行を FOR UPDATE でロックし、同一 tx 内で「現在の」status を再取得する。これにより
+      //  (a) 同時 recordInvoicePayment が直列化され後続 tx が先行 commit の Payment を SUM に含められる、
+      //  (b) findFirst（ロック前 snapshot・L44）と FOR UPDATE 取得の間に承認・実行された VOID/DRAFT を
+      //      検出できる。ロック前 snapshot だけで判断すると、並行 VOID 承認済みの請求書を入金で PAID に
+      //      復活させ、幻の売掛・入金実績・成長イベントを生む（READ COMMITTED では防げない）。
+      const locked = await tx.$queryRaw<Array<{ status: string }>>`
+        SELECT status FROM "Invoice" WHERE id = ${invoiceId} AND "tenantId" = ${actor.tenantId} FOR UPDATE`;
+      const current = locked[0];
+      if (!current) throw new PaymentAbort('not-found');
+      if (current.status === 'VOID' || current.status === 'DRAFT') throw new PaymentAbort('not-payable');
 
-    await tx.invoice.update({ where: { id: invoiceId }, data: { paidAmount: paidSum, status } });
-    await tx.receivable.updateMany({ where: { invoiceId, tenantId: actor.tenantId }, data: { status: receivableStatusAfterPayment(total, paidSum) } });
+      const payment = await tx.payment.create({ data: { tenantId: actor.tenantId, invoiceId, amount, method } });
+      // paidAmount は Payment 実体の合計から再導出（この tx で作成した分＋先行 commit 分を含む・lost update 防止）。
+      const agg = await tx.payment.aggregate({ where: { tenantId: actor.tenantId, invoiceId }, _sum: { amount: true } });
+      const paidSum = toNumber(agg._sum.amount ?? 0);
+      const status = invoiceStatusAfterPayment(total, paidSum);
+      const paidFull = status === 'PAID';
 
-    // 入金実績（FinanceEvent posted = actual）。
-    await tx.financeEvent.create({
-      data: { tenantId: actor.tenantId, type: 'payment_received', sourceType: 'Invoice', sourceId: invoiceId, direction: 'inflow', amount, status: 'posted', occurredAt: new Date(), description: `入金: ${inv.number}` },
-    });
-    // 全額入金なら、関連する入金予定（payment_expected/cashflow_expected）を posted（実績化）に更新。
-    if (paidFull) {
-      await tx.financeEvent.updateMany({
-        where: { tenantId: actor.tenantId, sourceId: invoiceId, type: { in: ['payment_expected', 'cashflow_expected'] }, direction: 'inflow', status: { not: 'posted' } },
-        data: { status: 'posted' },
+      // 多層防御: 条件付き更新で VOID/DRAFT を最終ガード（ロック保持中のため通常は count===1。
+      // 万一 payable でなくなっていれば count!==1 で throw し Payment ごと全 rollback）。
+      const upd = await tx.invoice.updateMany({
+        where: { id: invoiceId, tenantId: actor.tenantId, status: { notIn: ['VOID', 'DRAFT'] } },
+        data: { paidAmount: paidSum, status },
       });
-    }
+      if (upd.count !== 1) throw new PaymentAbort('not-payable');
+      await tx.receivable.updateMany({ where: { invoiceId, tenantId: actor.tenantId }, data: { status: receivableStatusAfterPayment(total, paidSum) } });
 
-    await tx.auditLog.create({
-      data: {
-        tenantId: actor.tenantId,
-        actorId: actor.userId ?? null,
-        actorType: 'user',
-        action: 'payment_record',
-        entityType: 'Invoice',
-        entityId: invoiceId,
-        summary: `入金記録 ${amount.toLocaleString()}円（${paidFull ? '全額入金' : '一部入金'}）`,
-      },
+      // 入金実績（FinanceEvent posted = actual）。
+      await tx.financeEvent.create({
+        data: { tenantId: actor.tenantId, type: 'payment_received', sourceType: 'Invoice', sourceId: invoiceId, direction: 'inflow', amount, status: 'posted', occurredAt: new Date(), description: `入金: ${inv.number}` },
+      });
+      // 全額入金なら、関連する入金予定（payment_expected/cashflow_expected）を posted（実績化）に更新。
+      if (paidFull) {
+        await tx.financeEvent.updateMany({
+          where: { tenantId: actor.tenantId, sourceId: invoiceId, type: { in: ['payment_expected', 'cashflow_expected'] }, direction: 'inflow', status: { not: 'posted' } },
+          data: { status: 'posted' },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          tenantId: actor.tenantId,
+          actorId: actor.userId ?? null,
+          actorType: 'user',
+          action: 'payment_record',
+          entityType: 'Invoice',
+          entityId: invoiceId,
+          summary: `入金記録 ${amount.toLocaleString()}円（${paidFull ? '全額入金' : '一部入金'}）`,
+        },
+      });
+      return { fullyPaid: paidFull, paymentId: payment.id };
     });
-    return { paid: paidSum, fullyPaid: paidFull, paymentId: payment.id };
-  });
+  } catch (e) {
+    // 業務理由の中止（VOID/DRAFT 検出・対象消失）は rollback 済みで結果へ変換。それ以外は再 throw。
+    if (e instanceof PaymentAbort) return { ok: false, reason: e.reason };
+    throw e;
+  }
+  const { fullyPaid, paymentId } = txResult;
 
   await emitGrowthEvent({
     tenantId: actor.tenantId,

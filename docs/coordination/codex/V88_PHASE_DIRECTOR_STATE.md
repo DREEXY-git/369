@@ -27,26 +27,27 @@ Phase 3判定: **HOLD**
 
 | Lane | PR / fixed SHA | 状態 | 次の受入条件 |
 |---|---|---|---|
-| P3-FIN-1 Payment/VOID | PR #57 / `71d41870ed6ff0241915534e2cd43cf43e30e1c4` | `CI_FAILED / CHANGES_REQUIRED` | same-requestだけを収束し、request未指定を含む異なる6並列入金を6 Paymentとして保持。run `29369863839`を置換するexact-head green Evidence |
+| P3-FIN-1 Payment/VOID | PR #57 / `652c7536f1bee4373f85f30e0efbcdfd93df2b79` | `CI_VERIFIED / CHANGES_REQUIRED` | methodを含む完全payload照合、P2002競合後の再読込検証、post-commit副次処理の再開/reconcile Evidence |
 | P3-INV confirm | PR #58 / `d1688cc8b6109bbd00a534df24a756d6d49df425` | `CHANGES_REQUIRED` | active PENDING Approval=1、孤児0、approvalId/status CAS、stale approval拒否 |
 | Payment Reversal | PR #54 / `367025fc0b843a3fd8e78bb012e09b5411d398a1` | `SCHEMA HOLD` | append-only reversal/status/ledger設計と人間承認 |
 | Governance app | PR #59 | `EVIDENCE_DRAFT` | v8.8 fixed HOLD追随後のexact-head CI、Codex再固定、人間main merge |
 | Governance vault | vault PR #10 | `EVIDENCE_DRAFT` | appと同じfixed HOLD、hash/link/orphan/secret/graph検査、人間main merge |
 | Claude正本 | main `tasks/CURRENT_STATE.md` / `tasks/PROGRESS.md` | `ROADMAP_DRIFT` | Claude所有laneでGate-0後の現在地へ更新 |
 
-## 3. PR #57確証済み回帰
+## 3. PR #57 latest fixed HOLD
 
-- fixed head: `71d41870ed6ff0241915534e2cd43cf43e30e1c4`
-- exact-head run: `29369863839`
-- `stage1`: success
-- `stage2_integration`: success
-- `stage3_e2e`: failure、`239 passed / 1 failed`
-- `release_gate`: failure
-- failure: `payment_reconcile_evidence.spec.ts:84`、異なる6並列入金で`Expected 6 / Received 1`
-- failure artifact: ID `8325779897`、digest `sha256:b8bac0e37572e5e474de4ba28f7f6c74669e27e010c5e76878a2a895429567d2`
-- verdict: [CODEX_CHANGE_REQUEST_V88_P3_FIN1_CI_REGRESSION](https://github.com/DREEXY-git/369/pull/57#issuecomment-4978049489)
+- fixed head: `652c7536f1bee4373f85f30e0efbcdfd93df2b79`
+- exact-head run: `29399066453`
+- `stage1`: success、unit `568`、typecheck/lint/safety、critical skip/only/fixme 0
+- `stage2_integration`: success、DB `163`、worker real-queue `9`
+- `stage3_e2e`: success、meeting repeat gate `10 passed`、full E2E `240 passed`
+- `release_gate`: success
+- artifact: ID `8336486268`、38 PNG、`3,193,154` bytes、digest `sha256:969d68556ef6849a18aa8a39a70e779aada60c900a3e227eb9d0228bf6bb5b2f`
+- Vercel: exact commit status success、deployment `DiraHvQgBS1wGivQrdfH9eMceMCu`
+- artifact visual: 38 PNGを独立確認し、空画面・重大overlap・主要mobile/desktop blockerなし
+- verdict: [CODEX_CHANGE_REQUEST_V88_P3_FIN1_R2](https://github.com/DREEXY-git/369/pull/57#issuecomment-4978379827)
 
-新規same-key idempotency specがgreenでも、異なる業務requestを1 Paymentへ誤収束する回帰が残るため、旧head `aca8b6b...`のCIや判定を流用しません。
+CI回帰の修復とdistinct-key 6並列のgreenは受け入れます。ただし、同じkeyでmethodだけを変えた逐次requestがidempotent successになること、異payloadの並行競合で任意のP2002を再照合せずsuccessへ変換すること、post-commit fault後の副次処理再開/reconcileが未証明であるため、`CODEX_PASS`は保留します。review threadの再確認はGitHub GraphQL rate limit解除待ちです。
 
 ## 4. Phase順とExit Gate
 

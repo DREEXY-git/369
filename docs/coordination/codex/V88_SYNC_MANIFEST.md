@@ -18,6 +18,7 @@
 | PR #57 Codex verdict | issue comment `4978379827` | v8.8 R2 CHANGE_REQUEST |
 | PR #58 fixed head | `d1688cc8b6109bbd00a534df24a756d6d49df425` | CHANGES_REQUIRED |
 | P3-INV movement/event verdict | issue comment `4978770056` | fixed-main CHANGE_REQUEST |
+| P3-CRM Lead Convert verdict | issue comment `4964622641` | fixed-main CHANGE_REQUEST; action blob unchanged from PR #49 head |
 | P3-Meeting classification verdict | issue comment `4978992477` | fixed-main CHANGE_REQUEST |
 | governance drift | issue comment `4974007406` | open Evidence Gap |
 | observed vault main | `8eab43618c19e6b675f11ef7f43cf33c8cf87177` | stale / main未追随 |

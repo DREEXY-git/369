@@ -19,7 +19,7 @@
 | P3-INV lease | main `7e50a04...` | `CHANGES_REQUIRED` | lock後再読込、Movement原子性、dispatch/return CAS | [CR](https://github.com/DREEXY-git/369/pull/55#issuecomment-4970495097) |
 | P3-INV movement/event | main `7e50a04...` | `CHANGES_REQUIRED` | Movement作成後のDomainEventがpost-commitで、event失敗retry時のMovement重複、1:1 lineage欠落 | [CR](https://github.com/DREEXY-git/369/pull/55#issuecomment-4978770056) |
 | P3-CRM Outreach | main `7e50a04...` | `CHANGES_REQUIRED` | permission/human-only、Approval snapshot/CAS、send一意性 | [CR](https://github.com/DREEXY-git/369/pull/55#issuecomment-4970551729) |
-| P3-CRM Lead Convert | main `7e50a04...` | `READ_ONLY AUDITED` | mainでtransaction/tenant/parallel idempotencyを静的確認。新release blocker投稿なし | Codex read-only監査 |
+| P3-CRM Lead Convert | main `7e50a04...` | `CHANGES_REQUIRED` | AI主体がCustomer/Deal等を実確定できる一方でAuditは`actorType=user`固定。既存linkのtenant/整合性検証と、未変換leadへの実並行barrier/fault rollback証拠も欠落 | [CR](https://github.com/DREEXY-git/369/pull/49#issuecomment-4964622641) |
 | P3-Meeting | main `7e50a04...` | `CHANGES_REQUIRED` | raw transcript provider前guard、post-commit retry重複、未知type/typoの`INTERNAL` fail-open | [atomicity CR](https://github.com/DREEXY-git/369/pull/52#issuecomment-4964764958) / [classification CR](https://github.com/DREEXY-git/369/pull/55#issuecomment-4978992477) |
 | Governance | PR #59 / vault PR #10 | `EVIDENCE_DRAFT / HOLD` | v8.8 fixed HOLD追随、Claude tasks drift、両main未統合 | [Governance CR](https://github.com/DREEXY-git/369/pull/55#issuecomment-4974007406) |
 
@@ -33,7 +33,7 @@
 - 異invoice/tenantの並行P2002競合は競合Paymentをtenant-scoped再読込し、完全fingerprint一致時だけidempotent successにする
 - actual post-commit fault後のretry/reconcileでcore重複0かつGrowth/DomainEvent Evidence欠落0を証明する
 - 実PostgreSQL barrier test、retries=0、複数回安定を新しいfixed headで示す
-- review threadのblocking 0確認はGitHub GraphQL rate limit解除後に再実施する
+- review threadのblocking 0を2026-07-15のlive GitHub Scoutで再確認
 
 ## 3. 共通受入条件
 

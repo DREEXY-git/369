@@ -17,10 +17,10 @@
 | P3-INV confirm | PR #58 `d1688cc...` | `CHANGES_REQUIRED` | high-value Approval一意性、孤児0、stale approval CAS | [CR](https://github.com/DREEXY-git/369/pull/58#issuecomment-4969837501) |
 | P3-INV receive | main `7e50a04...` | `CHANGES_REQUIRED` | multi-line transaction、deterministic lock、retry | [CR](https://github.com/DREEXY-git/369/pull/55#issuecomment-4970434505) |
 | P3-INV lease | main `7e50a04...` | `CHANGES_REQUIRED` | lock後再読込、Movement原子性、dispatch/return CAS | [CR](https://github.com/DREEXY-git/369/pull/55#issuecomment-4970495097) |
-| P3-INV movement/event | main `7e50a04...` | `READ_ONLY QUEUED` | Movement/Audit/EventまたはOutbox 1:1、post-commit retry、誤dedupe | source/test oracle監査待ち |
+| P3-INV movement/event | main `7e50a04...` | `CHANGES_REQUIRED` | Movement作成後のDomainEventがpost-commitで、event失敗retry時のMovement重複、1:1 lineage欠落 | [CR](https://github.com/DREEXY-git/369/pull/55#issuecomment-4978770056) |
 | P3-CRM Outreach | main `7e50a04...` | `CHANGES_REQUIRED` | permission/human-only、Approval snapshot/CAS、send一意性 | [CR](https://github.com/DREEXY-git/369/pull/55#issuecomment-4970551729) |
 | P3-CRM Lead Convert | main `7e50a04...` | `READ_ONLY AUDITED` | mainでtransaction/tenant/parallel idempotencyを静的確認。新release blocker投稿なし | Codex read-only監査 |
-| P3-Meeting | main `7e50a04...` | `CHANGES_REQUIRED` | raw transcript provider前guard、post-commit retry重複 | [CR](https://github.com/DREEXY-git/369/pull/52#issuecomment-4964764958) |
+| P3-Meeting | main `7e50a04...` | `CHANGES_REQUIRED` | raw transcript provider前guard、post-commit retry重複、未知type/typoの`INTERNAL` fail-open | [atomicity CR](https://github.com/DREEXY-git/369/pull/52#issuecomment-4964764958) / [classification CR](https://github.com/DREEXY-git/369/pull/55#issuecomment-4978992477) |
 | Governance | PR #59 / vault PR #10 | `EVIDENCE_DRAFT / HOLD` | v8.8 fixed HOLD追随、Claude tasks drift、両main未統合 | [Governance CR](https://github.com/DREEXY-git/369/pull/55#issuecomment-4974007406) |
 
 ## 2. PR #57のlatest fixed HOLD

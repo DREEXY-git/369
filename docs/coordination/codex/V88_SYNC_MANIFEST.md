@@ -22,8 +22,8 @@
 | P3-Meeting classification verdict | issue comment `4978992477` | fixed-main CHANGE_REQUEST |
 | governance drift | issue comment `4974007406` | open Evidence Gap |
 | observed vault main | `8eab43618c19e6b675f11ef7f43cf33c8cf87177` | stale / main未追随 |
-| app v8.8 Evidence source | PR #59 / `2aea6a28c7b6e0e499308072452e8cc6170fa59c` | vault鏡像の入力commit |
-| vault v8.8 Evidence | PR #10 / `d9173f5cd5fa79e48cca433af170b9a4e38be2c2` | Draft / main未統合 |
+| app v8.8 Evidence source | PR #59 / `95c4f93786fa4b98650f3fd2bc0a25cda9690c42` | vault鏡像の入力commit |
+| vault v8.8 Evidence | PR #10 / `416e5569b3626f9046a5ddb2aea570d1f7fb70bb` | Draft / main未統合 |
 
 ## 2. App-side Codex files
 
@@ -45,16 +45,16 @@
 | base | `main` / `8eab43618c19e6b675f11ef7f43cf33c8cf87177` |
 | branch | `codex/v87-governance-evidence` |
 | Draft PR | [#10](https://github.com/DREEXY-git/369-vault/pull/10) |
-| v8.8 head | `d9173f5cd5fa79e48cca433af170b9a4e38be2c2` |
+| v8.8 head | `416e5569b3626f9046a5ddb2aea570d1f7fb70bb` |
 
 ## 4. Content SHA-256
 
 | Artifact | SHA-256 |
 |---|---|
-| app `V88_PHASE_DIRECTOR_STATE.md` | `40b58e3ae4b862242018b34faeaefe22f157b97c5d0758b9307f675b339618cc` |
-| vault `CodexV88PhaseDirectorState.md` | `d57ee6fa8519aaed26fd1323f2a779eb79d3874544dfbda58b75dec442515729` |
-| app `V88_PHASE3_DEFECT_AND_GATE_MATRIX.md` | `ac7b0d3d58b19dad340a1ddb7c58710b9101a47b566ea1e8e7fe31d80e60b8e7` |
-| vault `V88Phase3DefectAndGateMatrix.md` | `fd10e563308e9aa83d7fb83b0f0b8225e834eb1a6996beaac5ff65e446f0d44a` |
+| app `V88_PHASE_DIRECTOR_STATE.md` | `43d14090b8eaed371cc3cb56fbe668a213d565e0133c1e89189d0ab0c07612e3` |
+| vault `CodexV88PhaseDirectorState.md` | `50ebbf8821afd0fb1df867a8f5e424f1d22a48bea468f17b1d432b0d4b8fc991` |
+| app `V88_PHASE3_DEFECT_AND_GATE_MATRIX.md` | `8635f095edffe6b0426d8893a7c6132ef82e5753c2214f79cdabe129875f8b8e` |
+| vault `V88Phase3DefectAndGateMatrix.md` | `2b18924a67ec3a3fbdca70db3892145a2d1aca7bcf1f68614d88739d7f0534a5` |
 
 ## 5. Validation
 

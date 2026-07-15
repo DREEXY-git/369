@@ -13,9 +13,9 @@
 | GitHub機械可読正本 | `docs/function-master/COMPLETE_FUNCTION_LEDGER_V1.json` | 生成のみ |
 | 原典指紋・件数 | `docs/function-master/SOURCE_MANIFEST_V1.json` | 生成のみ |
 | 実装証拠 | `docs/function-master/FUNCTION_IMPLEMENTATION_EVIDENCE_V1.md` | 証拠確認後に追記 |
-| Codex Phase Director現在地 | `docs/coordination/codex/V87_PHASE_DIRECTOR_STATE.md` | 固定SHAのPASS/HOLD後に更新 |
-| Phase 3欠陥・Gate Matrix | `docs/coordination/codex/V87_PHASE3_DEFECT_AND_GATE_MATRIX.md` | 固定SHAとGitHub判定を記録 |
-| GitHub/Obsidian同期Manifest | `docs/coordination/codex/V87_SYNC_MANIFEST.md` | app/vaultの同期段階とhashを記録 |
+| Codex Phase Director現在地 | `docs/coordination/codex/V88_PHASE_DIRECTOR_STATE.md` | 固定SHAのPASS/HOLD後に更新。`V87_*`は履歴として保持 |
+| Phase 3欠陥・Gate Matrix | `docs/coordination/codex/V88_PHASE3_DEFECT_AND_GATE_MATRIX.md` | 固定SHAとGitHub判定を記録 |
+| GitHub/Obsidian同期Manifest | `docs/coordination/codex/V88_SYNC_MANIFEST.md` | app/vaultの同期段階とhashを記録 |
 | v5.8独立再レビュー | `docs/function-master/V58_INDEPENDENT_REREVIEW_2026-07-11.md` | 固定SHA・CI・artifact・統合dry-run確認後に追記 |
 | Obsidian閲覧鏡像 | `369-vault/知識/完全機能台帳/` | 生成のみ |
 | 生成器 | `scripts/generate-complete-function-ledger.mjs` | レビュー付きで変更 |

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
 import { prisma } from '@hokko/db';
 
 // P3-Q2C 入金消込 hardening の実 PostgreSQL 証拠。
@@ -88,18 +89,32 @@ test('lost update 防止: 同一請求への並列入金を FOR UPDATE で直列
     await page.goto(`/invoices/${invId}`);
     // 1回目の入金 1000 を実 UI で送信し、その Server Action POST（生バイト列）を捕捉する。
     await page.locator('input[name="amount"]').fill('1000');
+    // フォームが発行した冪等キー（hidden input の実値）を submit 前に取得する。
+    // multipart body には field value として同じ文字列が含まれるため、これを差し替えて別 request を作る。
+    const idemInput = page.locator('[data-testid="payment-idempotency-key"]');
+    await expect(idemInput).not.toHaveValue('');
+    const origKey = await idemInput.inputValue();
+    expect(origKey).toMatch(/^c[a-z0-9]{20,32}$/);
     const [payReq] = await Promise.all([
       page.waitForRequest((r) => r.method() === 'POST' && r.url().includes(`/invoices/${invId}`)),
       page.getByRole('button', { name: '入金を記録' }).click(),
     ]);
     await page.waitForURL(new RegExp(`/invoices/${invId}\\?paid=1`));
 
-    // 同一 POST を 5 本並列 replay（= 同一請求への同時入金）。lost update があれば paidAmount < SUM になる。
+    // 同一請求への **異なる** 並列入金を 5 本 replay する。request-level 冪等（idempotencyKey）導入後は
+    // 同一 POST バイト列の再送は 1 request として 1 Payment へ収束するのが正しい挙動なので、ここでは
+    // body 中の idempotencyKey 値（origKey）だけを **別キー** へ差し替え、6 本の distinct 入金を同時に投げる。
+    // lost update があれば paidAmount < Payment SUM になる（FOR UPDATE 直列化＋SUM 再導出で防止）。
     const headers = { ...payReq.headers() };
     delete headers['content-length'];
-    const body = payReq.postDataBuffer()!;
+    const bodyStr = payReq.postDataBuffer()!.toString('latin1');
+    expect(bodyStr.includes(origKey), 'POST body に idempotencyKey 値が含まれる').toBe(true);
     const resps = await Promise.all(
-      Array.from({ length: 5 }, () => page.request.post(payReq.url(), { headers, data: body })),
+      Array.from({ length: 5 }, () => {
+        // origKey（25文字）を同長の新キーへ差し替え（境界/長さ不変）。各 replay = 別 request。
+        const distinct = bodyStr.replace(origKey, `c${randomUUID().replace(/-/g, '').slice(0, 24)}`);
+        return page.request.post(payReq.url(), { headers, data: Buffer.from(distinct, 'latin1') });
+      }),
     );
     for (const r of resps) expect(r.status(), '並列入金が受理される').toBeLessThan(400);
 

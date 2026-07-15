@@ -17,10 +17,12 @@
 | PR #57 Vercel | deployment `DiraHvQgBS1wGivQrdfH9eMceMCu` | exact commit success |
 | PR #57 Codex verdict | issue comment `4978379827` | v8.8 R2 CHANGE_REQUEST |
 | PR #58 fixed head | `d1688cc8b6109bbd00a534df24a756d6d49df425` | CHANGES_REQUIRED |
+| P3-INV movement/event verdict | issue comment `4978770056` | fixed-main CHANGE_REQUEST |
+| P3-Meeting classification verdict | issue comment `4978992477` | fixed-main CHANGE_REQUEST |
 | governance drift | issue comment `4974007406` | open Evidence Gap |
 | observed vault main | `8eab43618c19e6b675f11ef7f43cf33c8cf87177` | stale / main未追随 |
-| app v8.8 Evidence source | PR #59 / `892beea04385719a28900180f33a873545fb6106` | vault鏡像の入力commit |
-| vault v8.8 Evidence | PR #10 / `f2d80be714435ee9180ab60e3eb7cc5645d1802c` | Draft / main未統合 |
+| app v8.8 Evidence source | PR #59 / `2aea6a28c7b6e0e499308072452e8cc6170fa59c` | vault鏡像の入力commit |
+| vault v8.8 Evidence | PR #10 / `d9173f5cd5fa79e48cca433af170b9a4e38be2c2` | Draft / main未統合 |
 
 ## 2. App-side Codex files
 
@@ -42,16 +44,16 @@
 | base | `main` / `8eab43618c19e6b675f11ef7f43cf33c8cf87177` |
 | branch | `codex/v87-governance-evidence` |
 | Draft PR | [#10](https://github.com/DREEXY-git/369-vault/pull/10) |
-| v8.8 head | `f2d80be714435ee9180ab60e3eb7cc5645d1802c` |
+| v8.8 head | `d9173f5cd5fa79e48cca433af170b9a4e38be2c2` |
 
 ## 4. Content SHA-256
 
 | Artifact | SHA-256 |
 |---|---|
-| app `V88_PHASE_DIRECTOR_STATE.md` | `5368136d2b33fba9d8b2b0bbdeacecf64ad226b9eadc9b528cee437f5dea6d07` |
-| vault `CodexV88PhaseDirectorState.md` | `a2546df68b5606cbbbcc749cf86361342c759a9788a65eb4508403f650186d98` |
-| app `V88_PHASE3_DEFECT_AND_GATE_MATRIX.md` | `d1bf05ddd4573d7660b968a7edd54000eb65b58a7618b0b3145fa895409269bb` |
-| vault `V88Phase3DefectAndGateMatrix.md` | `73f0e6cff6b0d74a77ff6ef13ef6ff7596705055c2521158c4e52d90a1ccbf81` |
+| app `V88_PHASE_DIRECTOR_STATE.md` | `40b58e3ae4b862242018b34faeaefe22f157b97c5d0758b9307f675b339618cc` |
+| vault `CodexV88PhaseDirectorState.md` | `d57ee6fa8519aaed26fd1323f2a779eb79d3874544dfbda58b75dec442515729` |
+| app `V88_PHASE3_DEFECT_AND_GATE_MATRIX.md` | `ac7b0d3d58b19dad340a1ddb7c58710b9101a47b566ea1e8e7fe31d80e60b8e7` |
+| vault `V88Phase3DefectAndGateMatrix.md` | `fd10e563308e9aa83d7fb83b0f0b8225e834eb1a6996beaac5ff65e446f0d44a` |
 
 ## 5. Validation
 

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import type { LeadStage } from '@hokko/shared';
+import { isHumanUser, type LeadStage } from '@hokko/shared';
 import { classifyOutreachReply } from '@hokko/ai';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
@@ -306,15 +306,18 @@ export async function updateLeadStageAction(formData: FormData) {
 export async function convertLeadToCustomerAction(formData: FormData) {
   const user = await requireUser();
   const leadId = String(formData.get('leadId') ?? '');
-  // High（Codex PR#49 R1）: 顧客・案件の実確定は人間専用。AI は UI 非表示に加え、ここでも DB 接触前に
-  // 拒否する（監査を actorType:'user' として偽装記録させない二重防御）。
-  if (user.isAi) redirect(`/leadmap/leads/${leadId}?denied=1`);
+  // High（Codex PR#49 R1 / PR#60 R2 addendum）: 顧客・案件の実確定は人間専用。
+  // 判定は **role 由来の isHumanUser**（AI_AGENT/AI_ASSISTANT を1つでも含めば混在も拒否）で fail-closed する。
+  // session の isAi は User.isAiAgent 由来の独立 boolean で role と不一致になり得るため、これ単独では判定しない。
+  const nonHuman = !isHumanUser({ roles: user.roles });
+  if (nonHuman) redirect(`/leadmap/leads/${leadId}?denied=1`);
   if (!hasPermission(user, 'customer', 'create') || !hasPermission(user, 'deal', 'create')) {
     redirect(`/leadmap/leads/${leadId}?denied=1`);
   }
 
-  // 二重商談化の防止・6書き込みの原子化・既存 link の tenant 整合検証はサービス層（crm/lead-convert）に集約。
-  const outcome = await convertLeadToCustomer({ tenantId: user.tenantId, userId: user.userId, actorIsAi: user.isAi }, leadId);
+  // 二重商談化の防止・6書き込みの原子化・既存 link の整合検証はサービス層（crm/lead-convert）に集約。
+  // domain へは自己申告 boolean ではなく role 由来の非人間フラグ（fail-closed 判定）を渡す。
+  const outcome = await convertLeadToCustomer({ tenantId: user.tenantId, userId: user.userId, actorIsAi: nonHuman }, leadId);
 
   if (outcome.kind === 'forbidden') redirect(`/leadmap/leads/${leadId}?denied=1`);
   if (outcome.kind === 'not-found') redirect('/leadmap/leads');

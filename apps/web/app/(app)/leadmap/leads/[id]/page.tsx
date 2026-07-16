@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle, Badge, Button, EmptyState } f
 import { LeadStageBadge, PriorityBadge } from '@/components/badges';
 import { AccessDenied } from '@/components/access-denied';
 import { analyzeLeadAction, generateOutreachAction, convertLeadToCustomerAction } from '../../actions';
-import { formatDate, formatDateTime, type LeadStage } from '@hokko/shared';
+import { isLeadLinkConsistent } from '@/lib/domains/crm/lead-convert';
+import { formatDate, formatDateTime, isHumanUser, type LeadStage } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +45,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const scan = lead.websiteScans[0];
   const snap = lead.placeSnapshots[0];
   const expired = lead.expiresAt ? new Date(lead.expiresAt).getTime() < Date.now() : false;
+  // 実確定（商談化）は人間専用（role 由来の fail-closed 判定）。session の isAi は role と不一致になり得るため使わない。
+  const isHuman = isHumanUser({ roles: user.roles });
+  // 表示時にも link 整合を検証（Codex PR#60 R2 addendum P2）。不整合なら foreign ID を出さず修復導線へ。
+  const linkConsistent = lead.customerId || lead.dealId ? await isLeadLinkConsistent(prisma, user.tenantId, lead) : false;
 
   return (
     <div>
@@ -143,14 +148,29 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           <Card>
             <CardHeader><CardTitle>CRM連携</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              {lead.customerId ? (
-                <>
-                  <Badge tone="green">商談化済み</Badge>
-                  <Link href={`/customers/${lead.customerId}`} className="block text-sm text-primary hover:underline">→ 連携先の顧客を見る</Link>
-                  {lead.dealId ? <Link href={`/deals/${lead.dealId}`} className="block text-sm text-primary hover:underline">→ 案件を見る</Link> : null}
-                </>
-              ) : user.isAi ? (
-                // 実確定（顧客・案件の作成）は人間専用（Codex PR#49 R1 High）。AI には商談化ボタンを出さない。
+              {lead.customerId || lead.dealId ? (
+                // 表示時にも link 整合（tenant + Customer 実在 + Deal の backlink 一致）を検証する（Codex PR#60 R2 addendum P2）。
+                // 不整合（foreign / dangling / 片側欠落 / 別 Lead backlink）は foreign ID を出さず、修復導線を表示する。
+                linkConsistent ? (
+                  <>
+                    <Badge tone="green">商談化済み</Badge>
+                    <Link href={`/customers/${lead.customerId}`} className="block text-sm text-primary hover:underline">→ 連携先の顧客を見る</Link>
+                    <Link href={`/deals/${lead.dealId}`} className="block text-sm text-primary hover:underline">→ 案件を見る</Link>
+                  </>
+                ) : (
+                  <>
+                    <Badge tone="red">連携先の不整合</Badge>
+                    <p className="text-[11px] text-muted-foreground">このリードの連携先（顧客・案件）が確認できません。越境参照を防ぐためリンクは表示しません。再商談化で修復してください。</p>
+                    {isHuman ? (
+                      <form action={convertLeadToCustomerAction}>
+                        <input type="hidden" name="leadId" value={lead.id} />
+                        <Button type="submit" variant="outline" className="w-full">🔧 連携をやり直す（修復）</Button>
+                      </form>
+                    ) : null}
+                  </>
+                )
+              ) : !isHuman ? (
+                // 実確定（顧客・案件の作成）は人間専用（Codex PR#49 R1 High / PR#60 R2 addendum）。AI/混在ロールには出さない。
                 <p className="text-[11px] text-muted-foreground">商談化（顧客・案件の作成）は人が実行します。AIは分析・下書きまで。</p>
               ) : (
                 <form action={convertLeadToCustomerAction}>

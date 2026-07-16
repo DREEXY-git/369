@@ -130,9 +130,17 @@ export default async function LeasePage({ searchParams }: { searchParams: Promis
                       <Button type="submit" variant="outline">追加</Button>
                     </form>
                     <div className="flex flex-wrap gap-2">
-                      <form action={confirmLeaseReservationAction}><input type="hidden" name="reservationId" value={r.id} /><Button type="submit" variant="outline">確定</Button></form>
-                      <form action={dispatchLeaseReservationAction}><input type="hidden" name="reservationId" value={r.id} /><Button type="submit" variant="outline">出庫</Button></form>
-                      <form action={returnLeaseReservationAction}><input type="hidden" name="reservationId" value={r.id} /><Button type="submit" variant="outline">返却</Button></form>
+                      {/* lifecycle は reserved→confirmed→dispatched→returned の CAS（P3-INV-2）。
+                          現在状態から遷移可能なボタンのみ表示（server 側でも CAS で fail-closed）。 */}
+                      {r.status === 'reserved' ? (
+                        <form action={confirmLeaseReservationAction}><input type="hidden" name="reservationId" value={r.id} /><Button type="submit" variant="outline">確定</Button></form>
+                      ) : null}
+                      {r.status === 'confirmed' ? (
+                        <form action={dispatchLeaseReservationAction}><input type="hidden" name="reservationId" value={r.id} /><Button type="submit" variant="outline">出庫</Button></form>
+                      ) : null}
+                      {r.status === 'dispatched' ? (
+                        <form action={returnLeaseReservationAction}><input type="hidden" name="reservationId" value={r.id} /><Button type="submit" variant="outline">返却</Button></form>
+                      ) : null}
                       <form action={convertLeaseReservationToEventProjectAction}><input type="hidden" name="reservationId" value={r.id} /><Button type="submit" variant="outline">イベント案件化</Button></form>
                     </div>
                   </div>

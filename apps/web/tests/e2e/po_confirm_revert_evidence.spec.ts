@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { prisma } from '@hokko/db';
+import { makeIdempotencyKey } from '@hokko/shared';
 import { confirmPurchaseOrder, receivePurchaseOrder, executeApprovedPurchaseOrderIssue } from '../../lib/domains/operations/procurement';
 import { approveRequest } from '../../lib/approval';
 import { decidePurchaseOrderIssueCore, type PoIssueBridgeDb } from '../../lib/purchase-order-issue-bridge';
@@ -68,7 +69,7 @@ test('C2: received 済み発注を再確定しても ordered へ差し戻さな�
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId } = await makeDraftPo(1, 1000);
-  const actor = { tenantId: t, userId: uid, roles: ['OWNER' as const] };
+  const actor = { tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false };
   try {
     // draft → 確定（少額＝承認不要）→ ordered。
     const c1 = await confirmPurchaseOrder(actor, poId);
@@ -102,7 +103,7 @@ test('正常系回帰: draft→確定→ordered→入庫→received が従来ど
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId } = await makeDraftPo(3, 500);
-  const actor = { tenantId: t, userId: uid, roles: ['OWNER' as const] };
+  const actor = { tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false };
   try {
     expect((await confirmPurchaseOrder(actor, poId)).requiresApproval).toBe(false);
     expect((await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { status: true } }))!.status).toBe('ordered');
@@ -120,7 +121,7 @@ test('高額並行 confirm: 承認申請＋PO claim を単一 tx で原子化し
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId } = await makeHighValueDraftPo();
-  const actor = { tenantId: t, userId: uid, roles: ['OWNER' as const] };
+  const actor = { tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false };
   try {
     // 同一 draft PO へ barrier 並行 confirm 3 本。高額なので全て requiresApproval=true。
     const results = await Promise.all([
@@ -151,7 +152,7 @@ test('高額承認実行: pending_approval→ordered→received、二重実行�
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId } = await makeHighValueDraftPo();
-  const actor = { tenantId: t, userId: uid, roles: ['OWNER' as const] };
+  const actor = { tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false };
   try {
     await confirmPurchaseOrder(actor, poId);
     const approvalId = (await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { approvalId: true } }))!.approvalId!;
@@ -195,7 +196,7 @@ test('AI/mixed-role fail-closed: confirm/receive/承認実行は actorIsAi で D
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId } = await makeHighValueDraftPo();
-  const aiActor = { tenantId: t, userId: uid, roles: ['AI_AGENT' as const] };
+  const aiActor = { tenantId: t, userId: uid, roles: ['AI_AGENT' as const], sessionIsAi: true };
   try {
     // confirm: AI は forbidden・PO は draft のまま・Approval も作られない（孤児 0）。
     const c = await confirmPurchaseOrder(aiActor, poId);
@@ -204,7 +205,7 @@ test('AI/mixed-role fail-closed: confirm/receive/承認実行は actorIsAi で D
     expect(await prisma.approvalRequest.count({ where: { tenantId: t, entityType: 'PurchaseOrder', entityId: poId } }), 'ApprovalRequest 0').toBe(0);
 
     // 人間が pending_approval → 承認まで進めた状態を作る。
-    const human = { tenantId: t, userId: uid, roles: ['OWNER' as const] };
+    const human = { tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false };
     await confirmPurchaseOrder(human, poId);
     const approvalId = (await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { approvalId: true } }))!.approvalId!;
     await approveRequest(approvalId, uid, 'ok');
@@ -229,13 +230,13 @@ test('reject bridge: 却下で PO を draft へ差し戻し approvalId 解除・
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId } = await makeHighValueDraftPo();
-  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const] };
+  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false };
   try {
     await confirmPurchaseOrder(human, poId);
     const approvalId = (await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { approvalId: true } }))!.approvalId!;
     // 却下（専用 bridge）: ApprovalRequest REJECTED＋PO draft/approvalId=null＋監査を単一 tx で確定。
     const r = await decidePurchaseOrderIssueCore(prisma as unknown as PoIssueBridgeDb, {
-      tenantId: t, approvalId, purchaseOrderId: poId, decision: 'reject', decidedById: uid, note: 'no', approvalTitle: 'x', decidedByRoles: ['OWNER' as const],
+      tenantId: t, approvalId, purchaseOrderId: poId, decision: 'reject', decidedById: uid, note: 'no', approvalTitle: 'x', decidedByRoles: ['OWNER' as const], decidedBySessionIsAi: false,
     });
     expect(r.outcome).toBe('decided');
     const po = await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { status: true, approvalId: true } });
@@ -257,7 +258,7 @@ test('decision 競合/整合: approve/reject 並行は勝者1本・approve targe
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId } = await makeHighValueDraftPo();
-  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const] };
+  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false };
   const foreignTenant = await prisma.tenant.create({ data: { name: `POR3-FOREIGN-${process.pid}-${Date.now()}` } });
   try {
     await confirmPurchaseOrder(human, poId);
@@ -265,15 +266,15 @@ test('decision 競合/整合: approve/reject 並行は勝者1本・approve targe
 
     // cross-tenant: 別 tenant からの決定は ApprovalRequest（PENDING 限定 tenant scoped CAS）に当たらず 'already'・PO 不変。
     const foreign = await decidePurchaseOrderIssueCore(prisma as unknown as PoIssueBridgeDb, {
-      tenantId: foreignTenant.id, approvalId, purchaseOrderId: poId, decision: 'reject', decidedById: uid, note: '', approvalTitle: 'x', decidedByRoles: ['OWNER' as const],
+      tenantId: foreignTenant.id, approvalId, purchaseOrderId: poId, decision: 'reject', decidedById: uid, note: '', approvalTitle: 'x', decidedByRoles: ['OWNER' as const], decidedBySessionIsAi: false,
     });
     expect(foreign.outcome, 'cross-tenant は決定できない').toBe('already');
     expect((await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { status: true } }))!.status).toBe('pending_approval');
 
     // approve/reject 並行 → PENDING 限定 CAS で勝者ちょうど 1・敗者 'already'。
     const [a, b] = await Promise.all([
-      decidePurchaseOrderIssueCore(prisma as unknown as PoIssueBridgeDb, { tenantId: t, approvalId, purchaseOrderId: poId, decision: 'approve', decidedById: uid, note: '', approvalTitle: 'x', decidedByRoles: ['OWNER' as const] }),
-      decidePurchaseOrderIssueCore(prisma as unknown as PoIssueBridgeDb, { tenantId: t, approvalId, purchaseOrderId: poId, decision: 'reject', decidedById: uid, note: '', approvalTitle: 'x', decidedByRoles: ['OWNER' as const] }),
+      decidePurchaseOrderIssueCore(prisma as unknown as PoIssueBridgeDb, { tenantId: t, approvalId, purchaseOrderId: poId, decision: 'approve', decidedById: uid, note: '', approvalTitle: 'x', decidedByRoles: ['OWNER' as const], decidedBySessionIsAi: false }),
+      decidePurchaseOrderIssueCore(prisma as unknown as PoIssueBridgeDb, { tenantId: t, approvalId, purchaseOrderId: poId, decision: 'reject', decidedById: uid, note: '', approvalTitle: 'x', decidedByRoles: ['OWNER' as const], decidedBySessionIsAi: false }),
     ]);
     const decided = [a, b].filter((x) => x.outcome === 'decided');
     const already = [a, b].filter((x) => x.outcome === 'already');
@@ -291,7 +292,7 @@ test('approve target mismatch: 別 PO/approvalId 不一致の approve は rollba
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId } = await makeHighValueDraftPo();
-  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const] };
+  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false };
   try {
     await confirmPurchaseOrder(human, poId);
     const approvalId = (await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { approvalId: true } }))!.approvalId!;
@@ -299,7 +300,7 @@ test('approve target mismatch: 別 PO/approvalId 不一致の approve は rollba
     let threw = false;
     try {
       await decidePurchaseOrderIssueCore(prisma as unknown as PoIssueBridgeDb, {
-        tenantId: t, approvalId, purchaseOrderId: 'po_does_not_exist_000', decision: 'approve', decidedById: uid, note: '', approvalTitle: 'x', decidedByRoles: ['OWNER' as const],
+        tenantId: t, approvalId, purchaseOrderId: 'po_does_not_exist_000', decision: 'approve', decidedById: uid, note: '', approvalTitle: 'x', decidedByRoles: ['OWNER' as const], decidedBySessionIsAi: false,
       });
     } catch {
       threw = true;
@@ -317,7 +318,7 @@ test('approve target mismatch: 別 PO/approvalId 不一致の approve は rollba
 // 途中 fault で PO=ordered だが Audit/Growth 欠落 の半確定を残さない。fault 後の retry で 1 lineage へ収束。
 async function confirmApprovePendingPo(t: string, uid: string): Promise<{ poId: string; assetId: string; approvalId: string }> {
   const { poId, assetId } = await makeHighValueDraftPo();
-  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const] };
+  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false };
   await confirmPurchaseOrder(human, poId);
   const approvalId = (await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { approvalId: true } }))!.approvalId!;
   await approveRequest(approvalId, uid, 'ok');
@@ -356,7 +357,7 @@ test('承認実行 all-or-nothing: PO CAS 後の Audit fault で PO=ordered を�
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId, approvalId } = await confirmApprovePendingPo(t, uid);
-  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const] };
+  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false };
   try {
     // PO CAS 後・Audit 前に fault → 単一 tx なので PO=ordered ごと rollback（半確定なし）。
     let threw = false;
@@ -382,7 +383,7 @@ test('承認実行 all-or-nothing: DomainEvent 作成後・GrowthEvent 作成時
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId, approvalId } = await confirmApprovePendingPo(t, uid);
-  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const] };
+  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false };
   try {
     // DomainEvent/Outbox 作成後・GrowthEvent 作成時に fault → 全 rollback（PO=ordered / DomainEvent / Outbox も残さない）。
     let threw = false;
@@ -406,7 +407,7 @@ test('承認実行 R5: Approval claim 直後の fault で claim ごと全 rollba
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId, approvalId } = await confirmApprovePendingPo(t, uid);
-  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const] };
+  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false };
   try {
     // Approval を executedAt へ claim した直後・PO CAS 前に fault → 単一 tx なので Approval claim ごと全 rollback。
     let threw = false;
@@ -429,7 +430,7 @@ test('承認実行 R5: 全 Evidence 作成後・Approval 終端化前の fault �
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId, approvalId } = await confirmApprovePendingPo(t, uid);
-  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const] };
+  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false };
   try {
     // PO CAS・Audit・DomainEvent(+Outbox)・GrowthEvent まで作成した後、Approval の executed 終端化の直前に fault。
     // 旧実装（executor commit と Approval 終端更新が別 commit）ではここで PO=ordered・Evidence 済み・Approval だけ
@@ -469,7 +470,7 @@ test('承認実行 R5/R6: 同一 approval 2 並列は winner claim 保持中の 
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId, approvalId } = await confirmApprovePendingPo(t, uid);
-  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const] };
+  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false };
   try {
     // Codex R6 #2: 単なる Promise.all は自然逐次化でも green になるため、winner を Approval claim 直後・
     // PO CAS 前の test-only gate で停止し（ready signal に backend PID）、loser がその claim 行ロックに
@@ -512,7 +513,7 @@ test('承認実行 R5/R6: 同一 approval 2 並列は winner claim 保持中の 
 
 async function makeLegacyHalfCommitted(t: string, uid: string, state: 'failed-null' | 'executing-set'): Promise<{ poId: string; assetId: string; approvalId: string }> {
   const { poId, assetId, approvalId } = await confirmApprovePendingPo(t, uid);
-  const r = await executeApprovedPurchaseOrderIssue({ tenantId: t, userId: uid, roles: ['OWNER' as const] }, approvalId, poId);
+  const r = await executeApprovedPurchaseOrderIssue({ tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false }, approvalId, poId);
   expect(r.executed).toBe(true);
   // Approval を legacy 残骸状態へ巻き戻す（PO=ordered・Evidence 各 1 は残る）。
   await prisma.approvalRequest.update({
@@ -528,7 +529,7 @@ test('R6 legacy state1 収束: PO=ordered+全Evidence+Approval failed/executedAt
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId, approvalId } = await makeLegacyHalfCommitted(t, uid, 'failed-null');
-  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const] };
+  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false };
   try {
     // retry: claim は成功（executedAt=null）→ PO CAS count=0 → legacy lineage 完全 → executed へ終端（reconcile）。
     const r = await executeApprovedPurchaseOrderIssue(human, approvalId, poId);
@@ -548,7 +549,7 @@ test('R6 legacy state2 収束: PO=ordered+全Evidence+Approval executing/execute
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId, approvalId } = await makeLegacyHalfCommitted(t, uid, 'executing-set');
-  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const] };
+  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false };
   try {
     // retry: claim は失敗（executedAt!=null）→ executionStatus!=executed ＋ legacy lineage 完全 → 終端 CAS で収束。
     const r = await executeApprovedPurchaseOrderIssue(human, approvalId, poId);
@@ -567,7 +568,7 @@ test('R6 partial HOLD: Evidence が欠落した legacy state は誤 terminalize 
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId, approvalId } = await makeLegacyHalfCommitted(t, uid, 'failed-null');
-  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const] };
+  const human = { tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false };
   try {
     // GrowthEvent を欠落させ「部分 Evidence の legacy state」を作る。
     await prisma.growthEvent.deleteMany({ where: { tenantId: t, entityType: 'PurchaseOrder', entityId: poId, type: 'inventory.purchase_order.created' } });
@@ -598,7 +599,7 @@ test('存在しない/別状態: 未確定でない発注の再確定は found=t
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId } = await makeDraftPo(1, 1000);
-  const actor = { tenantId: t, userId: uid, roles: ['OWNER' as const] };
+  const actor = { tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false };
   try {
     // cancelled へ直接遷移させ、再確定しても ordered へ動かないことを確認。
     await prisma.purchaseOrder.update({ where: { id: poId }, data: { status: 'cancelled' } });
@@ -671,7 +672,7 @@ for (const state of ['failed-null', 'executing-set'] as const) {
     const uid = await ceoUserId();
     const { poId, assetId, approvalId } = await makeMixedLegacyLineage(t, uid, state, false);
     try {
-      const r = await executeApprovedPurchaseOrderIssue({ tenantId: t, userId: uid, roles: ['OWNER' as const] }, approvalId, poId);
+      const r = await executeApprovedPurchaseOrderIssue({ tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false }, approvalId, poId);
       expect(r.executed, `${state}: 部分 Evidence は収束させない`).toBe(false);
       expect(r.reason, `${state}: 明示 HOLD`).toBe('legacy-partial-evidence-hold');
       // Approval は不変（terminalize されない・claim も rollback 済み）。
@@ -697,7 +698,7 @@ test('R7 肯定対照: 同じ混在lineageへ APPROVED event に結合した Gro
   const uid = await ceoUserId();
   const { poId, assetId, approvalId, approvedEvId } = await makeMixedLegacyLineage(t, uid, 'failed-null', true);
   try {
-    const r = await executeApprovedPurchaseOrderIssue({ tenantId: t, userId: uid, roles: ['OWNER' as const] }, approvalId, poId);
+    const r = await executeApprovedPurchaseOrderIssue({ tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false }, approvalId, poId);
     expect(r.executed, '完全 lineage（Growth が APPROVED event 結合）は収束').toBe(true);
     expect(r.reconciled).toBe(true);
     const a = await prisma.approvalRequest.findUnique({ where: { id: approvalId }, select: { executionStatus: true } });
@@ -720,17 +721,19 @@ test('R8 domain: AIロール/混在/空/省略 roles は confirm・receive・承
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId } = await makeHighValueDraftPo();
-  const nonHumanRoles: Array<{ label: string; roles: unknown }> = [
-    { label: 'AI_AGENT', roles: ['AI_AGENT'] },
-    { label: 'AI_ASSISTANT', roles: ['AI_ASSISTANT'] },
-    { label: 'AI_AGENT+OWNER 混在', roles: ['AI_AGENT', 'OWNER'] },
-    { label: 'AI_ASSISTANT+OWNER 混在', roles: ['AI_ASSISTANT', 'OWNER'] },
-    { label: '空 roles', roles: [] },
-    { label: 'roles 省略', roles: undefined },
+  const nonHumanRoles: Array<{ label: string; roles: unknown; sessionIsAi: boolean }> = [
+    { label: 'AI_AGENT', roles: ['AI_AGENT'], sessionIsAi: false },
+    { label: 'AI_ASSISTANT', roles: ['AI_ASSISTANT'], sessionIsAi: false },
+    { label: 'AI_AGENT+OWNER 混在', roles: ['AI_AGENT', 'OWNER'], sessionIsAi: false },
+    { label: 'AI_ASSISTANT+OWNER 混在', roles: ['AI_ASSISTANT', 'OWNER'], sessionIsAi: false },
+    { label: '空 roles', roles: [], sessionIsAi: false },
+    { label: 'roles 省略', roles: undefined, sessionIsAi: false },
+    // Codex R9 #1: 逆向き不整合（DB由来 isAiAgent=true が session isAi に載るが roles は OWNER のみ）。
+    { label: 'sessionIsAi=true + OWNER（逆向き mismatch）', roles: ['OWNER'], sessionIsAi: true },
   ];
   try {
-    for (const { label, roles } of nonHumanRoles) {
-      const actor = { tenantId: t, userId: uid, roles } as unknown as Parameters<typeof confirmPurchaseOrder>[0];
+    for (const { label, roles, sessionIsAi } of nonHumanRoles) {
+      const actor = { tenantId: t, userId: uid, roles, sessionIsAi } as unknown as Parameters<typeof confirmPurchaseOrder>[0];
       const c = await confirmPurchaseOrder(actor, poId);
       expect(c.forbidden, `${label}: confirm forbidden`).toBe(true);
       expect(await receivePurchaseOrder(actor, poId), `${label}: receive false`).toBe(false);
@@ -739,7 +742,7 @@ test('R8 domain: AIロール/混在/空/省略 roles は confirm・receive・承
       expect(e.reason).toBe('forbidden');
       const d = await decidePurchaseOrderIssueCore(prisma as unknown as PoIssueBridgeDb, {
         tenantId: t, approvalId: 'approval-x', purchaseOrderId: poId, decision: 'approve', decidedById: uid, note: '', approvalTitle: 'x',
-        decidedByRoles: roles as never,
+        decidedByRoles: roles as never, decidedBySessionIsAi: sessionIsAi,
       });
       expect(d.outcome, `${label}: decision core forbidden`).toBe('forbidden');
     }
@@ -753,9 +756,98 @@ test('R8 domain: AIロール/混在/空/省略 roles は confirm・receive・承
     expect(await prisma.domainEvent.count({ where: { tenantId: t, aggregateId: poId } }), 'DomainEvent 0').toBe(0);
     expect(await prisma.growthEvent.count({ where: { tenantId: t, entityType: 'PurchaseOrder', entityId: poId } }), 'Growth 0').toBe(0);
     // 肯定対照: OWNER は同じ PO を確定できる（高額→承認申請）。
-    const ok = await confirmPurchaseOrder({ tenantId: t, userId: uid, roles: ['OWNER' as const] }, poId);
+    const ok = await confirmPurchaseOrder({ tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false }, poId);
     expect(ok.requiresApproval).toBe(true);
     expect(await prisma.approvalRequest.count({ where: { tenantId: t, entityType: 'PurchaseOrder', entityId: poId, status: 'PENDING' } })).toBe(1);
+  } finally {
+    await cleanup(poId, assetId);
+  }
+});
+
+// ============================================================================
+// Codex V90 R9 #2: APPROVED DomainEvent の current-approval 結合。
+// 旧 emitGrowthEvent の event は approval identity を保存しない（payload={growthType}・dedupe省略）。
+// 別 approval A の完全 event lineage が同じ PO に残っている場合、B の Audit/PO 到達と寄せ集めて
+// B を誤 terminalize してはならない。approval が複数ある PO の legacy event は帰属不能 → HOLD。
+// ============================================================================
+
+// A（旧approval・完全lineage）＋ B（current・半確定/Audit のみ・B event/growth なし）の混在を DB 直 seed。
+async function makeTwoApprovalMixedLineage(
+  t: string,
+  uid: string,
+  state: 'failed-null' | 'executing-set',
+): Promise<{ poId: string; assetId: string; approvalAId: string; approvalBId: string }> {
+  const stamp = `${process.pid}-${Date.now()}-${Math.floor(performance.now())}`;
+  const { poId, assetId } = await makeHighValueDraftPo();
+  const mkApproval = async (suffix: string, data: Record<string, unknown>) =>
+    prisma.approvalRequest.create({
+      data: {
+        tenantId: t, type: 'purchase_order_issue', requestedForAction: 'purchase_order_issue',
+        title: `legacy-${suffix}-${stamp}`, summary: '', entityType: 'PurchaseOrder', entityId: poId,
+        riskLevel: 'MEDIUM', reason: '', requestedById: uid, payloadAfter: { purchaseOrderId: poId },
+        ...data,
+      } as never,
+    });
+  // A: 旧 approval（完了済み）。A の完全 lineage（Audit A / APPROVED event / Outbox / Growth→event 結合）。
+  const A = await mkApproval('A', { status: 'APPROVED', executionStatus: 'executed', executedAt: new Date(Date.now() - 3600_000), executedById: uid });
+  await prisma.auditLog.create({
+    data: { tenantId: t, actorId: uid, actorType: 'user', action: 'purchase_order_issue', entityType: 'PurchaseOrder', entityId: poId, summary: `高額発注を承認確定: legacy（approval=${A.id}）` },
+  });
+  const evA = await prisma.domainEvent.create({
+    data: { tenantId: t, eventType: 'PURCHASE_ORDER_APPROVED', aggregateType: 'PurchaseOrder', aggregateId: poId, actorId: uid, actorType: 'user', payload: { growthType: 'inventory.purchase_order.created' }, idempotencyKey: `PURCHASE_ORDER_APPROVED:legacyA-${stamp}`, status: 'pending' },
+  });
+  await prisma.outboxMessage.create({ data: { tenantId: t, eventId: evA.id, eventType: 'PURCHASE_ORDER_APPROVED', status: 'pending' } });
+  await prisma.growthEvent.create({
+    data: { tenantId: t, type: 'inventory.purchase_order.created', category: 'operations', title: `発注確定A: ${poId}`, description: '', actorId: uid, actorType: 'user', entityType: 'PurchaseOrder', entityId: poId, domainEventId: evA.id },
+  });
+  // B: current approval（半確定 state1/state2）。B の Audit と PO 到達（approvalId=B）まで・B の event/growth なし。
+  const B = await mkApproval('B', state === 'failed-null'
+    ? { status: 'APPROVED', executionStatus: 'failed', executedAt: null }
+    : { status: 'APPROVED', executionStatus: 'executing', executedAt: new Date(), executedById: uid });
+  await prisma.purchaseOrder.update({ where: { id: poId }, data: { status: 'ordered', approvalId: B.id } });
+  await prisma.auditLog.create({
+    data: { tenantId: t, actorId: uid, actorType: 'user', action: 'purchase_order_issue', entityType: 'PurchaseOrder', entityId: poId, summary: `高額発注を承認確定: legacy（approval=${B.id}）` },
+  });
+  return { poId, assetId, approvalAId: A.id, approvalBId: B.id };
+}
+
+for (const state of ['failed-null', 'executing-set'] as const) {
+  test(`R9 #2: 別approval A の完全event lineage が残る PO で、current B（${state}・B event/growth なし）は HOLD（Aの寄せ集めで誤terminalizeしない）`, async () => {
+    const t = await tenantId();
+    const uid = await ceoUserId();
+    const { poId, assetId, approvalBId } = await makeTwoApprovalMixedLineage(t, uid, state);
+    try {
+      const r = await executeApprovedPurchaseOrderIssue({ tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false }, approvalBId, poId);
+      expect(r.executed, `${state}: A の event/growth を B の Evidence にしない`).toBe(false);
+      expect(r.reason).toBe('legacy-partial-evidence-hold');
+      const b = await prisma.approvalRequest.findUnique({ where: { id: approvalBId }, select: { executionStatus: true, status: true } });
+      expect(b!.status).toBe('APPROVED');
+      expect(b!.executionStatus, `${state}: B は非 terminal のまま`).not.toBe('executed');
+    } finally {
+      await cleanup(poId, assetId);
+    }
+  });
+}
+
+test('R9 #2 肯定対照: B へ明示結合（canonical key + domainEventId）した event/growth を加えると B は安全に executed へ収束する', async () => {
+  const t = await tenantId();
+  const uid = await ceoUserId();
+  const { poId, assetId, approvalBId } = await makeTwoApprovalMixedLineage(t, uid, 'failed-null');
+  try {
+    // B へ無損失に結合した Evidence（canonical key の dedupe=approvalB・Growth は event へ domainEventId 結合）。
+    const keyB = makeIdempotencyKey({ tenantId: t, eventType: 'PURCHASE_ORDER_APPROVED', aggregateId: poId, dedupe: approvalBId });
+    const evB = await prisma.domainEvent.create({
+      data: { tenantId: t, eventType: 'PURCHASE_ORDER_APPROVED', aggregateType: 'PurchaseOrder', aggregateId: poId, actorId: uid, actorType: 'user', payload: { growthType: 'inventory.purchase_order.created' }, idempotencyKey: keyB, status: 'pending' },
+    });
+    await prisma.outboxMessage.create({ data: { tenantId: t, eventId: evB.id, eventType: 'PURCHASE_ORDER_APPROVED', status: 'pending' } });
+    await prisma.growthEvent.create({
+      data: { tenantId: t, type: 'inventory.purchase_order.created', category: 'operations', title: `発注確定B: ${poId}`, description: '', actorId: uid, actorType: 'user', entityType: 'PurchaseOrder', entityId: poId, domainEventId: evB.id },
+    });
+    const r = await executeApprovedPurchaseOrderIssue({ tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false }, approvalBId, poId);
+    expect(r.executed, 'B 結合の完全 lineage は収束').toBe(true);
+    expect(r.reconciled).toBe(true);
+    const b = await prisma.approvalRequest.findUnique({ where: { id: approvalBId }, select: { executionStatus: true } });
+    expect(b!.executionStatus).toBe('executed');
   } finally {
     await cleanup(poId, assetId);
   }

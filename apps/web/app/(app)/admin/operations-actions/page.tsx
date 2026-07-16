@@ -35,7 +35,7 @@ export default async function OperationsActionsPage({ searchParams }: { searchPa
   const user = await requireUser();
   const sp = await searchParams;
   // 承認済み実行は人間専用（role 由来 fail-closed・Codex PR#58 R8）。
-  if (!hasPermission(user, 'inventory', 'update') || !isHumanUser({ roles: user.roles })) {
+  if (!hasPermission(user, 'inventory', 'update') || user.isAi || !isHumanUser({ roles: user.roles })) {
     return (
       <div>
         <PageHeader title="Operations 承認済み実行" />

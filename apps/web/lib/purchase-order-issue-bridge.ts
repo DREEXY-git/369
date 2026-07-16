@@ -37,6 +37,8 @@ export interface DecidePoIssueInput {
   /** 決定主体のロール（**必須**）。AI role 混在・空roles は（action 境界の拒否に加え）core でも
    *  role 由来 fail-closed で決定不可（二重防御・自己申告 boolean を信頼しない・Codex R8）。 */
   decidedByRoles: RoleKey[];
+  /** 署名 session 由来の AI フラグ（**必須**）。roles と独立のため両方を必要条件にする（Codex R9）。 */
+  decidedBySessionIsAi: boolean;
 }
 
 export type DecidePoIssueResult = { outcome: 'decided' } | { outcome: 'already' } | { outcome: 'forbidden' };
@@ -54,7 +56,7 @@ export async function decidePurchaseOrderIssueCore(
   db: PoIssueBridgeDb,
   input: DecidePoIssueInput,
 ): Promise<DecidePoIssueResult> {
-  if (!Array.isArray(input.decidedByRoles) || !isHumanUser({ roles: input.decidedByRoles })) return { outcome: 'forbidden' };
+  if (input.decidedBySessionIsAi === true || !Array.isArray(input.decidedByRoles) || !isHumanUser({ roles: input.decidedByRoles })) return { outcome: 'forbidden' };
   if (!input.purchaseOrderId) throw new Error('purchase_order_issue approval without purchaseOrderId');
   const status = input.decision === 'approve' ? 'APPROVED' : 'REJECTED';
   return db.$transaction(async (tx) => {

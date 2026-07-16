@@ -17,7 +17,7 @@ export default async function PurchaseOrderDetailPage({ params, searchParams }: 
   const { id } = await params;
   const sp = await searchParams;
   // 発注確定/入庫は人間専用（role 由来）。AI role 混在にはボタン自体を出さない（Codex PR#58 R8）。
-  const canEdit = hasPermission(user, 'inventory', 'update') && isHumanUser({ roles: user.roles });
+  const canEdit = hasPermission(user, 'inventory', 'update') && !user.isAi && isHumanUser({ roles: user.roles });
   const canViewAmount = hasPermission(user, 'finance', 'read');
 
   const po = await prisma.purchaseOrder.findFirst({

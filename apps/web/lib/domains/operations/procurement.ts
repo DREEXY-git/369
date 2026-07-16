@@ -40,11 +40,15 @@ export interface Actor {
    *  packages/shared/src/rbac.ts）で role 由来 fail-closed 判定する。省略・空配列・AI_AGENT/AI_ASSISTANT
    *  を1つでも含む混在はすべて拒否（Codex PR#58 R8: 任意の自己申告 boolean で human を表現しない）。 */
   roles: RoleKey[];
+  /** 署名 session 由来の AI フラグ（`User.isAiAgent` → session `isAi`・**必須**）。DB 上 roles と
+   *  isAiAgent に整合制約はなく独立のため、**boolean 単独にも roles 単独にも依存せず両方を必要条件**
+   *  にする（Codex PR#58 R9: `isAiAgent=true + OWNER` も `isAiAgent=false + AI role` も fail-closed）。 */
+  sessionIsAi: boolean;
 }
 
-/** 人間 actor 判定（fail-closed）。roles 非配列/空/AI混在はすべて false。 */
+/** 人間 actor 判定（fail-closed）。sessionIsAi=true・roles 非配列/空/AI混在はすべて false。 */
 function actorIsHuman(actor: Actor): boolean {
-  return Array.isArray(actor.roles) && isHumanUser({ roles: actor.roles });
+  return actor.sessionIsAi !== true && Array.isArray(actor.roles) && isHumanUser({ roles: actor.roles });
 }
 
 export interface ConfirmPurchaseOrderResult {
@@ -183,8 +187,25 @@ export async function executeApprovedPurchaseOrderIssue(
           where: { tenantId: actor.tenantId, entityType: 'PurchaseOrder', entityId: poId, action: 'purchase_order_issue', summary: { contains: `approval=${approvalId}` } },
         });
         if (audit < 1) return false;
-        const evs = await tx.domainEvent.findMany({ where: { tenantId: actor.tenantId, aggregateId: poId, eventType: 'PURCHASE_ORDER_APPROVED' }, select: { id: true } });
-        if (evs.length < 1) return false;
+        // DomainEvent も **current approval へ結合**したものだけを Evidence にする（Codex R9 #2）。
+        // 新経路の event は canonical key（dedupe=approvalId）で approval 帰属を無損失に証明できる。
+        const canonicalEvKey = makeIdempotencyKey({ tenantId: actor.tenantId, eventType: 'PURCHASE_ORDER_APPROVED', aggregateId: poId, dedupe: approvalId });
+        let evs = await tx.domainEvent.findMany({
+          where: { tenantId: actor.tenantId, aggregateId: poId, eventType: 'PURCHASE_ORDER_APPROVED', idempotencyKey: canonicalEvKey },
+          select: { id: true },
+        });
+        if (evs.length < 1) {
+          // legacy event（旧 emitGrowthEvent は payload={growthType}・dedupe 省略で approval identity を
+          // 保存しない）。この PO の issue-approval が**過去含め唯一**のときだけ帰属を一意に確定できる。
+          // 複数 approval が存在する場合（別 approval の event/outbox/growth の寄せ集めの可能性）は
+          // 自動収束せず HOLD（Human Gate: CLAUDE_HUMAN_GATE_V90_SCHEMA_OR_DATA_PR58）。
+          const approvalCount = await tx.approvalRequest.count({
+            where: { tenantId: actor.tenantId, requestedForAction: 'purchase_order_issue', entityType: 'PurchaseOrder', entityId: poId },
+          });
+          if (approvalCount !== 1) return false;
+          evs = await tx.domainEvent.findMany({ where: { tenantId: actor.tenantId, aggregateId: poId, eventType: 'PURCHASE_ORDER_APPROVED' }, select: { id: true } });
+          if (evs.length < 1) return false;
+        }
         const outbox = await tx.outboxMessage.count({ where: { tenantId: actor.tenantId, eventId: { in: evs.map((e) => e.id) } } });
         if (outbox < 1) return false;
         // Growth は **PURCHASE_ORDER_APPROVED event へ domainEventId で結合**したものだけを数える（Codex R7）。

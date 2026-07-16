@@ -192,6 +192,7 @@ export async function decideApprovalAction(formData: FormData) {
         note,
         approvalTitle: approval.title,
         decidedByRoles: user.roles,
+        decidedBySessionIsAi: user.isAi,
       });
     } catch {
       // 対象消失・別 tenant・状態不整合（既に別 submit が確定 等）→ 全体 rollback 済み（PENDING のまま）。

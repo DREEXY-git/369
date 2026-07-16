@@ -96,9 +96,9 @@ export async function confirmPurchaseOrderAction(formData: FormData) {
   // 発注確定は人間専用。role 由来 fail-closed（isHumanUser: AI_AGENT/AI_ASSISTANT を1つでも含む混在・
   // 空roles を拒否）。session の isAi boolean は User.isAiAgent 由来で role と整合制約がないため、
   // boolean 単独では判定しない（Codex PR#58 R3 P2-1 / R8）。
-  if (!hasPermission(user, 'inventory', 'update') || !isHumanUser({ roles: user.roles })) redirect('/operations/purchase-orders?denied=1');
+  if (!hasPermission(user, 'inventory', 'update') || user.isAi || !isHumanUser({ roles: user.roles })) redirect('/operations/purchase-orders?denied=1');
   const id = String(formData.get('purchaseOrderId') ?? '');
-  const res = await confirmPurchaseOrder({ tenantId: user.tenantId, userId: user.userId, roles: user.roles }, id);
+  const res = await confirmPurchaseOrder({ tenantId: user.tenantId, userId: user.userId, roles: user.roles, sessionIsAi: user.isAi }, id);
   if (res.forbidden) redirect('/operations/purchase-orders?denied=1');
   if (!res.found) redirect('/operations/purchase-orders');
   redirect(res.requiresApproval ? `/operations/purchase-orders/${id}?pending=1` : `/operations/purchase-orders/${id}?ordered=1`);
@@ -108,8 +108,8 @@ export async function confirmPurchaseOrderAction(formData: FormData) {
 export async function receivePurchaseOrderAction(formData: FormData) {
   const user = await requireUser();
   // 入庫も人間専用（role 由来 fail-closed・Codex PR#58 R3 P2-1 / R8）。
-  if (!hasPermission(user, 'inventory', 'update') || !isHumanUser({ roles: user.roles })) redirect('/operations/purchase-orders?denied=1');
+  if (!hasPermission(user, 'inventory', 'update') || user.isAi || !isHumanUser({ roles: user.roles })) redirect('/operations/purchase-orders?denied=1');
   const id = String(formData.get('purchaseOrderId') ?? '');
-  const ok = await receivePurchaseOrder({ tenantId: user.tenantId, userId: user.userId, roles: user.roles }, id);
+  const ok = await receivePurchaseOrder({ tenantId: user.tenantId, userId: user.userId, roles: user.roles, sessionIsAi: user.isAi }, id);
   redirect(ok ? `/operations/purchase-orders/${id}?received=1` : '/operations/purchase-orders');
 }

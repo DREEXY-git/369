@@ -108,12 +108,14 @@ test.afterAll(async () => {
   await prisma.$disconnect();
 });
 
-for (const [label, roleKeys] of [
-  ['AI_AGENT（isAiAgent=false mismatch）', ['AI_AGENT']],
-  ['AI_ASSISTANT（isAiAgent=false mismatch）', ['AI_ASSISTANT']],
-  ['AI_AGENT+OWNER 混在', ['AI_AGENT', 'OWNER']],
-  ['AI_ASSISTANT+OWNER 混在', ['AI_ASSISTANT', 'OWNER']],
-  ['空 roles（role なし user）', []],
+for (const [label, roleKeys, isAiAgent] of [
+  ['AI_AGENT（isAiAgent=false mismatch）', ['AI_AGENT'], false],
+  ['AI_ASSISTANT（isAiAgent=false mismatch）', ['AI_ASSISTANT'], false],
+  ['AI_AGENT+OWNER 混在', ['AI_AGENT', 'OWNER'], false],
+  ['AI_ASSISTANT+OWNER 混在', ['AI_ASSISTANT', 'OWNER'], false],
+  ['空 roles（role なし user）', [], false],
+  // Codex R9 #1: 逆向き mismatch（isAiAgent=true が session isAi に載るが roles は OWNER のみ）。
+  ['isAiAgent=true + OWNER（逆向き mismatch）', ['OWNER'], true],
 ] as const) {
   test(`R8 confirm 実認証: ${label} は UI ボタン非表示・Action denied・PO 全字段不変・全書込面 0`, async ({ page, browser }) => {
     const t = await tenantId();
@@ -124,7 +126,7 @@ for (const [label, roleKeys] of [
     const cap = await capturePost(page, '/operations/purchase-orders', () => page.getByRole('button', { name: '発注を確定' }).click(), /\?ordered=1/);
 
     const aiEmail = `porole-${process.pid}-${Date.now()}-${poSeq}@ikezaki.local`;
-    const aiUserId = await makeUser(t, aiEmail, roleKeys as unknown as string[], false);
+    const aiUserId = await makeUser(t, aiEmail, roleKeys as unknown as string[], isAiAgent);
     const target = await makePo(t, 'draft', 1000);
     const aiCtx = await browser.newContext();
     const aiPage = await aiCtx.newPage();

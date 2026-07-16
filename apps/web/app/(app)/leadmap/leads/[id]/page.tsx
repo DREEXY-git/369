@@ -149,6 +149,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                   <Link href={`/customers/${lead.customerId}`} className="block text-sm text-primary hover:underline">→ 連携先の顧客を見る</Link>
                   {lead.dealId ? <Link href={`/deals/${lead.dealId}`} className="block text-sm text-primary hover:underline">→ 案件を見る</Link> : null}
                 </>
+              ) : user.isAi ? (
+                // 実確定（顧客・案件の作成）は人間専用（Codex PR#49 R1 High）。AI には商談化ボタンを出さない。
+                <p className="text-[11px] text-muted-foreground">商談化（顧客・案件の作成）は人が実行します。AIは分析・下書きまで。</p>
               ) : (
                 <form action={convertLeadToCustomerAction}>
                   <input type="hidden" name="leadId" value={lead.id} />

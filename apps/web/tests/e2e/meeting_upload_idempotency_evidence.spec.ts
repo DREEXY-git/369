@@ -512,7 +512,8 @@ test('stale claim（TTL超過）: crash相当の残留claimをCAS takeoverし、
   const input = { title: 'STALE-回収', type: uniqueType, transcript: TRANSCRIPT, requestId };
   const key = makeMeetingUploadIdempotencyKey(requestId);
   try {
-    // winner が claim 獲得直後に crash した状態を seed（occurredAt = 3分前 > TTL 2分・解放されていない）。
+    // winner が claim 獲得直後に crash した状態を seed（renew 停止・TTL 2分超）。
+    // occurredAt は **DB server clock 相対**（now() - 3分）で書く（expiry 判定は SQL now() 基準のため）。
     const fp = makeMeetingUploadFingerprint({ tenantId: actor.tenantId, userId: actor.userId }, input);
     const seeded = await prisma.domainEvent.create({
       data: {
@@ -523,13 +524,13 @@ test('stale claim（TTL超過）: crash相当の残留claimをCAS takeoverし、
         actorId: actor.userId ?? null,
         actorType: 'user',
         payload: {},
-        metadata: { requestId, fp, phase: 'claimed' },
+        metadata: { requestId, fp, phase: 'claimed', owner: 'crashed-owner' },
         idempotencyKey: key,
         status: 'processing',
-        occurredAt: new Date(Date.now() - 3 * 60 * 1000),
       },
       select: { id: true },
     });
+    await prisma.$executeRaw`UPDATE "DomainEvent" SET "occurredAt" = now() - interval '3 minutes' WHERE "id" = ${seeded.id}`;
     const r = await processMeetingUpload(actor, input);
     expect(r.ok, 'TTL 超過 claim は takeover され upload が完走する').toBe(true);
     if (!r.ok) return;
@@ -559,7 +560,7 @@ test('処理中claim（TTL内・same payload）: poll予算内に完了しなけ
   const key = makeMeetingUploadIdempotencyKey(requestId);
   const { calls, providers } = watchProviders(true);
   try {
-    // 他プロセスの winner が処理中（TTL 内・完了しない）状態を seed。
+    // 他プロセスの winner が処理中（lease 生存中・完了しない）状態を seed（occurredAt は DB now() default）。
     const fp = makeMeetingUploadFingerprint({ tenantId: actor.tenantId, userId: actor.userId }, input);
     await prisma.domainEvent.create({
       data: {
@@ -570,10 +571,9 @@ test('処理中claim（TTL内・same payload）: poll予算内に完了しなけ
         actorId: actor.userId ?? null,
         actorType: 'user',
         payload: {},
-        metadata: { requestId, fp, phase: 'claimed' },
+        metadata: { requestId, fp, phase: 'claimed', owner: 'alive-other-owner' },
         idempotencyKey: key,
         status: 'processing',
-        occurredAt: new Date(),
       },
     });
     const r = await processMeetingUpload(actor, input, {
@@ -581,16 +581,217 @@ test('処理中claim（TTL内・same payload）: poll予算内に完了しなけ
       __claimPollForTest: { intervalMs: 50, budgetMs: 300 },
     });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason, 'TTL 内は takeover せず in-progress で返す').toBe('in-progress');
+    if (!r.ok) expect(r.reason, 'lease 生存中は takeover せず in-progress で返す').toBe('in-progress');
     expect(calls, '待機側は provider を一切呼ばない').toEqual({ transcribe: 0, summarize: 0, embed: 0 });
     expect(await prisma.meeting.count({ where: { tenantId: actor.tenantId, type: uniqueType } }), 'Meeting は作られない').toBe(0);
     const still = await prisma.domainEvent.findUnique({
       where: { tenantId_idempotencyKey: { tenantId: actor.tenantId, idempotencyKey: key } },
-      select: { status: true },
+      select: { status: true, metadata: true },
     });
     expect(still!.status, '他者の claim は奪わず残す').toBe('processing');
+    expect((still!.metadata as { owner?: string }).owner, 'owner も差し替えられていない').toBe('alive-other-owner');
   } finally {
     await cleanup(actor.tenantId, uniqueType, requestId);
+  }
+});
+
+test('renewable lease: 生存中winner（renew継続）はTTL超の処理中でもtakeoverされず provider は合計各1回', async () => {
+  test.setTimeout(90_000);
+  const actor = await getActor();
+  const uniqueType = uid('mtg-lease-live');
+  const requestId = uid('req');
+  const key = makeMeetingUploadIdempotencyKey(requestId);
+  const { calls, providers } = watchProviders(false); // 全submitで共有 = 合計回数
+  try {
+    let releaseGate!: () => void;
+    const gate = new Promise<void>((res) => (releaseGate = res));
+    const opts = {
+      __providersForTest: providers,
+      __gateAfterClaimForTest: () => gate, // winner を TTL 超まで生存保持（renew は継続）
+      __claimPollForTest: { intervalMs: 100, budgetMs: 30_000 },
+      __leaseForTest: { ttlMs: 1500, renewIntervalMs: 200 },
+    };
+    const input = { title: 'LEASE-生存', type: uniqueType, transcript: TRANSCRIPT, requestId };
+    const N = 3;
+    const promises = Array.from({ length: N }, () => processMeetingUpload(actor, input, opts));
+    // 初代 winner の claim（owner token・獲得時刻）を捕捉する。
+    let claim0: { owner?: string; occurredAt: Date } | null = null;
+    for (let i = 0; i < 50 && !claim0; i++) {
+      await new Promise((res) => setTimeout(res, 50));
+      const row = await prisma.domainEvent.findUnique({
+        where: { tenantId_idempotencyKey: { tenantId: actor.tenantId, idempotencyKey: key } },
+        select: { metadata: true, occurredAt: true },
+      });
+      if (row) claim0 = { owner: (row.metadata as { owner?: string }).owner, occurredAt: row.occurredAt };
+    }
+    expect(claim0, 'claim 行が作成される').not.toBeNull();
+    expect(claim0!.owner, 'claim に owner token がある').toBeTruthy();
+    // winner を TTL(1.5s) の2倍以上 gate で保持。follower は poll 各 iteration で takeover CAS を試行するが、
+    // renew(200ms) が occurredAt を DB server time で更新し続けるため一度も成功しない。
+    await new Promise((res) => setTimeout(res, 3500));
+    const mid = await prisma.domainEvent.findUnique({
+      where: { tenantId_idempotencyKey: { tenantId: actor.tenantId, idempotencyKey: key } },
+      select: { status: true, metadata: true, occurredAt: true },
+    });
+    expect(mid!.status, 'TTL 実時間超過後も processing のまま').toBe('processing');
+    expect((mid!.metadata as { owner?: string }).owner, 'owner は初代 winner のまま（takeover なし）').toBe(claim0!.owner);
+    expect(mid!.occurredAt.getTime(), 'renew が occurredAt を進めている（heartbeat 実測）').toBeGreaterThan(claim0!.occurredAt.getTime());
+    expect(calls, 'gate 解放前は provider 未到達').toEqual({ transcribe: 0, summarize: 0, embed: 0 });
+    releaseGate();
+    const results = await Promise.all(promises);
+    const okResults = results.flatMap((r) => (r.ok ? [r] : []));
+    expect(okResults.length, '全員成功').toBe(N);
+    expect(new Set(okResults.map((r) => r.meetingId)).size, '全員同一 Meeting').toBe(1);
+    expect(okResults.filter((r) => !r.duplicated).length, '勝者はちょうど1人（takeover なし）').toBe(1);
+    expect(calls, 'provider は N 本合計で各1回（二重 AI 実行なし）').toEqual({ transcribe: 1, summarize: 1, embed: 1 });
+    const c = await countRows(actor.tenantId, uniqueType, requestId);
+    expect(c.meeting).toBe(1);
+    expect(c.events).toBe(1);
+    expect(c.outbox).toBe(1);
+    expect(c.aiOutput).toBe(1);
+  } finally {
+    await cleanup(actor.tenantId, uniqueType, requestId);
+  }
+});
+
+test('renewable lease: renew停止winnerはexpiry後にfollowerのうちちょうど1本がtakeoverし、旧holderはprovider/commitへ進まず収束する', async () => {
+  test.setTimeout(90_000);
+  const actor = await getActor();
+  const uniqueType = uid('mtg-lease-tko');
+  const requestId = uid('req');
+  const input = { title: 'LEASE-回収', type: uniqueType, transcript: TRANSCRIPT, requestId };
+  const oldW = watchProviders(false); // 旧winner専用 spy（呼ばれないことを counters で実測）
+  const newW = watchProviders(false); // follower 2本で共有
+  try {
+    // 旧winner: renew 無効（heartbeat 停止 = crash/フリーズ相当）で claim を保持したまま gate で停止。
+    let oldClaimed!: () => void;
+    const oldClaimedP = new Promise<void>((res) => (oldClaimed = res));
+    let releaseOld!: () => void;
+    const oldGate = new Promise<void>((res) => (releaseOld = res));
+    const pOld = processMeetingUpload(actor, input, {
+      __providersForTest: oldW.providers,
+      __gateAfterClaimForTest: async () => {
+        oldClaimed();
+        await oldGate;
+      },
+      __claimPollForTest: { intervalMs: 100, budgetMs: 30_000 },
+      __leaseForTest: { ttlMs: 800, renewIntervalMs: 100, disableRenew: true },
+    });
+    await oldClaimedP; // 旧winner が claim を確実に保持
+    // follower ×2（same payload・renew あり）: expiry(0.8s・DB server clock) 後、ちょうど1本が takeover して完走する。
+    const followers = [1, 2].map(() =>
+      processMeetingUpload(actor, input, {
+        __providersForTest: newW.providers,
+        __claimPollForTest: { intervalMs: 100, budgetMs: 30_000 },
+        __leaseForTest: { ttlMs: 800, renewIntervalMs: 100 },
+      }),
+    );
+    const fr = await Promise.all(followers);
+    const frOk = fr.flatMap((r) => (r.ok ? [r] : []));
+    expect(frOk.length, 'follower は全員成功').toBe(2);
+    expect(frOk.filter((r) => !r.duplicated).length, 'takeover 新winner はちょうど1本').toBe(1);
+    expect(new Set(frOk.map((r) => r.meetingId)).size).toBe(1);
+    expect(newW.calls, '新winner 側の provider は合計各1回').toEqual({ transcribe: 1, summarize: 1, embed: 1 });
+    // 旧holder を再開 → 各段 ownership fence が所有権喪失を検知し、provider を1回も呼ばず新winnerの結果へ収束。
+    releaseOld();
+    const rOld = await pOld;
+    expect(rOld.ok, '旧holder は follower へ降格して収束').toBe(true);
+    if (rOld.ok) {
+      expect(rOld.duplicated, '旧holder は新規実行しない').toBe(true);
+      expect(rOld.meetingId, '新winner の Meeting へ収束').toBe(frOk[0]!.meetingId);
+    }
+    expect(oldW.calls, '旧holder は provider を一切実行しない（commit も不可）').toEqual({ transcribe: 0, summarize: 0, embed: 0 });
+    // 全 surface 1組（guard も takeover 新winner の1回のみ = AISafetyLog 1）。
+    const c = await countRows(actor.tenantId, uniqueType, requestId);
+    expect(c.meeting).toBe(1);
+    expect(c.events, 'claim 行がそのまま anchor（余分な行なし）').toBe(1);
+    expect(c.outbox).toBe(1);
+    expect(c.aiOutput).toBe(1);
+    const out = await prisma.aIOutput.findFirst({ where: { tenantId: actor.tenantId, task: 'summarizeMeeting', purpose: uniqueType } });
+    expect(await prisma.usageEvent.count({ where: { sourceType: 'AIOutput', sourceId: out!.id } })).toBe(1);
+    expect(
+      await prisma.aISafetyLog.count({ where: { tenantId: actor.tenantId, entityType: 'MeetingUploadRequest', entityId: requestId } }),
+      'guard は takeover 新winner の1回のみ',
+    ).toBe(1);
+  } finally {
+    await cleanup(actor.tenantId, uniqueType, requestId);
+  }
+});
+
+test('clock skew非依存: expiry判定はDB server clockのみ — app時計を±10分ずらしてもtakeover判定は変わらない', async () => {
+  const actor = await getActor();
+  const uniqueType = uid('mtg-skew');
+  // (1) 生存中（fresh・DB now()）claim + app clock を +10分進める。
+  //     app-clock 判定なら「期限切れ」に見えるが、DB server clock 判定のため takeover されない。
+  const req1 = uid('req');
+  const input1 = { title: 'SKEW-生存', type: uniqueType, transcript: TRANSCRIPT, requestId: req1 };
+  const key1 = makeMeetingUploadIdempotencyKey(req1);
+  const w1 = watchProviders(true);
+  // (2) 期限切れ（DB now() - 3分）claim + app clock を −10分戻す。
+  //     app-clock 判定なら「未期限切れ」に見えるが、DB server clock 判定のため takeover される。
+  const req2 = uid('req');
+  const input2 = { title: 'SKEW-回収', type: uniqueType, transcript: TRANSCRIPT, requestId: req2 };
+  const key2 = makeMeetingUploadIdempotencyKey(req2);
+  try {
+    const fp1 = makeMeetingUploadFingerprint({ tenantId: actor.tenantId, userId: actor.userId }, input1);
+    await prisma.domainEvent.create({
+      data: {
+        tenantId: actor.tenantId,
+        eventType: 'MEETING_MINUTES_CREATED',
+        aggregateType: 'Meeting',
+        aggregateId: 'pending',
+        actorId: actor.userId ?? null,
+        actorType: 'user',
+        payload: {},
+        metadata: { requestId: req1, fp: fp1, phase: 'claimed', owner: 'alive-owner-skew' },
+        idempotencyKey: key1,
+        status: 'processing',
+      },
+    });
+    const r1 = await processMeetingUpload(actor, input1, {
+      __providersForTest: w1.providers,
+      __claimPollForTest: { intervalMs: 50, budgetMs: 300 },
+      __clockSkewMsForTest: +10 * 60 * 1000,
+    });
+    expect(r1.ok).toBe(false);
+    if (!r1.ok) expect(r1.reason, 'app時計を+10分進めても生存中 lease は奪えない').toBe('in-progress');
+    expect(w1.calls).toEqual({ transcribe: 0, summarize: 0, embed: 0 });
+    const still = await prisma.domainEvent.findUnique({
+      where: { tenantId_idempotencyKey: { tenantId: actor.tenantId, idempotencyKey: key1 } },
+      select: { status: true, metadata: true },
+    });
+    expect(still!.status).toBe('processing');
+    expect((still!.metadata as { owner?: string }).owner, 'owner 不変（takeover なし）').toBe('alive-owner-skew');
+
+    const fp2 = makeMeetingUploadFingerprint({ tenantId: actor.tenantId, userId: actor.userId }, input2);
+    const seeded2 = await prisma.domainEvent.create({
+      data: {
+        tenantId: actor.tenantId,
+        eventType: 'MEETING_MINUTES_CREATED',
+        aggregateType: 'Meeting',
+        aggregateId: 'pending',
+        actorId: actor.userId ?? null,
+        actorType: 'user',
+        payload: {},
+        metadata: { requestId: req2, fp: fp2, phase: 'claimed', owner: 'dead-owner-skew' },
+        idempotencyKey: key2,
+        status: 'processing',
+      },
+      select: { id: true },
+    });
+    await prisma.$executeRaw`UPDATE "DomainEvent" SET "occurredAt" = now() - interval '3 minutes' WHERE "id" = ${seeded2.id}`;
+    const r2 = await processMeetingUpload(actor, input2, { __clockSkewMsForTest: -10 * 60 * 1000 });
+    expect(r2.ok, 'app時計を−10分戻しても expired lease は takeover される').toBe(true);
+    if (r2.ok) expect(r2.duplicated, 'takeover は新winnerとしての実行').toBe(false);
+    const ev2 = await prisma.domainEvent.findUnique({
+      where: { tenantId_idempotencyKey: { tenantId: actor.tenantId, idempotencyKey: key2 } },
+      select: { id: true, status: true },
+    });
+    expect(ev2!.id, '残留 claim 行そのものが anchor へ昇格').toBe(seeded2.id);
+    expect(ev2!.status).toBe('pending');
+  } finally {
+    await cleanup(actor.tenantId, uniqueType, req1);
+    await cleanup(actor.tenantId, uniqueType, req2);
   }
 });
 

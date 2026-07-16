@@ -1,4 +1,5 @@
-// 会議アップロード（uploadMeeting）の業務ロジック。P3-MEETING（Codex CR #4964764958 / R2 #4989554075 対応）。
+// 会議アップロード（uploadMeeting）の業務ロジック。P3-MEETING（Codex CR #4964764958 / R2 #4989554075 /
+// R3 #4991263970 対応）。
 // 設計ルール: docs/audit/12_maintenance_architecture.md。Server Action はこのサービスを呼ぶだけ。
 //
 // CR R1 の要求と対応:
@@ -17,22 +18,40 @@
 //     `idempotency-mismatch` で fail-closed（別内容が既存 Meeting へ「成功」偽装で収束しない）。
 //  5. 冪等 barrier が transaction 末尾（provider 呼び出し後）だった → **provider 前 durable claim**。
 //     DomainEvent の (tenantId, idempotencyKey) unique を「先取り claim 行」（status='processing'・
-//     aggregateId='pending'・metadata={requestId, fp, phase:'claimed'}・Outbox なし）として提供者呼び出し
-//     **前**に獲得する。winner だけが guard + 3 provider を実行し、same-payload follower は claim 完了を
-//     poll して winner の Meeting へ収束する（provider 呼び出し 0 = 二重 AI 実行なし）。
-//     - winner の業務 transaction は claim 行を **fenced UPDATE**（id + status='processing' +
-//       occurredAt 一致の updateMany count===1）で aggregateId=meeting.id / payload / phase:'complete' /
-//       status='pending' へ確定し、OutboxMessage を同時作成する（lease を失っていれば rollback）。
-//     - winner 失敗（guard blocked / provider throw / tx rollback）は claim を fenced deleteMany で解放し、
-//       retry が新 winner になれる。crash で解放されない claim は occurredAt の TTL（2分）超過で
-//       follower が CAS（occurredAt 更新 count===1）により takeover する。
-//     - claim 行は Outbox を持たず status='processing' のため、イベント消費系（Outbox worker）には流れない。
+//     aggregateId='pending'・Outbox なし）として provider 呼び出し**前**に獲得する。winner だけが
+//     guard + 3 provider を実行し、same-payload follower は claim 完了を poll して winner の Meeting へ
+//     収束する（provider 呼び出し 0 = 二重 AI 実行なし）。
+//
+// CR R3（#4991263970）の要求と対応 — **renewable lease（owner token + DB server clock）**:
+//  6. R2 の lease は獲得時刻を一度保存するだけで renew がなく、**生存中の winner でも TTL(2分) を超える
+//     AI 処理中に follower へ takeover され provider が合計2回実行され得た**。また expiry 判定が app
+//     process の wall clock（Date.now）だったため、process 間の時計ずれで早期 takeover が起き得た。
+//     → 以下の renewable lease へ変更（schema 変更なし・metadata JSON と既存 occurredAt 列のみ使用）:
+//     - **owner token**: claim 獲得/takeover ごとに一意な owner（uuid）を metadata.owner に保存。fenced
+//       操作（完了昇格・解放・renew）はすべて owner 等価を条件にする（occurredAt 等価 fence は廃止）。
+//     - **DB server clock**: occurredAt を「最終 renew 時刻」とし、書き込みは常に SQL の `now()`（DB
+//       server time）。expiry 判定・takeover CAS も SQL 内の `occurredAt < now() - TTL` で行い、app clock
+//       を一切使わない（時計ずれの影響なし）。
+//     - **renew（heartbeat）**: winner は guard/provider 処理中、TTL より十分短い間隔（TTL/4）で
+//       `occurredAt = now()` を owner fenced に更新し続ける。生存中は expiry せず takeover されない。
+//       renew は lease 維持そのものなので provider 呼び出しの長さに deadline を課さない — provider が
+//       どれだけ長くても renew が続く限り lease は有効（timeout は provider 側実装に委ねる）。
+//     - **takeover は「renew が止まった lease」のみ**: follower は claim 遭遇時と poll 各 iteration で
+//       takeover CAS（`WHERE status='processing' AND occurredAt < now() - TTL` → owner 差替え + now()）を
+//       試行する。renew 中の winner の claim は絶対に奪えない。CAS 勝者はちょうど1本（単一行の条件付き UPDATE）。
+//     - **各段 ownership fence**: winner は guard・transcribe・summarize・embed・transaction の各段前に
+//       owner を DB で fenced 確認し、喪失していれば**次の provider/commit へ進まず** follower（poll 収束）
+//       へ降格する。最終 transaction の昇格 UPDATE も owner fenced（count!==1 → 全 rollback）のため、
+//       takeover 後の旧 winner は二重確定できない。
+//     - **provider への requestKey 伝播**: 外部 provider が idempotency key を受けられる場合に備え、
+//       安定キー（upload idempotencyKey）を provider 入力へ伝播する（現行 Fake/ローカル provider は
+//       未使用・外部送信なし。実 provider 導入時の crash 境界二重防御）。
 //
 // 冪等キーについて: `emitDomainEvent`（apps/web/lib/events.ts）は独自 transaction を張るため本
 // transaction と合成できず、また main の `makeIdempotencyKey` は FNV-1a 32bit 短縮で衝突し得る
 // （PR #57 で正準キーへ更新中・未 merge）。そのため本モジュールは **単射な専用キー書式** を自前で
 // 構築し、DomainEvent/OutboxMessage を transaction 内で直接作成する（schema 変更なし・frozen ファイル非接触）。
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { prisma } from '@/lib/db';
 import type { Prisma } from '@hokko/db';
 import { summarizeMeeting, getTranscriptionProvider, getEmbeddingProvider } from '@hokko/ai';
@@ -60,7 +79,7 @@ export type MeetingUploadFailReason =
   | 'blocked'
   /** 同一 requestId が**異なる内容**で既に使用済み/処理中（fp 不一致）。別内容を既存結果へ収束させない fail-closed。 */
   | 'idempotency-mismatch'
-  /** 同一 requestId の winner が処理中で、poll 予算内に完了しなかった（TTL 内 = takeover もしない）。 */
+  /** 同一 requestId の winner が処理中（lease 生存中 = renew 継続中）で、poll 予算内に完了しなかった。 */
   | 'in-progress';
 
 export type MeetingUploadResult =
@@ -81,11 +100,13 @@ export type MeetingUploadFaultPoint =
   | 'after-lineage'
   | 'after-event';
 
-/** テストで provider 呼び出しの有無を観測するための注入口（未指定なら実 provider getter）。 */
+/** テストで provider 呼び出しの有無を観測するための注入口（未指定なら実 provider getter）。
+ *  requestKey は upload の安定 idempotency key（外部 provider が冪等キーを受けられる場合の伝播用・
+ *  現行 Fake/ローカル provider は未使用・CR R3 #3）。 */
 export interface MeetingUploadProviders {
-  transcribe(input: { text: string }): Promise<{ text: string; segments: Array<{ speaker: string; startSec: number; text: string }>; provider: string }>;
-  summarize(input: { title: string; transcript: string; type?: string }): ReturnType<typeof summarizeMeeting>;
-  embed(texts: string[]): Promise<number[][]>;
+  transcribe(input: { text: string; requestKey?: string }): Promise<{ text: string; segments: Array<{ speaker: string; startSec: number; text: string }>; provider: string }>;
+  summarize(input: { title: string; transcript: string; type?: string; requestKey?: string }): ReturnType<typeof summarizeMeeting>;
+  embed(texts: string[], requestKey?: string): Promise<number[][]>;
 }
 
 export interface MeetingUploadOptions {
@@ -93,12 +114,16 @@ export interface MeetingUploadOptions {
   /** transaction 開始直前の hook（並行テストの barrier 用）。 */
   __beforeTxForTest?: () => Promise<void> | void;
   __faultAfterForTest?: (point: MeetingUploadFaultPoint) => Promise<void> | void;
-  /** claim（lease）獲得直後・guard/provider 実行前の hook（winner だけが通る）。並行テストの winner gate 用。 */
+  /** claim（lease）獲得・renew 開始直後、guard/provider 実行前の hook（winner だけが通る）。並行テストの winner gate 用。 */
   __gateAfterClaimForTest?: () => Promise<void> | void;
   /** follower の claim 完了 poll 間隔/予算の上書き（テスト用）。 */
   __claimPollForTest?: { intervalMs: number; budgetMs: number };
-  /** claim TTL（ms）の上書き（テスト用）。既定 2 分。 */
-  __claimTtlMsForTest?: number;
+  /** lease の TTL / renew 間隔 / renew 無効化（winner crash・heartbeat 停止の再現）の上書き（テスト用）。 */
+  __leaseForTest?: { ttlMs?: number; renewIntervalMs?: number; disableRenew?: boolean };
+  /** app process の時計ずれ注入（テスト用）。本モジュール内の Date.now 利用（poll 予算のみ）に加算される。
+   *  lease の expiry/renew/takeover 判定は **DB server clock（SQL now()）** のみで行うため、この値は
+   *  takeover 挙動に影響しない（= 時計ずれ非依存の証明用・CR R3 必須 Evidence）。 */
+  __clockSkewMsForTest?: number;
 }
 
 /** requestId の許容書式（UUID/cuid/nanoid を包含する保守的な文字集合・長さ制限）。 */
@@ -141,12 +166,14 @@ export function makeMeetingUploadFingerprint(
 
 const EVENT_TYPE = 'MEETING_MINUTES_CREATED';
 const AGGREGATE_TYPE = 'Meeting';
-/** claim（status='processing'）の lease TTL。超過は winner crash とみなし follower が takeover できる。 */
+/** lease TTL。renew（TTL/4 間隔）が止まってからこの時間（**DB server clock**）経過した claim だけが takeover 可能。 */
 const CLAIM_TTL_MS = 2 * 60 * 1000;
+/** lease renew（heartbeat）間隔。TTL より十分短くし、一時的な DB 断でも次 tick で回復できる余裕を持つ。 */
+const CLAIM_RENEW_INTERVAL_MS = 30 * 1000;
 /** follower の claim 完了 poll 既定値（Server Action 内で待てる現実的な予算）。 */
 const CLAIM_POLL_INTERVAL_MS = 300;
 const CLAIM_POLL_BUDGET_MS = 15_000;
-/** claim 獲得の再試行上限（release/takeover 競合の ping-pong を有限に抑える fail-safe）。 */
+/** claim 獲得の再試行上限（release/takeover/降格 競合の ping-pong を有限に抑える fail-safe）。 */
 const CLAIM_MAX_ATTEMPTS = 5;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -155,6 +182,8 @@ interface ClaimMeta {
   requestId?: string;
   fp?: string;
   phase?: string;
+  /** lease の所有者 token（claim 獲得/takeover ごとに一意な uuid）。fenced 操作の照合条件（CR R3 #1）。 */
+  owner?: string;
 }
 
 interface ClaimRow {
@@ -164,13 +193,12 @@ interface ClaimRow {
   aggregateId: string;
   status: string;
   metadata: unknown;
-  occurredAt: Date;
 }
 
-/** winner が保持する lease。fenced UPDATE/DELETE の照合条件（id + status='processing' + occurredAt）。 */
+/** winner が保持する lease。fenced UPDATE/DELETE/renew の照合条件（id + status='processing' + metadata.owner）。 */
 interface ClaimLease {
   id: string;
-  occurredAt: Date;
+  owner: string;
 }
 
 const CLAIM_SELECT = {
@@ -180,7 +208,6 @@ const CLAIM_SELECT = {
   aggregateId: true,
   status: true,
   metadata: true,
-  occurredAt: true,
 } as const;
 
 function claimMeta(row: ClaimRow): ClaimMeta {
@@ -195,11 +222,84 @@ function isIdempotencyUniqueViolation(e: unknown): boolean {
   return JSON.stringify(err.meta?.target ?? '').includes('idempotencyKey');
 }
 
+/** winner が provider/commit 途中で lease 所有権を失ったシグナル（takeover 発生）。follower へ降格する。 */
+class ClaimOwnershipLostError extends Error {
+  constructor() {
+    super('meeting-upload-claim-ownership-lost');
+    this.name = 'ClaimOwnershipLostError';
+  }
+}
+
 /**
- * 会議アップロード本体（CR R2 設計）:
- *   fp 計算 → durable claim 獲得（provider 前 barrier）→ [winner] 安全検査 → AI 生成 → 単一 transaction
- *   で全レコード確定＋claim を fenced UPDATE で 'complete' 化。
- *   [follower] fp 照合 → 一致なら poll で winner の Meeting へ収束（provider 0）/ 不一致は idempotency-mismatch。
+ * expired claim の takeover CAS。expiry 判定・時刻書き込みとも **DB server clock（now()）のみ**を使う
+ * （app process の時計ずれは判定に影響しない・CR R3）。renew 中（occurredAt が新しい）claim は絶対に
+ * 奪えない = takeover は「renew が止まった lease」だけを回収する。勝者はちょうど1本（単一行の条件付き UPDATE）。
+ */
+async function tryTakeoverExpiredClaim(claimId: string, ttlMs: number): Promise<ClaimLease | null> {
+  const owner = randomUUID();
+  const taken = await prisma.$executeRaw`
+    UPDATE "DomainEvent"
+    SET "occurredAt" = now(),
+        "metadata" = jsonb_set(COALESCE("metadata", '{}'::jsonb), '{owner}', to_jsonb(${owner}::text))
+    WHERE "id" = ${claimId}
+      AND "status" = 'processing'
+      AND "occurredAt" < now() - (${ttlMs}::int * interval '1 millisecond')`;
+  return taken === 1 ? { id: claimId, owner } : null;
+}
+
+/**
+ * lease renew（heartbeat）。owner fenced に occurredAt=now()（DB server time）を更新し続ける。
+ * 更新 0 行 = 所有権喪失（takeover された/完了した/解放された）→ onLost を通知して停止。
+ * 一時的な DB エラーでは停止しない（TTL/4 間隔のため次 tick で回復できる余裕がある）。
+ */
+function startLeaseRenewal(lease: ClaimLease, intervalMs: number, onLost: () => void): { stop(): void } {
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const tick = async () => {
+    if (stopped) return;
+    try {
+      const renewed = await prisma.$executeRaw`
+        UPDATE "DomainEvent" SET "occurredAt" = now()
+        WHERE "id" = ${lease.id} AND "status" = 'processing' AND "metadata"->>'owner' = ${lease.owner}`;
+      if (renewed !== 1) {
+        onLost();
+        return;
+      }
+    } catch {
+      // 一時的な DB 断は握りつぶして次 tick で再試行（TTL に対して間隔が短いため猶予がある）。
+    }
+    if (!stopped) {
+      timer = setTimeout(tick, intervalMs);
+      timer.unref?.();
+    }
+  };
+  timer = setTimeout(tick, intervalMs);
+  timer.unref?.();
+  return {
+    stop() {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    },
+  };
+}
+
+/** lease 所有権の fenced 確認（guard/provider 各段・transaction の前で呼ぶ・CR R3 #2）。 */
+async function ownershipHeld(lease: ClaimLease): Promise<boolean> {
+  const row = await prisma.domainEvent.findUnique({
+    where: { id: lease.id },
+    select: { status: true, metadata: true },
+  });
+  return !!row && row.status === 'processing' && ((row.metadata ?? {}) as ClaimMeta).owner === lease.owner;
+}
+
+/**
+ * 会議アップロード本体（CR R2/R3 設計）:
+ *   fp 計算 → durable claim（renewable lease）獲得 → [winner] renew（heartbeat）開始 → 各段 ownership
+ *   fence 付きで 安全検査 → AI 生成 → 単一 transaction で全レコード確定＋claim を owner fenced UPDATE で
+ *   'complete' 化。
+ *   [follower] fp 照合 → 一致なら poll（各 iteration で expired-claim takeover CAS を試行）で収束
+ *   （provider 0）/ 不一致は idempotency-mismatch。所有権を失った旧 winner は次の provider/commit を
+ *   実行せず follower へ降格する。
  */
 export async function processMeetingUpload(
   actor: MeetingUploadActor,
@@ -215,10 +315,13 @@ export async function processMeetingUpload(
 
   const idempotencyKey = makeMeetingUploadIdempotencyKey(input.requestId);
   const fp = makeMeetingUploadFingerprint(actor, input);
+  const ttlMs = opts.__leaseForTest?.ttlMs ?? CLAIM_TTL_MS;
+  // app clock は poll 予算のみに使用。lease の expiry/takeover 判定は SQL now()（DB server clock）のみ。
+  const nowMs = () => Date.now() + (opts.__clockSkewMsForTest ?? 0);
 
-  // --- ⓪ durable claim の獲得ループ（provider 呼び出し前の冪等 barrier） ---
+  // --- ⓪ durable claim（renewable lease）の獲得ループ ---
   // 既存行なし → claim 作成を試行（P2002 = 競合負け → 再評価）。
-  // 既存行あり → complete なら fp 照合の上で収束 / claimed なら fp 照合 → poll or TTL takeover。
+  // 既存行あり → complete なら fp 照合の上で収束 / claimed なら fp 照合 → expired takeover 試行 → poll。
   for (let attempt = 0; attempt < CLAIM_MAX_ATTEMPTS; attempt++) {
     const existing = (await prisma.domainEvent.findUnique({
       where: { tenantId_idempotencyKey: { tenantId: actor.tenantId, idempotencyKey } },
@@ -229,7 +332,7 @@ export async function processMeetingUpload(
 
     if (!existing) {
       try {
-        const occurredAt = new Date();
+        const owner = randomUUID();
         const claim = await prisma.domainEvent.create({
           data: {
             tenantId: actor.tenantId,
@@ -239,14 +342,14 @@ export async function processMeetingUpload(
             actorId: actor.userId ?? null,
             actorType: 'user',
             payload: {},
-            metadata: { requestId: input.requestId, fp, phase: 'claimed' },
+            metadata: { requestId: input.requestId, fp, phase: 'claimed', owner },
             idempotencyKey,
             status: 'processing', // Outbox を作らない = イベント消費系に流れない claim 行
-            occurredAt, // 明示 set（DB default(now()) だと μs 精度で fenced 照合が不成立になるため）
+            // occurredAt は指定しない → DB default now()（server time）。以後の renew/expiry も SQL now() 基準。
           },
           select: { id: true },
         });
-        lease = { id: claim.id, occurredAt };
+        lease = { id: claim.id, owner };
       } catch (e) {
         if (!isIdempotencyUniqueViolation(e)) throw e;
         continue; // 競合負け → 次 iteration で既存 claim を再評価
@@ -264,25 +367,15 @@ export async function processMeetingUpload(
       }
       // 処理中 claim。異 payload は poll せず即 fail-closed（winner の結果に収束させない）。
       if (meta.fp !== fp) return { ok: false, reason: 'idempotency-mismatch' };
-      const ttlMs = opts.__claimTtlMsForTest ?? CLAIM_TTL_MS;
-      if (Date.now() - existing.occurredAt.getTime() > ttlMs) {
-        // winner crash とみなし CAS takeover（occurredAt を lease 照合値ごと更新。負けたら再評価）。
-        const now = new Date();
-        const cas = await prisma.domainEvent.updateMany({
-          where: { id: existing.id, status: 'processing', occurredAt: existing.occurredAt },
-          data: { occurredAt: now },
-        });
-        if (cas.count === 1) {
-          lease = { id: existing.id, occurredAt: now };
-        } else {
-          continue; // takeover 競合負け / winner が完了・解放 → 再評価
-        }
-      } else {
-        // same-payload follower: winner の完了を poll（provider は一切呼ばない）。
+      // expired（renew が止まって TTL 超過・DB server clock 判定）なら takeover（CAS 勝者ちょうど1本）。
+      lease = await tryTakeoverExpiredClaim(existing.id, ttlMs);
+      if (!lease) {
+        // 生存中 lease: same-payload follower として winner の完了を poll（provider は一切呼ばない）。
+        // 各 iteration で expired takeover も試行する（poll 中に winner の renew が止まった場合の回収）。
         const poll = opts.__claimPollForTest ?? { intervalMs: CLAIM_POLL_INTERVAL_MS, budgetMs: CLAIM_POLL_BUDGET_MS };
-        const deadline = Date.now() + poll.budgetMs;
+        const deadline = nowMs() + poll.budgetMs;
         let outcome: MeetingUploadResult | 'reclaim' | null = null;
-        while (Date.now() < deadline) {
+        while (nowMs() < deadline) {
           await sleep(poll.intervalMs);
           const row = (await prisma.domainEvent.findUnique({
             where: { tenantId_idempotencyKey: { tenantId: actor.tenantId, idempotencyKey } },
@@ -297,18 +390,27 @@ export async function processMeetingUpload(
             outcome = m.fp === fp ? { ok: true, meetingId: row.aggregateId, duplicated: true } : { ok: false, reason: 'idempotency-mismatch' };
             break;
           }
+          const taken = await tryTakeoverExpiredClaim(row.id, ttlMs);
+          if (taken) {
+            lease = taken;
+            break;
+          }
         }
         if (outcome === 'reclaim') continue;
         if (outcome) return outcome;
-        // TTL 内に完了せず予算切れ。takeover はせず fail-closed（二重 AI 実行を避ける）。
-        return { ok: false, reason: 'in-progress' };
+        if (!lease) {
+          // lease 生存中（renew 継続中）のまま poll 予算切れ。takeover せず fail-closed（二重 AI 実行を避ける）。
+          return { ok: false, reason: 'in-progress' };
+        }
       }
     }
 
-    // --- lease 獲得 = winner。以降の失敗は必ず claim を解放してから伝播する。 ---
-    return await runAsClaimWinner(actor, { title, type, text, requestId: input.requestId, idempotencyKey, fp }, lease, opts);
+    // --- lease 獲得 = winner。renew を開始し、各段 ownership fence 付きで実行する。 ---
+    const result = await runAsClaimWinner(actor, { title, type, text, requestId: input.requestId, idempotencyKey, fp }, lease, opts);
+    if (result === 'ownership-lost') continue; // takeover された旧 winner → follower として再評価（poll 収束）
+    return result;
   }
-  // 再試行上限（release/takeover の連続競合）。呼び出し側は再送信で回復できる。
+  // 再試行上限（release/takeover/降格の連続競合）。呼び出し側は再送信で回復できる。
   return { ok: false, reason: 'in-progress' };
 }
 
@@ -321,30 +423,48 @@ interface NormalizedUpload {
   fp: string;
 }
 
-/** winner 失敗時の claim 解放（fenced delete）。解放自体の失敗は元エラーを隠さない（TTL takeover が回収する）。 */
+/** winner 失敗時の claim 解放（owner fenced delete）。解放自体の失敗は元エラーを隠さない（expiry takeover が回収する）。 */
 async function releaseClaim(lease: ClaimLease): Promise<void> {
   try {
-    await prisma.domainEvent.deleteMany({ where: { id: lease.id, status: 'processing', occurredAt: lease.occurredAt } });
+    await prisma.domainEvent.deleteMany({
+      where: { id: lease.id, status: 'processing', metadata: { path: ['owner'], equals: lease.owner } },
+    });
   } catch {
-    // 解放失敗（DB 断等）は握りつぶす: 元の例外/返値を優先し、残った stale claim は TTL takeover で回収される。
+    // 解放失敗（DB 断等）は握りつぶす: 元の例外/返値を優先し、残った stale claim は expiry takeover で回収される。
   }
 }
 
 /**
- * claim winner の本処理: 安全検査 → AI 生成（transaction 外・純データ化）→ 全レコード単一 transaction 確定
- * ＋ claim 行の fenced 'complete' 化。guard blocked / provider 例外 / tx rollback は claim を解放する。
+ * claim winner の本処理: renew（heartbeat）を維持しながら、各段 ownership fence 付きで
+ * 安全検査 → AI 生成（transaction 外・純データ化）→ 全レコード単一 transaction 確定＋claim の
+ * owner fenced 'complete' 化を行う。guard blocked / provider 例外 / tx rollback は claim を解放する。
+ * 所有権喪失（takeover）を検知したら次の provider/commit を実行せず 'ownership-lost' で降格する。
  */
 async function runAsClaimWinner(
   actor: MeetingUploadActor,
   n: NormalizedUpload,
   lease: ClaimLease,
   opts: MeetingUploadOptions,
-): Promise<MeetingUploadResult> {
-  if (opts.__gateAfterClaimForTest) await opts.__gateAfterClaimForTest();
+): Promise<MeetingUploadResult | 'ownership-lost'> {
+  let lostByRenew = false;
+  const renewIntervalMs = opts.__leaseForTest?.renewIntervalMs ?? CLAIM_RENEW_INTERVAL_MS;
+  // renew 無効化はテスト専用（winner crash / heartbeat 停止の再現）。本番は常に renew する。
+  const renewal = opts.__leaseForTest?.disableRenew
+    ? { stop() {} }
+    : startLeaseRenewal(lease, renewIntervalMs, () => {
+        lostByRenew = true;
+      });
+  // guard・各 provider 段・commit の**前**に owner を fenced 確認。喪失していれば次の段へ進まない（CR R3 #2）。
+  const assertOwnership = async () => {
+    if (lostByRenew || !(await ownershipHeld(lease))) throw new ClaimOwnershipLostError();
+  };
   try {
+    if (opts.__gateAfterClaimForTest) await opts.__gateAfterClaimForTest();
+    await assertOwnership();
+
     // --- ① 安全検査を AI/Embedding 呼び出しの**前**に実施（未信頼本文を provider へ渡す前に遮断） ---
     // block/flag 規約: high 注入 → blocked（生成中止・provider 未到達）。medium/low → 続行しフラグ記録。
-    // guard は claim 獲得後 = winner だけが実行するため、AISafetyLog は upload 1回につき 1 行。
+    // guard は lease 保持中の winner だけが実行するため、AISafetyLog は upload 1回につき 1 行。
     // AISafetyLog は requestId を entityId に持つ（Meeting はまだ存在しないため）。
     const guard = await safeAiInput({
       tenantId: actor.tenantId,
@@ -363,18 +483,23 @@ async function runAsClaimWinner(
     if (opts.__faultAfterForTest) await opts.__faultAfterForTest('after-guard');
 
     // --- ② ネットワーク/AI 呼び出しは DB 書き込み前に完了させる（transaction 内で外部 I/O を待たない） ---
+    // 各段の前に ownership fence。requestKey は外部 provider の冪等キー伝播用（Fake/ローカルは未使用・CR R3 #3）。
     const providers: MeetingUploadProviders = opts.__providersForTest ?? {
-      transcribe: (i) => getTranscriptionProvider().transcribe(i),
-      summarize: (i) => summarizeMeeting(i),
+      transcribe: ({ text }) => getTranscriptionProvider().transcribe({ text }),
+      summarize: ({ title, transcript, type }) => summarizeMeeting({ title, transcript, type }),
       embed: (texts) => getEmbeddingProvider().embed(texts),
     };
-    const transcription = await providers.transcribe({ text: n.text });
+    await assertOwnership();
+    const transcription = await providers.transcribe({ text: n.text, requestKey: n.idempotencyKey });
     const label = n.type === 'interview' || n.type === 'oneonone' ? 'HR_CONFIDENTIAL' : 'INTERNAL';
-    const minutes = await providers.summarize({ title: n.title, transcript: transcription.text, type: n.type });
+    await assertOwnership();
+    const minutes = await providers.summarize({ title: n.title, transcript: transcription.text, type: n.type, requestKey: n.idempotencyKey });
     const chunks = chunkText(`${n.title}\n${minutes.summaryFull}\n${transcription.text}`, 400, 60);
-    const vectors = await providers.embed(chunks);
+    await assertOwnership();
+    const vectors = await providers.embed(chunks, n.idempotencyKey);
     if (vectors.length !== chunks.length) throw new Error(`embedding count mismatch: ${vectors.length} != ${chunks.length}`);
 
+    await assertOwnership();
     if (opts.__beforeTxForTest) await opts.__beforeTxForTest();
 
     // --- ③ 中核＋AI出力＋ナレッジ RAG＋claim 確定を **単一 $transaction** で all-or-nothing 確定 ---
@@ -504,10 +629,10 @@ async function runAsClaimWinner(
         data: { tenantId: actor.tenantId, documentId: doc.id, stage: 'embedded', detail: `${chunks.length} chunks` },
       });
       await fault('after-lineage');
-      // claim → anchor 昇格（fenced UPDATE）。lease（id + processing + occurredAt）を失っていれば count 0 →
-      // throw で全段 rollback（takeover 後の旧 winner が二重確定できない）。
+      // claim → anchor 昇格（owner fenced UPDATE・CR R3）。lease（id + processing + owner）を失っていれば
+      // count 0 → throw で全段 rollback（takeover 後の旧 winner が二重確定できない）。完了 metadata は owner を持たない。
       const promoted = await tx.domainEvent.updateMany({
-        where: { id: lease.id, status: 'processing', occurredAt: lease.occurredAt },
+        where: { id: lease.id, status: 'processing', metadata: { path: ['owner'], equals: lease.owner } },
         data: {
           aggregateId: meeting.id,
           payload: { meetingId: meeting.id, title: n.title, knowledgeDocumentId: doc.id } as Prisma.InputJsonValue,
@@ -515,7 +640,7 @@ async function runAsClaimWinner(
           status: 'pending',
         },
       });
-      if (promoted.count !== 1) throw new Error('meeting-upload-claim-lost');
+      if (promoted.count !== 1) throw new ClaimOwnershipLostError();
       await tx.outboxMessage.create({
         data: {
           tenantId: actor.tenantId,
@@ -538,8 +663,15 @@ async function runAsClaimWinner(
     });
     return { ok: true, meetingId: meeting.id, duplicated: false };
   } catch (e) {
+    if (e instanceof ClaimOwnershipLostError) {
+      // takeover された旧 winner: claim はもう自分のものではない（解放しない）。次の provider/commit へは
+      // 進んでいない（各段 fence）か、tx が rollback 済み。follower として新 winner の結果へ収束する。
+      return 'ownership-lost';
+    }
     // winner 失敗（guard 後 fault / provider 例外 / tx rollback）→ claim 解放（retry が新 winner になれる）。
     await releaseClaim(lease);
     throw e;
+  } finally {
+    renewal.stop();
   }
 }

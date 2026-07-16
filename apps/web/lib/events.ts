@@ -29,11 +29,41 @@ export interface EmitResult {
   duplicated: boolean;
 }
 
-/** 同一論理 identity の既存 DomainEvent を canonical/legacy 両キーで探す（upgrade-safe dual-read・Codex PR#57 R5 #1）。
- *  legacy FNV キーは identity を無損失に保持しない（別 identity が衝突し得る）ため、legacy 一致は
- *  保存行の tenantId/eventType/aggregateId 列の完全一致も必須にし、衝突を同一 identity と混同しない。
- *  （legacy キーは dedupe をハッシュ内にのみ含むため列照合できないが、キー自体が我々の identity から
- *  計算した値である以上、tenant/type/aggregate まで一致して dedupe だけ異なる衝突は実質空集合。） */
+/** JSON を key 順で正規化して文字列化（jsonb は key 順を保持しないため、順序非依存で内容比較する）。 */
+function stableStringify(v: unknown): string {
+  if (v === null || v === undefined) return 'null';
+  if (Array.isArray(v)) return `[${v.map(stableStringify).join(',')}]`;
+  if (typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    const keys = Object.keys(o).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(o[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(v);
+}
+
+/** undefined 混入を JSON 直列化と同じ規約（undefined プロパティは欠落）へ正規化してから比較可能にする。 */
+function normalizeJson(v: unknown): unknown {
+  if (v === null || v === undefined) return null;
+  return JSON.parse(JSON.stringify(v));
+}
+
+/** 同一論理 identity の既存 DomainEvent を canonical/legacy 両キーで探す（upgrade-safe dual-read・Codex PR#57 R5/R6 #1）。
+ *
+ *  legacy FNV キーは identity（dedupe を含む）を無損失に保持しない＝**別 identity が同一キーへ衝突し得る**。
+ *  そのため legacy 一致は
+ *   (1) 保存行の tenantId / eventType / aggregateType / aggregateId 列の完全一致、かつ
+ *   (2) 保存行から照合可能な**無損失コンテンツ fingerprint**（payload / metadata / actorId / actorType の
+ *       正規化 deep-equal）の完全一致
+ *  を要求する。exact retry（同一入力の再送）だけが (1)(2) を同時に満たし legacy 行へ収束する。
+ *  同一 tenant/type/aggregate で dedupe が異なる FNV 衝突（Codex R6 fixture: agg-same の d42vu/dfuea →
+ *  同一 `CUSTOMER_CREATED:1c68e52b`）は、別の論理イベントである以上コンテンツが異なり (2) で棄却され、
+ *  自分の canonical 行を新規作成する（イベント消失なし）。
+ *
+ *  残余ケース（同一 tenant/type/aggregate・payload/metadata/actor まで完全同一で dedupe だけ異なる
+ *  FNV 衝突ペア）は、legacy 行に dedupe が保存されていない以上 exact retry と**原理的に区別不能**。
+ *  この場合は収束（重複配送ゼロ側）を選ぶ。完全排除には旧行の canonical key 再導出 backfill が必要で、
+ *  それは本番 data migration＝Human Gate（`SCHEMA_CHANGE_APPROVAL_REQUIRED` 相当の設計提示のみ・実行しない）。
+ *  新規書込は常に canonical key（完全 identity を key 自体が保持）なので、この残余は legacy 行にのみ存在する。 */
 async function findExistingByIdentity(
   input: EmitEventInput,
   canonicalKey: string,
@@ -49,15 +79,24 @@ async function findExistingByIdentity(
     aggregateId: input.aggregateId,
     dedupe: input.dedupe,
   });
-  return prisma.domainEvent.findFirst({
+  const legacyRow = await prisma.domainEvent.findFirst({
     where: {
       tenantId: input.tenantId,
       idempotencyKey: legacyKey,
       eventType: input.eventType,
       aggregateId: input.aggregateId,
     },
-    select: { id: true },
+    select: { id: true, aggregateType: true, actorId: true, actorType: true, payload: true, metadata: true },
   });
+  if (!legacyRow) return null;
+  // 無損失コンテンツ fingerprint 照合（key 一致だけを同一 identity の根拠にしない・Codex R6 #1）。
+  const sameContent =
+    legacyRow.aggregateType === input.aggregateType &&
+    (legacyRow.actorId ?? null) === (input.actorId ?? null) &&
+    legacyRow.actorType === (input.actorType ?? 'user') &&
+    stableStringify(normalizeJson(legacyRow.payload)) === stableStringify(normalizeJson(input.payload)) &&
+    stableStringify(normalizeJson(legacyRow.metadata)) === stableStringify(normalizeJson(input.metadata));
+  return sameContent ? { id: legacyRow.id } : null;
 }
 
 /**

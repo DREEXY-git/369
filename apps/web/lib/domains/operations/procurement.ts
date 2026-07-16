@@ -46,9 +46,11 @@ export interface Actor {
   sessionIsAi: boolean;
 }
 
-/** 人間 actor 判定（fail-closed）。sessionIsAi=true・roles 非配列/空/AI混在はすべて false。 */
+/** 人間 actor 判定（fail-closed）。sessionIsAi は**厳密に false のみ**通す — `!== true` だと
+ *  欠落/null/異型の malformed runtime が人間扱いになる fail-open（Codex PR#58 R10）。
+ *  roles 非配列/空/AI混在もすべて false。 */
 function actorIsHuman(actor: Actor): boolean {
-  return actor.sessionIsAi !== true && Array.isArray(actor.roles) && isHumanUser({ roles: actor.roles });
+  return actor.sessionIsAi === false && Array.isArray(actor.roles) && isHumanUser({ roles: actor.roles });
 }
 
 export interface ConfirmPurchaseOrderResult {

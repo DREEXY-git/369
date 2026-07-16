@@ -717,11 +717,11 @@ test('R7 肯定対照: 同じ混在lineageへ APPROVED event に結合した Gro
 // confirm / receive / 承認実行 / 決定 core すべてで DB 接触前に fail-closed。
 // ============================================================================
 
-test('R8 domain: AIロール/混在/空/省略 roles は confirm・receive・承認実行・決定core すべて fail-closed（行不変）', async () => {
+test('R8/R10 domain: AIロール/混在/空/省略 roles・session信号の true/省略/null は confirm・receive・承認実行・決定core すべて fail-closed（行不変）', async () => {
   const t = await tenantId();
   const uid = await ceoUserId();
   const { poId, assetId } = await makeHighValueDraftPo();
-  const nonHumanRoles: Array<{ label: string; roles: unknown; sessionIsAi: boolean }> = [
+  const nonHumanRoles: Array<{ label: string; roles: unknown; sessionIsAi: unknown }> = [
     { label: 'AI_AGENT', roles: ['AI_AGENT'], sessionIsAi: false },
     { label: 'AI_ASSISTANT', roles: ['AI_ASSISTANT'], sessionIsAi: false },
     { label: 'AI_AGENT+OWNER 混在', roles: ['AI_AGENT', 'OWNER'], sessionIsAi: false },
@@ -730,6 +730,9 @@ test('R8 domain: AIロール/混在/空/省略 roles は confirm・receive・承
     { label: 'roles 省略', roles: undefined, sessionIsAi: false },
     // Codex R9 #1: 逆向き不整合（DB由来 isAiAgent=true が session isAi に載るが roles は OWNER のみ）。
     { label: 'sessionIsAi=true + OWNER（逆向き mismatch）', roles: ['OWNER'], sessionIsAi: true },
+    // Codex R10: 必須 session 信号の欠落/null は人間扱いしない（厳密 === false のみ通す fail-closed）。
+    { label: 'sessionIsAi 省略 + OWNER（malformed runtime）', roles: ['OWNER'], sessionIsAi: undefined },
+    { label: 'sessionIsAi=null + OWNER（malformed runtime）', roles: ['OWNER'], sessionIsAi: null },
   ];
   try {
     for (const { label, roles, sessionIsAi } of nonHumanRoles) {
@@ -742,7 +745,7 @@ test('R8 domain: AIロール/混在/空/省略 roles は confirm・receive・承
       expect(e.reason).toBe('forbidden');
       const d = await decidePurchaseOrderIssueCore(prisma as unknown as PoIssueBridgeDb, {
         tenantId: t, approvalId: 'approval-x', purchaseOrderId: poId, decision: 'approve', decidedById: uid, note: '', approvalTitle: 'x',
-        decidedByRoles: roles as never, decidedBySessionIsAi: sessionIsAi,
+        decidedByRoles: roles as never, decidedBySessionIsAi: sessionIsAi as never,
       });
       expect(d.outcome, `${label}: decision core forbidden`).toBe('forbidden');
     }
@@ -753,7 +756,9 @@ test('R8 domain: AIロール/混在/空/省略 roles は confirm・receive・承
     expect(await prisma.approvalRequest.count({ where: { tenantId: t, entityType: 'PurchaseOrder', entityId: poId } }), 'ApprovalRequest 0').toBe(0);
     expect(await prisma.inventoryMovement.count({ where: { assetId } }), 'InventoryMovement 0').toBe(0);
     expect(await prisma.auditLog.count({ where: { tenantId: t, entityType: 'PurchaseOrder', entityId: poId } }), 'Audit 0').toBe(0);
-    expect(await prisma.domainEvent.count({ where: { tenantId: t, aggregateId: poId } }), 'DomainEvent 0').toBe(0);
+    const evs = await prisma.domainEvent.findMany({ where: { tenantId: t, aggregateId: poId }, select: { id: true } });
+    expect(evs.length, 'DomainEvent 0').toBe(0);
+    expect(await prisma.outboxMessage.count({ where: { eventId: { in: evs.map((ev) => ev.id) } } }), 'Outbox 0').toBe(0);
     expect(await prisma.growthEvent.count({ where: { tenantId: t, entityType: 'PurchaseOrder', entityId: poId } }), 'Growth 0').toBe(0);
     // 肯定対照: OWNER は同じ PO を確定できる（高額→承認申請）。
     const ok = await confirmPurchaseOrder({ tenantId: t, userId: uid, roles: ['OWNER' as const], sessionIsAi: false }, poId);

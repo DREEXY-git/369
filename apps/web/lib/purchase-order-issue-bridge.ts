@@ -56,7 +56,9 @@ export async function decidePurchaseOrderIssueCore(
   db: PoIssueBridgeDb,
   input: DecidePoIssueInput,
 ): Promise<DecidePoIssueResult> {
-  if (input.decidedBySessionIsAi === true || !Array.isArray(input.decidedByRoles) || !isHumanUser({ roles: input.decidedByRoles })) return { outcome: 'forbidden' };
+  // decidedBySessionIsAi は**厳密に false のみ**通す — `=== true` 判定だと欠落/null/異型の
+  // malformed runtime が人間扱いになる fail-open（Codex PR#58 R10）。
+  if (input.decidedBySessionIsAi !== false || !Array.isArray(input.decidedByRoles) || !isHumanUser({ roles: input.decidedByRoles })) return { outcome: 'forbidden' };
   if (!input.purchaseOrderId) throw new Error('purchase_order_issue approval without purchaseOrderId');
   const status = input.decision === 'approve' ? 'APPROVED' : 'REJECTED';
   return db.$transaction(async (tx) => {

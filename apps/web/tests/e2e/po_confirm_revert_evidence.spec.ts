@@ -48,9 +48,12 @@ async function cleanup(poId: string, assetId: string) {
   const moves = await prisma.inventoryMovement.findMany({ where: { assetId }, select: { id: true } });
   await prisma.auditLog.deleteMany({ where: { entityType: 'InventoryMovement', entityId: { in: moves.map((m) => m.id) } } });
   await prisma.inventoryMovement.deleteMany({ where: { assetId } });
-  // 承認申請・承認/実行監査・growth（高額経路）を掃除。
-  await prisma.auditLog.deleteMany({ where: { tenantId: t, entityType: 'PurchaseOrder', entityId: poId } });
+  // 承認申請・承認/実行監査・growth・domain/outbox（高額経路）を掃除。
+  const evs = await prisma.domainEvent.findMany({ where: { tenantId: t, aggregateId: poId }, select: { id: true } });
+  await prisma.outboxMessage.deleteMany({ where: { tenantId: t, eventId: { in: evs.map((e) => e.id) } } });
   await prisma.growthEvent.deleteMany({ where: { tenantId: t, entityType: 'PurchaseOrder', entityId: poId } });
+  await prisma.domainEvent.deleteMany({ where: { tenantId: t, aggregateId: poId } });
+  await prisma.auditLog.deleteMany({ where: { tenantId: t, entityType: 'PurchaseOrder', entityId: poId } });
   await prisma.approvalRequest.deleteMany({ where: { tenantId: t, entityType: 'PurchaseOrder', entityId: poId } });
   await prisma.purchaseOrderLine.deleteMany({ where: { purchaseOrderId: poId } });
   await prisma.purchaseOrder.deleteMany({ where: { id: poId } });
@@ -305,6 +308,75 @@ test('approve target mismatch: 別 PO/approvalId 不一致の approve は rollba
     // rollback により ApprovalRequest は PENDING のまま（人間が再判断できる）・PO も pending_approval 不変。
     expect((await prisma.approvalRequest.findUnique({ where: { id: approvalId }, select: { status: true } }))!.status, 'ApprovalRequest PENDING のまま').toBe('PENDING');
     expect((await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { status: true } }))!.status).toBe('pending_approval');
+  } finally {
+    await cleanup(poId, assetId);
+  }
+});
+
+// 承認実行の all-or-nothing（Codex R3 P2→R4）: PO CAS→Audit→Domain/Outbox/Growth を単一 tx にし、
+// 途中 fault で PO=ordered だが Audit/Growth 欠落 の半確定を残さない。fault 後の retry で 1 lineage へ収束。
+async function confirmApprovePendingPo(t: string, uid: string): Promise<{ poId: string; assetId: string; approvalId: string }> {
+  const { poId, assetId } = await makeHighValueDraftPo();
+  const human = { tenantId: t, userId: uid };
+  await confirmPurchaseOrder(human, poId);
+  const approvalId = (await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { approvalId: true } }))!.approvalId!;
+  await approveRequest(approvalId, uid, 'ok');
+  return { poId, assetId, approvalId };
+}
+async function assertPoExecutedOnce(t: string, poId: string) {
+  expect((await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { status: true } }))!.status, 'PO ordered').toBe('ordered');
+  expect(await prisma.auditLog.count({ where: { tenantId: t, entityType: 'PurchaseOrder', entityId: poId, action: 'purchase_order_issue' } }), 'Audit 1').toBe(1);
+  const evs = await prisma.domainEvent.findMany({ where: { tenantId: t, aggregateId: poId, eventType: 'PURCHASE_ORDER_APPROVED' }, select: { id: true } });
+  expect(evs.length, 'DomainEvent 1').toBe(1);
+  expect(await prisma.outboxMessage.count({ where: { tenantId: t, eventId: { in: evs.map((e) => e.id) } } }), 'Outbox 1').toBe(1);
+  expect(await prisma.growthEvent.count({ where: { tenantId: t, entityType: 'PurchaseOrder', entityId: poId, type: 'inventory.purchase_order.created' } }), 'Growth 1').toBe(1);
+}
+
+test('承認実行 all-or-nothing: PO CAS 後の Audit fault で PO=ordered を含め全 rollback→retry で 1 lineage へ収束（Codex R4）', async () => {
+  const t = await tenantId();
+  const uid = await ceoUserId();
+  const { poId, assetId, approvalId } = await confirmApprovePendingPo(t, uid);
+  const human = { tenantId: t, userId: uid };
+  try {
+    // PO CAS 後・Audit 前に fault → 単一 tx なので PO=ordered ごと rollback（半確定なし）。
+    let threw = false;
+    try {
+      await executeApprovedPurchaseOrderIssue(human, approvalId, poId, { __faultAfterCasForTest: () => { throw new Error('injected-after-cas'); } });
+    } catch { threw = true; }
+    expect(threw).toBe(true);
+    // rollback: PO は pending_approval 不変・Audit/DomainEvent/Growth 0（半確定を残さない）。
+    expect((await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { status: true } }))!.status, 'PO は pending_approval 不変').toBe('pending_approval');
+    expect(await prisma.auditLog.count({ where: { tenantId: t, entityType: 'PurchaseOrder', entityId: poId, action: 'purchase_order_issue' } }), 'Audit 0').toBe(0);
+    expect(await prisma.domainEvent.count({ where: { tenantId: t, aggregateId: poId } }), 'DomainEvent 0').toBe(0);
+    expect(await prisma.growthEvent.count({ where: { tenantId: t, entityType: 'PurchaseOrder', entityId: poId } }), 'Growth 0').toBe(0);
+    // executeApprovedAction が executedAt を戻すため retry 可能 → 正常 retry で 1 lineage へ収束。
+    const r = await executeApprovedPurchaseOrderIssue(human, approvalId, poId);
+    expect(r.executed).toBe(true);
+    await assertPoExecutedOnce(t, poId);
+  } finally {
+    await cleanup(poId, assetId);
+  }
+});
+
+test('承認実行 all-or-nothing: DomainEvent 作成後・GrowthEvent 作成時 fault で全 rollback→retry で 1 lineage へ収束（Codex R4）', async () => {
+  const t = await tenantId();
+  const uid = await ceoUserId();
+  const { poId, assetId, approvalId } = await confirmApprovePendingPo(t, uid);
+  const human = { tenantId: t, userId: uid };
+  try {
+    // DomainEvent/Outbox 作成後・GrowthEvent 作成時に fault → 全 rollback（PO=ordered / DomainEvent / Outbox も残さない）。
+    let threw = false;
+    try {
+      await executeApprovedPurchaseOrderIssue(human, approvalId, poId, { __faultAfterEventsForTest: () => { throw new Error('injected-after-events'); } });
+    } catch { threw = true; }
+    expect(threw).toBe(true);
+    expect((await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { status: true } }))!.status, 'PO は pending_approval 不変').toBe('pending_approval');
+    expect(await prisma.domainEvent.count({ where: { tenantId: t, aggregateId: poId } }), 'DomainEvent 孤児 0').toBe(0);
+    expect(await prisma.growthEvent.count({ where: { tenantId: t, entityType: 'PurchaseOrder', entityId: poId } }), 'Growth 孤児 0').toBe(0);
+    // retry → PO=ordered・Audit/DomainEvent/Outbox/Growth 各 1（欠落補完ではなく 1 lineage で確定）。
+    const r = await executeApprovedPurchaseOrderIssue(human, approvalId, poId);
+    expect(r.executed).toBe(true);
+    await assertPoExecutedOnce(t, poId);
   } finally {
     await cleanup(poId, assetId);
   }

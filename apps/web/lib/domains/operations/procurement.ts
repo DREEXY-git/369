@@ -5,7 +5,7 @@ import { emitGrowthEvent } from '@/lib/growth';
 import { createApprovalRequestTx, executeApprovedAction } from '@/lib/approval';
 import { applyInventoryMovement } from '@/lib/operations';
 import { toNumber } from '@/lib/utils';
-import { requiresApproval, type DomainEventType } from '@hokko/shared';
+import { requiresApproval, growthCategoryOf, makeIdempotencyKey, type DomainEventType } from '@hokko/shared';
 
 /** high-value 発注確定の tx 内で PO の draft→pending_approval claim に敗れた敗者シグナル。
  *  throw で承認申請＋監査ごと rollback し、孤児 PENDING/Audit を残さない。 */
@@ -105,15 +105,27 @@ export interface ExecuteApprovedPoResult {
   reason?: string;
 }
 
+export interface ExecuteApprovedPoOptions {
+  /** test-only: PO CAS 後・Audit 前に例外を注入し、tx 全 rollback（半確定なし）を検証（Codex PR#58 R4 #3）。 */
+  __faultAfterCasForTest?: () => void;
+  /** test-only: DomainEvent/Outbox 作成後・GrowthEvent 作成時に例外を注入し、全 rollback を検証（Codex PR#58 R4 #3）。 */
+  __faultAfterEventsForTest?: () => void;
+}
+
 /** 承認済み高額発注を確定（pending_approval→ordered）。二重実行防止つき。
- *  堅牢化（Codex PR#58 R2 #2）: `status='pending_approval' AND approvalId=この承認` の CAS でのみ ordered 化。
+ *  堅牢化（Codex PR#58 R2 #2 / R4）: `status='pending_approval' AND approvalId=この承認` の CAS でのみ ordered 化。
  *  received/cancelled/ordered や別 approval の PO は count!==1 で弾き、received→ordered の差し戻し
  *  （＝二重入庫の再開）を構造的に不可能にする。executeApprovedAction が executedAt を原子 claim し
- *  二重 submit / stale 実行を防ぐため、CAS と併せ多層防御になる。 */
+ *  二重 submit / stale 実行を防ぐ。
+ *  **R4 all-or-nothing**: PO CAS・Audit・DomainEvent(+Outbox)・GrowthEvent を **単一 $transaction** で確定する。
+ *  途中 fault は PO=ordered を含め全 rollback され、半確定（PO=ordered だが Audit/Growth 欠落）を残さない。
+ *  DomainEvent は (tenant, PURCHASE_ORDER_APPROVED, poId, dedupe=approvalId) の固定 idempotency key で作られ、
+ *  Outbox 経由 worker 配送が失敗しても既存 outbox 機構で再開可能（Evidence lineage を保つ）。 */
 export async function executeApprovedPurchaseOrderIssue(
   actor: Actor,
   approvalId: string,
   poId: string,
+  opts: ExecuteApprovedPoOptions = {},
 ): Promise<ExecuteApprovedPoResult> {
   // 承認済み発注の実行も人間専用（AI/mixed-role は DB 接触前に拒否・Codex PR#58 R3 P2-1）。
   if (actor.actorIsAi) return { executed: false, reason: 'forbidden' };
@@ -121,31 +133,47 @@ export async function executeApprovedPurchaseOrderIssue(
     const r = await executeApprovedAction(
       approvalId,
       async () => {
-        const claim = await prisma.purchaseOrder.updateMany({
-          where: { id: poId, tenantId: actor.tenantId, status: 'pending_approval', approvalId },
-          data: { status: 'ordered' },
+        // PO CAS + Audit + Domain/Outbox/Growth を単一 tx で確定（R4: 途中 fault は全 rollback）。
+        return prisma.$transaction(async (tx) => {
+          const claim = await tx.purchaseOrder.updateMany({
+            where: { id: poId, tenantId: actor.tenantId, status: 'pending_approval', approvalId },
+            data: { status: 'ordered' },
+          });
+          if (claim.count !== 1) throw new PoNotClaimable();
+
+          // test-only: PO CAS 後・Audit 前 fault（本番不到達）。
+          if (opts.__faultAfterCasForTest) opts.__faultAfterCasForTest();
+
+          const po = await tx.purchaseOrder.findFirst({ where: { id: poId, tenantId: actor.tenantId }, select: { orderNo: true, totalAmount: true } });
+          await tx.auditLog.create({
+            data: {
+              tenantId: actor.tenantId,
+              actorId: actor.userId ?? null,
+              actorType: 'user',
+              action: 'purchase_order_issue',
+              entityType: 'PurchaseOrder',
+              entityId: poId,
+              summary: `高額発注を承認確定: ${po?.orderNo ?? poId}（approval=${approvalId}）`,
+            },
+          });
+
+          // transactional outbox: DomainEvent(+Outbox)+GrowthEvent を tx 内で原子的に作成。
+          // 固定 idempotency key（dedupe=approvalId）で 1 実行=1 lineage。post-commit 消失（fault window）を排除。
+          const growthType = 'inventory.purchase_order.created';
+          const key = makeIdempotencyKey({ tenantId: actor.tenantId, eventType: 'PURCHASE_ORDER_APPROVED', aggregateId: poId, dedupe: approvalId });
+          const ev = await tx.domainEvent.create({
+            data: { tenantId: actor.tenantId, eventType: 'PURCHASE_ORDER_APPROVED', aggregateType: 'PurchaseOrder', aggregateId: poId, actorId: actor.userId ?? null, actorType: 'user', payload: { growthType } as any, idempotencyKey: key, status: 'pending' },
+          });
+          await tx.outboxMessage.create({ data: { tenantId: actor.tenantId, eventId: ev.id, eventType: 'PURCHASE_ORDER_APPROVED', payload: { growthType } as any, status: 'pending' } });
+
+          // test-only: DomainEvent/Outbox 作成後・GrowthEvent 作成時 fault（本番不到達）。
+          if (opts.__faultAfterEventsForTest) opts.__faultAfterEventsForTest();
+
+          await tx.growthEvent.create({
+            data: { tenantId: actor.tenantId, type: growthType, category: growthCategoryOf(growthType), title: `発注確定: ${po?.orderNo ?? poId}`, description: '', actorId: actor.userId ?? null, actorType: 'user', entityType: 'PurchaseOrder', entityId: poId, amount: Number(po?.totalAmount ?? 0), revenueImpact: null, domainEventId: ev.id },
+          });
+          return poId;
         });
-        if (claim.count !== 1) throw new PoNotClaimable();
-        const po = await prisma.purchaseOrder.findFirst({ where: { id: poId, tenantId: actor.tenantId } });
-        await writeAudit({
-          tenantId: actor.tenantId,
-          actorId: actor.userId,
-          action: 'purchase_order_issue',
-          entityType: 'PurchaseOrder',
-          entityId: poId,
-          summary: `高額発注を承認確定: ${po?.orderNo ?? poId}（approval=${approvalId}）`,
-        });
-        await emitGrowthEvent({
-          tenantId: actor.tenantId,
-          type: 'inventory.purchase_order.created',
-          title: `発注確定: ${po?.orderNo ?? poId}`,
-          actorId: actor.userId,
-          entityType: 'PurchaseOrder',
-          entityId: poId,
-          amount: Number(po?.totalAmount ?? 0),
-          alsoDomainEvent: { domainType: 'PURCHASE_ORDER_APPROVED' as DomainEventType, aggregateType: 'PurchaseOrder', aggregateId: poId },
-        });
-        return poId;
       },
       { executedById: actor.userId },
     );

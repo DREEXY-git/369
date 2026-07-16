@@ -29,41 +29,31 @@ export interface EmitResult {
   duplicated: boolean;
 }
 
-/** JSON を key 順で正規化して文字列化（jsonb は key 順を保持しないため、順序非依存で内容比較する）。 */
-function stableStringify(v: unknown): string {
-  if (v === null || v === undefined) return 'null';
-  if (Array.isArray(v)) return `[${v.map(stableStringify).join(',')}]`;
-  if (typeof v === 'object') {
-    const o = v as Record<string, unknown>;
-    const keys = Object.keys(o).sort();
-    return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(o[k])}`).join(',')}}`;
-  }
-  return JSON.stringify(v);
-}
-
-/** undefined 混入を JSON 直列化と同じ規約（undefined プロパティは欠落）へ正規化してから比較可能にする。 */
-function normalizeJson(v: unknown): unknown {
-  if (v === null || v === undefined) return null;
-  return JSON.parse(JSON.stringify(v));
-}
-
-/** 同一論理 identity の既存 DomainEvent を canonical/legacy 両キーで探す（upgrade-safe dual-read・Codex PR#57 R5/R6 #1）。
+/** 同一論理 identity の既存 DomainEvent を canonical/legacy 両キーで探す（upgrade-safe dual-read・Codex PR#57 R5/R6/R7 #1）。
  *
- *  legacy FNV キーは identity（dedupe を含む）を無損失に保持しない＝**別 identity が同一キーへ衝突し得る**。
- *  そのため legacy 一致は
- *   (1) 保存行の tenantId / eventType / aggregateType / aggregateId 列の完全一致、かつ
- *   (2) 保存行から照合可能な**無損失コンテンツ fingerprint**（payload / metadata / actorId / actorType の
- *       正規化 deep-equal）の完全一致
- *  を要求する。exact retry（同一入力の再送）だけが (1)(2) を同時に満たし legacy 行へ収束する。
- *  同一 tenant/type/aggregate で dedupe が異なる FNV 衝突（Codex R6 fixture: agg-same の d42vu/dfuea →
- *  同一 `CUSTOMER_CREATED:1c68e52b`）は、別の論理イベントである以上コンテンツが異なり (2) で棄却され、
- *  自分の canonical 行を新規作成する（イベント消失なし）。
+ *  legacy FNV キーは identity（dedupe を含む）を無損失に保持せず、行にも dedupe は保存されていない。
+ *  そこで **dedupe の空性による同一性証明** を使う（Codex R7: payload 等コンテンツの一致を dedupe 一致の
+ *  代用にしない）:
  *
- *  残余ケース（同一 tenant/type/aggregate・payload/metadata/actor まで完全同一で dedupe だけ異なる
- *  FNV 衝突ペア）は、legacy 行に dedupe が保存されていない以上 exact retry と**原理的に区別不能**。
- *  この場合は収束（重複配送ゼロ側）を選ぶ。完全排除には旧行の canonical key 再導出 backfill が必要で、
- *  それは本番 data migration＝Human Gate（`SCHEMA_CHANGE_APPROVAL_REQUIRED` 相当の設計提示のみ・実行しない）。
- *  新規書込は常に canonical key（完全 identity を key 自体が保持）なので、この残余は legacy 行にのみ存在する。 */
+ *   - **監査事実（deployed main の静的性質）**: main `7e50a04` の全 production call site は
+ *     `emitDomainEvent` / `emitGrowthEvent(alsoDomainEvent)` に dedupe を一切渡さない
+ *     （`git grep dedupe origin/main` の一致は packages/shared の unit test のみ）。
+ *     ∴ **既存 legacy 行の identity はすべて dedupe=''**。これは確率論ではなく、旧コードの
+ *     到達可能な書込経路の全数監査による無損失な証明である。
+ *
+ *   - **dedupe-less emit（input.dedupe が空）**: legacy キー一致＋列一致（tenantId/eventType/
+ *     aggregateType/aggregateId）が成立すれば、identity = (tenant, type, aggregate, '') は保存行の
+ *     identity と**完全一致**（'' === ''）→ 収束（duplicated・再配送なし）。
+ *
+ *   - **dedupe-bearing emit（input.dedupe が非空）**: legacy 行の identity は dedupe='' なので、
+ *     キーが FNV 衝突しても**別 identity であることが確定** → 決して収束しない（fail-closed）。
+ *     自分の canonical DomainEvent＋Outbox を新規作成し、イベントを静かに失わない。
+ *     Codex R7 fixture（agg-same の d42vu/dfuea・同一コンテンツ）はこの経路で両方とも独立に成立する。
+ *
+ *  これにより「同一コンテンツ・異なる dedupe」の衝突ペアでも誤収束は構造的に発生しない。
+ *  なお legacy 形式の行が今後増えることはない（新規書込は常に完全 identity を保持する canonical key）。
+ *  旧行を canonical key へ書き換える backfill は本番 data migration のため実行せず、
+ *  `CLAUDE_HUMAN_GATE_V90_SCHEMA_P3_FIN1_EVENT_IDENTITY` として設計のみ提示する（handoff 参照）。 */
 async function findExistingByIdentity(
   input: EmitEventInput,
   canonicalKey: string,
@@ -73,30 +63,24 @@ async function findExistingByIdentity(
     select: { id: true },
   });
   if (byCanonical) return byCanonical;
+  // dedupe-bearing identity は legacy 行（全行 dedupe=''）と同一になり得ない → legacy 照合しない（fail-closed）。
+  if (input.dedupe) return null;
   const legacyKey = makeLegacyIdempotencyKey({
     tenantId: input.tenantId,
     eventType: input.eventType,
     aggregateId: input.aggregateId,
     dedupe: input.dedupe,
   });
-  const legacyRow = await prisma.domainEvent.findFirst({
+  return prisma.domainEvent.findFirst({
     where: {
       tenantId: input.tenantId,
       idempotencyKey: legacyKey,
       eventType: input.eventType,
+      aggregateType: input.aggregateType,
       aggregateId: input.aggregateId,
     },
-    select: { id: true, aggregateType: true, actorId: true, actorType: true, payload: true, metadata: true },
+    select: { id: true },
   });
-  if (!legacyRow) return null;
-  // 無損失コンテンツ fingerprint 照合（key 一致だけを同一 identity の根拠にしない・Codex R6 #1）。
-  const sameContent =
-    legacyRow.aggregateType === input.aggregateType &&
-    (legacyRow.actorId ?? null) === (input.actorId ?? null) &&
-    legacyRow.actorType === (input.actorType ?? 'user') &&
-    stableStringify(normalizeJson(legacyRow.payload)) === stableStringify(normalizeJson(input.payload)) &&
-    stableStringify(normalizeJson(legacyRow.metadata)) === stableStringify(normalizeJson(input.metadata));
-  return sameContent ? { id: legacyRow.id } : null;
 }
 
 /**

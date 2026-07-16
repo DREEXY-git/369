@@ -97,12 +97,21 @@ for (const [label, roleKeys, isAiAgent] of [
       await aiPage2.goto(`/leadmap/leads/${target.leadId}`);
       await expect(aiPage2.getByRole('button', { name: /商談化（顧客・案件をCRMに作成）/ })).toHaveCount(0);
 
-      // ② Action 直接 replay: ceo の POST body の leadId を被験 lead へ差し替え、AI cookie で送信 → denied。
-      const body = cap.bodyLatin1.includes(cap.throwawayLeadId)
-        ? cap.bodyLatin1.replace(cap.throwawayLeadId, target.leadId)
-        : cap.bodyLatin1;
-      const resp = await aiCtx.request.post(cap.url, { headers: cap.headers, data: Buffer.from(body, 'latin1'), maxRedirects: 0 }).catch((e) => e);
-      // denied（?denied=1 リダイレクト or 4xx）。いずれにせよ DB を変えないことが本質。
+      // ② Action 直接 replay（Codex R3 #3: 空振り・認証混入を排除した実証形）:
+      //    - body に throwaway leadId が**ちょうど 1 回**存在することを事前 assert し、被験 lead へ置換済みであることも assert（空振り replay を構造排除）。
+      //    - 捕捉した ceo の認証 headers（cookie/authorization）は**再利用せず**、AI context の session cookie だけで送信。
+      //    - response の redirect 先が denied=1 であることを assert（Action 境界の拒否を応答でも実証）。
+      const occurrences = cap.bodyLatin1.split(cap.throwawayLeadId).length - 1;
+      expect(occurrences, 'POST body に leadId がちょうど 1 回存在').toBe(1);
+      const body = cap.bodyLatin1.replace(cap.throwawayLeadId, target.leadId);
+      expect(body.includes(target.leadId), '被験 leadId へ置換済み').toBe(true);
+      expect(body.includes(cap.throwawayLeadId), '旧 leadId は body に残らない').toBe(false);
+      const replayHeaders = { ...cap.headers };
+      delete replayHeaders['cookie'];
+      delete replayHeaders['authorization'];
+      const resp = await aiCtx.request.post(cap.url, { headers: replayHeaders, data: Buffer.from(body, 'latin1'), maxRedirects: 0 });
+      const redirectTarget = resp.headers()['x-action-redirect'] ?? resp.headers()['location'] ?? '';
+      expect(redirectTarget, `Action 境界は denied=1 へ redirect（status=${resp.status()}）`).toContain('denied=1');
       // 全モデル 0・Lead 完全不変を実測。
       const lead = await prisma.localBusinessLead.findUnique({ where: { id: target.leadId } });
       expect(lead!.customerId, 'AI 経由で customer 未連携').toBeNull();
@@ -114,7 +123,6 @@ for (const [label, roleKeys, isAiAgent] of [
       expect(await prisma.auditLog.count({ where: { tenantId: t, actorId: aiUserId, action: 'create', entityType: 'Customer' } }), 'AI 経由の商談化 Audit 0').toBe(0);
       // Customer 自体も作られない（この lead 由来の Customer 孤児 0）。
       expect(await prisma.customer.count({ where: { tenantId: t, name: (await prisma.localBusinessLead.findUnique({ where: { id: target.leadId }, select: { name: true } }))!.name } }), 'Customer 0').toBe(0);
-      void resp;
     } finally {
       await aiCtx.close();
       await cleanupLead(t, target.leadId, target.campaignId);
@@ -186,5 +194,45 @@ test('addendum P2: 不整合 link は詳細 UI が検証を通り foreign ID を
     await prisma.customer.deleteMany({ where: { id: { in: [foreignCustomer.id, ownCustomer.id] } } });
     await prisma.tenant.deleteMany({ where: { id: foreignTenant.id } });
     await cleanupLead(t, leadA, campaignId);
+  }
+});
+
+test('R3 P2: 実UIの「連携をやり直す（修復）」で不整合が修復され、商談化済み＋整合linkへ収束・修復Audit 1（Codex R3 P2）', async ({ page }) => {
+  const t = await tenantId();
+  const camp = await prisma.leadSearchCampaign.create({ data: { tenantId: t, name: `LUI-REP-${process.pid}-${Date.now()}`.slice(0, 40), region: 'x', industry: 'y' } });
+  // dangling link を持つ不整合リード。
+  const lead = await prisma.localBusinessLead.create({
+    data: { tenantId: t, campaignId: camp.id, name: `LUI-REP-${process.pid}-${Date.now()}`.slice(0, 40), industry: 'y', stage: 'NEW', priority: 50, customerId: 'cus_repair_missing_00000', dealId: 'deal_repair_missing_000' },
+  });
+  try {
+    await login(page, 'ceo@ikezaki.local');
+    await page.goto(`/leadmap/leads/${lead.id}`);
+    await expect(page.getByText('連携先の不整合')).toBeVisible();
+    // 人間の修復ボタンを実クリック → repair action が 切離し→正規1組収束 を単一 tx で実行。
+    await page.getByRole('button', { name: /連携をやり直す（修復）/ }).click();
+    await page.waitForURL(new RegExp(`/leadmap/leads/${lead.id}\\?repaired=1`));
+    // 修復後: 「商談化済み」表示＋自 tenant の顧客/案件 link（foreign/dangling ID は出ない）。
+    await expect(page.getByText('商談化済み')).toBeVisible();
+    const after = await prisma.localBusinessLead.findUnique({ where: { id: lead.id }, select: { customerId: true, dealId: true } });
+    expect(after!.customerId).toBeTruthy();
+    expect(after!.customerId).not.toBe('cus_repair_missing_00000');
+    // 相互 backlink 一致（整合）＋修復 Audit ちょうど 1。
+    expect(await prisma.deal.count({ where: { id: after!.dealId!, tenantId: t, customerId: after!.customerId!, leadId: lead.id } })).toBe(1);
+    expect(await prisma.auditLog.count({ where: { tenantId: t, entityType: 'LocalBusinessLead', entityId: lead.id, action: 'lead_link_repair' } })).toBe(1);
+    const html = await page.content();
+    expect(html.includes('cus_repair_missing_00000'), '旧 dangling ID を表示しない').toBe(false);
+  } finally {
+    const cur = await prisma.localBusinessLead.findUnique({ where: { id: lead.id }, select: { customerId: true } });
+    await prisma.leadPipelineStageHistory.deleteMany({ where: { leadId: lead.id } });
+    await prisma.auditLog.deleteMany({ where: { tenantId: t, entityType: 'LocalBusinessLead', entityId: lead.id } });
+    await prisma.deal.deleteMany({ where: { tenantId: t, leadId: lead.id } });
+    if (cur?.customerId && cur.customerId !== 'cus_repair_missing_00000') {
+      await prisma.customerTimelineEvent.deleteMany({ where: { customerId: cur.customerId } });
+      await prisma.auditLog.deleteMany({ where: { tenantId: t, entityType: 'Customer', entityId: cur.customerId } });
+      await prisma.deal.deleteMany({ where: { customerId: cur.customerId } });
+      await prisma.customer.deleteMany({ where: { id: cur.customerId } });
+    }
+    await prisma.localBusinessLead.deleteMany({ where: { id: lead.id } });
+    await prisma.leadSearchCampaign.deleteMany({ where: { id: camp.id } });
   }
 });

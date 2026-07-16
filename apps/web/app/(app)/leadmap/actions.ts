@@ -14,7 +14,7 @@ import {
 } from '@/lib/leadmap';
 import { safeAiInput, saveAIOutputStandard } from '@/lib/ai-safety-server';
 import { prepareExternalPayload } from '@/lib/safe-external-send';
-import { convertLeadToCustomer } from '@/lib/domains/crm/lead-convert';
+import { convertLeadToCustomer, repairLeadLinks } from '@/lib/domains/crm/lead-convert';
 
 const ADVANCE_ON: Record<string, true> = { interested: true, quote: true, doc: true, later: true, forward: true, appointment: true };
 
@@ -316,8 +316,9 @@ export async function convertLeadToCustomerAction(formData: FormData) {
   }
 
   // 二重商談化の防止・6書き込みの原子化・既存 link の整合検証はサービス層（crm/lead-convert）に集約。
-  // domain へは自己申告 boolean ではなく role 由来の非人間フラグ（fail-closed 判定）を渡す。
-  const outcome = await convertLeadToCustomer({ tenantId: user.tenantId, userId: user.userId, actorIsAi: nonHuman }, leadId);
+  // domain へは自己申告 boolean ではなく **roles（必須）** を渡し、domain 内でも isHumanUser で fail-closed
+  // 判定する（Codex PR#60 R3 High: optional boolean の fail-open を排除）。
+  const outcome = await convertLeadToCustomer({ tenantId: user.tenantId, userId: user.userId, roles: user.roles }, leadId);
 
   if (outcome.kind === 'forbidden') redirect(`/leadmap/leads/${leadId}?denied=1`);
   if (outcome.kind === 'not-found') redirect('/leadmap/leads');
@@ -329,6 +330,31 @@ export async function convertLeadToCustomerAction(formData: FormData) {
     revalidatePath('/deals');
   }
   redirect(`/customers/${outcome.customerId}`);
+}
+
+/** 不整合 link を持つリードの修復（人間限定・Codex PR#60 R3 P2）。
+ *  再検証→不正 link 切離し→正規の顧客/案件への収束＋修復監査 を単一 tx で行う（domain に集約）。 */
+export async function repairLeadLinkAction(formData: FormData) {
+  const user = await requireUser();
+  const leadId = String(formData.get('leadId') ?? '');
+  // 実確定を伴う修復は人間専用（role 由来 fail-closed・混在も拒否）。
+  if (!isHumanUser({ roles: user.roles })) redirect(`/leadmap/leads/${leadId}?denied=1`);
+  if (!hasPermission(user, 'customer', 'create') || !hasPermission(user, 'deal', 'create')) {
+    redirect(`/leadmap/leads/${leadId}?denied=1`);
+  }
+
+  const outcome = await repairLeadLinks({ tenantId: user.tenantId, userId: user.userId, roles: user.roles }, leadId);
+  if (outcome.kind === 'forbidden') redirect(`/leadmap/leads/${leadId}?denied=1`);
+  if (outcome.kind === 'not-found') redirect('/leadmap/leads');
+  if (outcome.kind === 'not-linked') redirect(`/leadmap/leads/${leadId}?error=not-linked`);
+  revalidatePath(`/leadmap/leads/${leadId}`);
+  if (outcome.kind === 'repaired') {
+    revalidatePath('/customers');
+    revalidatePath('/deals');
+    redirect(`/leadmap/leads/${leadId}?repaired=1`);
+  }
+  // already（整合済み・冪等収束）は正常表示へ戻す。
+  redirect(`/leadmap/leads/${leadId}`);
 }
 
 /** キャンペーン内の未分析リードを一括でAI分析（LeadMapの半自動化の中核）。 */

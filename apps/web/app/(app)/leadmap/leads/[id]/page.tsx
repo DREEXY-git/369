@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, Button, EmptyState } from '@/components/ui';
 import { LeadStageBadge, PriorityBadge } from '@/components/badges';
 import { AccessDenied } from '@/components/access-denied';
-import { analyzeLeadAction, generateOutreachAction, convertLeadToCustomerAction } from '../../actions';
+import { analyzeLeadAction, generateOutreachAction, convertLeadToCustomerAction, repairLeadLinkAction } from '../../actions';
 import { isLeadLinkConsistent } from '@/lib/domains/crm/lead-convert';
 import { formatDate, formatDateTime, isHumanUser, type LeadStage } from '@hokko/shared';
 
@@ -162,9 +162,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                     <Badge tone="red">連携先の不整合</Badge>
                     <p className="text-[11px] text-muted-foreground">このリードの連携先（顧客・案件）が確認できません。越境参照を防ぐためリンクは表示しません。再商談化で修復してください。</p>
                     {isHuman ? (
-                      <form action={convertLeadToCustomerAction}>
+                      <form action={repairLeadLinkAction}>
                         <input type="hidden" name="leadId" value={lead.id} />
                         <Button type="submit" variant="outline" className="w-full">🔧 連携をやり直す（修復）</Button>
+                        <p className="mt-1 text-[11px] text-muted-foreground">不整合な連携先を切離し、正しい顧客・案件を作成し直します（監査記録あり・人間のみ実行可）。</p>
                       </form>
                     ) : null}
                   </>

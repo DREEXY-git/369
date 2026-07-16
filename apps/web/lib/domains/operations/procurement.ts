@@ -1,11 +1,28 @@
 // 発注（PurchaseOrder）の業務ロジック。Phase 1-9 保守リファクタ（action から切り出し）。
 // 設計ルール: docs/audit/12_maintenance_architecture.md。Server Action はこのサービスを呼ぶだけ。
-import { prisma } from '@/lib/db';
+import { prisma, writeAudit } from '@/lib/db';
 import { emitGrowthEvent } from '@/lib/growth';
-import { requireApprovalForDangerousAction } from '@/lib/approval';
+import { createApprovalRequestTx, executeApprovedAction } from '@/lib/approval';
 import { applyInventoryMovement } from '@/lib/operations';
 import { toNumber } from '@/lib/utils';
-import type { DomainEventType } from '@hokko/shared';
+import { requiresApproval, type DomainEventType } from '@hokko/shared';
+
+/** high-value 発注確定の tx 内で PO の draft→pending_approval claim に敗れた敗者シグナル。
+ *  throw で承認申請＋監査ごと rollback し、孤児 PENDING/Audit を残さない。 */
+class PoClaimLost extends Error {
+  constructor() {
+    super('po-claim-lost');
+    this.name = 'PoClaimLost';
+  }
+}
+
+/** 承認実行時の PO status/approvalId CAS 敗北（received/cancelled/別 approval/既 ordered）。差し戻さず fail-closed。 */
+class PoNotClaimable extends Error {
+  constructor() {
+    super('po-not-claimable');
+    this.name = 'PoNotClaimable';
+  }
+}
 
 export interface Actor {
   tenantId: string;
@@ -28,24 +45,34 @@ export async function confirmPurchaseOrder(actor: Actor, poId: string): Promise<
   if (po.status !== 'draft') return { found: true, requiresApproval: po.status === 'pending_approval' };
   const amount = toNumber(po.totalAmount);
 
-  const gate = await requireApprovalForDangerousAction({
-    tenantId: actor.tenantId,
-    action: 'purchase_order_issue',
-    title: `発注確定: ${po.orderNo}（${amount}円）`,
-    targetType: 'PurchaseOrder',
-    targetId: poId,
-    requestedById: actor.userId,
-    riskLevel: 'MEDIUM',
-    amount,
-    payloadAfter: { purchaseOrderId: poId },
-  });
-  if (gate.requiresApproval) {
-    // draft → pending_approval を条件付き単一更新で claim（並行二重確定を1本に絞る）。差し戻しは起きない。
-    const claim = await prisma.purchaseOrder.updateMany({
-      where: { id: poId, tenantId: actor.tenantId, status: 'draft' },
-      data: { status: 'pending_approval', approvalId: gate.approvalId },
-    });
-    if (claim.count !== 1) return { found: true, requiresApproval: true };
+  // 高額（閾値以上）は承認必須。承認申請＋監査の作成と PO の draft→pending_approval claim を
+  // **単一 transaction** で原子化する（Codex PR#58 R2 #1）。従来は承認申請を PO CAS より先に prisma
+  // 直で作っていたため、並行 confirm の CAS 敗者側で孤児 PENDING/Audit が残り、後段の承認実行から
+  // received を ordered へ差し戻して二重入庫できた。tx 化により敗者は throw で承認ごと rollback され孤児 0。
+  if (requiresApproval('purchase_order_issue', { amount })) {
+    try {
+      await prisma.$transaction(async (tx) => {
+        const req = await createApprovalRequestTx(tx, {
+          tenantId: actor.tenantId,
+          action: 'purchase_order_issue',
+          title: `発注確定: ${po.orderNo}（${amount}円）`,
+          targetType: 'PurchaseOrder',
+          targetId: poId,
+          requestedById: actor.userId,
+          riskLevel: 'MEDIUM',
+          payloadAfter: { purchaseOrderId: poId },
+        });
+        // draft からのみ claim。並行敗者/非 draft は count!==1 → throw で承認申請＋監査を rollback。
+        const claim = await tx.purchaseOrder.updateMany({
+          where: { id: poId, tenantId: actor.tenantId, status: 'draft' },
+          data: { status: 'pending_approval', approvalId: req.id },
+        });
+        if (claim.count !== 1) throw new PoClaimLost();
+      });
+    } catch (e) {
+      if (e instanceof PoClaimLost) return { found: true, requiresApproval: true }; // 既に他者が pending_approval 化・孤児なし
+      throw e;
+    }
     return { found: true, requiresApproval: true };
   }
   // draft → ordered を条件付き単一更新で claim（received 等からの差し戻し不可・並行は1本に収束）。
@@ -65,6 +92,60 @@ export async function confirmPurchaseOrder(actor: Actor, poId: string): Promise<
     alsoDomainEvent: { domainType: 'PURCHASE_ORDER_APPROVED' as DomainEventType, aggregateType: 'PurchaseOrder', aggregateId: poId },
   });
   return { found: true, requiresApproval: false };
+}
+
+export interface ExecuteApprovedPoResult {
+  executed: boolean;
+  reason?: string;
+}
+
+/** 承認済み高額発注を確定（pending_approval→ordered）。二重実行防止つき。
+ *  堅牢化（Codex PR#58 R2 #2）: `status='pending_approval' AND approvalId=この承認` の CAS でのみ ordered 化。
+ *  received/cancelled/ordered や別 approval の PO は count!==1 で弾き、received→ordered の差し戻し
+ *  （＝二重入庫の再開）を構造的に不可能にする。executeApprovedAction が executedAt を原子 claim し
+ *  二重 submit / stale 実行を防ぐため、CAS と併せ多層防御になる。 */
+export async function executeApprovedPurchaseOrderIssue(
+  actor: Actor,
+  approvalId: string,
+  poId: string,
+): Promise<ExecuteApprovedPoResult> {
+  try {
+    const r = await executeApprovedAction(
+      approvalId,
+      async () => {
+        const claim = await prisma.purchaseOrder.updateMany({
+          where: { id: poId, tenantId: actor.tenantId, status: 'pending_approval', approvalId },
+          data: { status: 'ordered' },
+        });
+        if (claim.count !== 1) throw new PoNotClaimable();
+        const po = await prisma.purchaseOrder.findFirst({ where: { id: poId, tenantId: actor.tenantId } });
+        await writeAudit({
+          tenantId: actor.tenantId,
+          actorId: actor.userId,
+          action: 'purchase_order_issue',
+          entityType: 'PurchaseOrder',
+          entityId: poId,
+          summary: `高額発注を承認確定: ${po?.orderNo ?? poId}（approval=${approvalId}）`,
+        });
+        await emitGrowthEvent({
+          tenantId: actor.tenantId,
+          type: 'inventory.purchase_order.created',
+          title: `発注確定: ${po?.orderNo ?? poId}`,
+          actorId: actor.userId,
+          entityType: 'PurchaseOrder',
+          entityId: poId,
+          amount: Number(po?.totalAmount ?? 0),
+          alsoDomainEvent: { domainType: 'PURCHASE_ORDER_APPROVED' as DomainEventType, aggregateType: 'PurchaseOrder', aggregateId: poId },
+        });
+        return poId;
+      },
+      { executedById: actor.userId },
+    );
+    return { executed: r.executed, reason: r.reason };
+  } catch (e) {
+    if (e instanceof PoNotClaimable) return { executed: false, reason: 'po-not-claimable' };
+    throw e;
+  }
 }
 
 /** 入庫処理。各ラインの数量を ProductAsset へ入庫（InventoryMovement type=receive）。

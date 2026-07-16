@@ -9,6 +9,7 @@ import {
 } from '@hokko/shared';
 import {
   addAssetToLeaseReservation,
+  createLeaseReservation,
   confirmLeaseReservation,
   dispatchLeaseReservation,
   returnLeaseReservation,
@@ -100,6 +101,8 @@ export async function adjustInventoryQuantityAction(formData: FormData) {
 
 // ============================ リース予約 ============================
 
+/** リース予約を作成。業務ロジックは lib/domains/operations/lease.ts（R2: requestId＋payload fingerprint の
+ *  durable idempotency ＋ Reservation/Audit/Growth/Domain/Outbox の単一 transaction）。 */
 export async function createLeaseReservationAction(formData: FormData) {
   const user = await requireUser();
   if (!hasPermission(user, 'inventory', 'create')) redirect('/inventory/lease?denied=1');
@@ -107,32 +110,15 @@ export async function createLeaseReservationAction(formData: FormData) {
   const venue = String(formData.get('venue') ?? '').trim() || null;
   const startAt = new Date(String(formData.get('startAt') ?? '') || Date.now());
   const endAt = new Date(String(formData.get('endAt') ?? '') || Date.now());
+  const requestId = String(formData.get('requestId') ?? '');
   if (!eventName) redirect('/inventory/lease?error=name');
 
-  const reservation = await prisma.leaseReservation.create({
-    data: { tenantId: user.tenantId, eventName, venue, status: 'reserved', startAt, endAt },
-  });
-  await writeAudit({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    action: 'create',
-    entityType: 'LeaseReservation',
-    entityId: reservation.id,
-    summary: `リース予約を作成: ${eventName}`,
-  });
-  await emitGrowthEvent({
-    tenantId: user.tenantId,
-    type: 'rental.reservation.created',
-    title: `リース予約: ${eventName}`,
-    actorId: user.userId,
-    entityType: 'LeaseReservation',
-    entityId: reservation.id,
-    alsoDomainEvent: {
-      domainType: 'LEASE_RESERVATION_CREATED' as DomainEventType,
-      aggregateType: 'LeaseReservation',
-      aggregateId: reservation.id,
-    },
-  });
+  const result = await createLeaseReservation(
+    { tenantId: user.tenantId, userId: user.userId },
+    { eventName, venue, startAt, endAt, requestId },
+  );
+  if (!result.ok && result.reason === 'invalid-request-id') redirect('/inventory/lease?error=request');
+  if (!result.ok) redirect('/inventory/lease?error=idem');
   revalidatePath('/inventory/lease');
   redirect('/inventory/lease?created=1');
 }
@@ -146,34 +132,27 @@ function redirectForLifecycle(result: LeaseLifecycleResult, successParam: string
 }
 
 /** 予約に商品を追加。業務ロジックは lib/domains/operations/lease.ts（P3-INV-2: lock 後再読込・
- *  ライン＋reserve Movement＋Audit＋Growth/Domain/Outbox の単一 transaction）。 */
+ *  ライン＋reserve Movement＋Audit＋Growth/Domain/Outbox の単一 transaction。R2: requestId＋payload
+ *  fingerprint の durable idempotency・可用性 telemetry は domain 側で commit 後 best-effort/catch 非致命）。 */
 export async function addAssetToLeaseReservationAction(formData: FormData) {
   const user = await requireUser();
   if (!hasPermission(user, 'inventory', 'update')) redirect('/inventory/lease?denied=1');
   const reservationId = String(formData.get('reservationId') ?? '');
   const assetId = String(formData.get('assetId') ?? '');
   const quantity = Math.max(1, Number(formData.get('quantity') ?? 1) || 1);
+  const requestId = String(formData.get('requestId') ?? '');
 
   const result = await addAssetToLeaseReservation(
     { tenantId: user.tenantId, userId: user.userId },
-    { reservationId, assetId, quantity },
+    { reservationId, assetId, quantity, requestId },
   );
-  if (!result.ok && result.reason === 'notfound') redirect('/inventory/lease?error=notfound');
-  if (!result.ok && result.reason === 'invalid-state') redirect('/inventory/lease?error=state');
-
-  // 可用性チェックの観測イベント（telemetry・非クリティカル・commit 後 best-effort）。
-  const checked = result as Extract<typeof result, { available: number }>;
-  await emitGrowthEvent({
-    tenantId: user.tenantId,
-    type: 'inventory.availability.checked',
-    title: `在庫可用性チェック: ${checked.assetName}（残${checked.available}）`,
-    actorId: user.userId,
-    entityType: 'ProductAsset',
-    entityId: assetId,
-    metric: { available: checked.available, requested: quantity, conflict: !result.ok },
-  });
-
-  if (!result.ok) redirect(`/inventory/lease?error=conflict&asset=${encodeURIComponent(checked.assetName)}`);
+  if (!result.ok) {
+    if (result.reason === 'notfound') redirect('/inventory/lease?error=notfound');
+    if (result.reason === 'invalid-state') redirect('/inventory/lease?error=state');
+    if (result.reason === 'invalid-request-id') redirect('/inventory/lease?error=request');
+    if (result.reason === 'idempotency-mismatch') redirect('/inventory/lease?error=idem');
+    redirect(`/inventory/lease?error=conflict&asset=${encodeURIComponent(result.assetName)}`);
+  }
   revalidatePath('/inventory/lease');
   redirect('/inventory/lease?added=1');
 }

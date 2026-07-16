@@ -216,6 +216,9 @@ test('fault injection rollback: イベント作成後の例外で Payment/Domain
   const uid = await ceoUserId();
   const invId = await makeIssuedInvoice(100000);
   const key = mkKey();
+  // fault 前の tenant Outbox 総数を baseline に取り、rollback 後に **増えていない**ことで孤児 0 を実測する
+  // （Codex R3 #2: 旧 assertion は eventId:{in:[]} で常に 0 になり実際の残存を検出できなかった）。
+  const outboxBefore = await prisma.outboxMessage.count({ where: { tenantId: t } });
   try {
     // 1回目: 副次イベント作成 **後** に例外注入 → 単一 tx なので Payment 含め全 rollback（孤児 0 を要求）。
     let threw = false;
@@ -233,7 +236,8 @@ test('fault injection rollback: イベント作成後の例外で Payment/Domain
     // rollback により Payment/副次 event は 1 件も残らない（transactional outbox の要）。
     expect(await prisma.payment.count({ where: { invoiceId: invId } }), 'rollback 後 Payment 孤児 0').toBe(0);
     expect(await prisma.domainEvent.count({ where: { tenantId: t, aggregateId: invId } }), 'rollback 後 DomainEvent 孤児 0').toBe(0);
-    expect(await prisma.outboxMessage.count({ where: { tenantId: t, eventId: { in: [] } } })).toBe(0);
+    // Outbox は tenant baseline から増えていない（＝この invoice 由来の孤児 Outbox 0）。
+    expect(await prisma.outboxMessage.count({ where: { tenantId: t } }), 'rollback 後 Outbox は baseline から不変（孤児 0）').toBe(outboxBefore);
     expect(await prisma.growthEvent.count({ where: { tenantId: t, entityId: invId } }), 'rollback 後 GrowthEvent 孤児 0').toBe(0);
     expect(await prisma.financeEvent.count({ where: { sourceId: invId, type: 'payment_received' } }), 'rollback 後 FinanceEvent 孤児 0').toBe(0);
     expect(await prisma.auditLog.count({ where: { entityId: invId, action: 'payment_record' } }), 'rollback 後 Audit 孤児 0').toBe(0);
@@ -251,6 +255,57 @@ test('fault injection rollback: イベント作成後の例外で Payment/Domain
     expect(await prisma.financeEvent.count({ where: { sourceId: invId, type: 'payment_received' } }), 'FinanceEvent ちょうど 1').toBe(1);
     expect(await prisma.auditLog.count({ where: { entityId: invId, action: 'payment_record' } }), 'Audit ちょうど 1').toBe(1);
     expect(Number((await prisma.invoice.findUnique({ where: { id: invId }, select: { paidAmount: true } }))!.paidAmount)).toBe(4000);
+  } finally {
+    await cleanupInvoice(invId);
+  }
+});
+
+test('RECEIVABLE_COLLECTED は非PAID→PAID遷移時のみ1件: partial→full→PAID後の別key追加入金で回収eventを再発火しない（Codex R3 #1）', async () => {
+  const t = await tenantId();
+  const uid = await ceoUserId();
+  const invId = await makeIssuedInvoice(10000);
+  try {
+    // partial（4000）→ 回収 event はまだ 0（未 full）。
+    await recordInvoicePayment({ tenantId: t, userId: uid }, invId, 4000, 'bank', { idempotencyKey: mkKey() });
+    expect(await prisma.domainEvent.count({ where: { tenantId: t, aggregateId: invId, eventType: 'RECEIVABLE_COLLECTED' } }), 'partial では回収 event なし').toBe(0);
+    // full（6000）→ 非PAID→PAID 遷移で回収 event 1 件。
+    const full = await recordInvoicePayment({ tenantId: t, userId: uid }, invId, 6000, 'bank', { idempotencyKey: mkKey() });
+    expect(full.fullyPaid).toBe(true);
+    // PAID 済みへの別 key 追加入金（Server Action/domain は正数入金を拒否しない）→ 回収 event を **再発火しない**。
+    const extra = await recordInvoicePayment({ tenantId: t, userId: uid }, invId, 1000, 'bank', { idempotencyKey: mkKey() });
+    expect(extra.ok).toBe(true);
+
+    // 回収 event（DomainEvent / Outbox / Growth）は invoice で **ちょうど 1 件**。
+    const collectedEvs = await prisma.domainEvent.findMany({ where: { tenantId: t, aggregateId: invId, eventType: 'RECEIVABLE_COLLECTED' }, select: { id: true } });
+    expect(collectedEvs.length, 'RECEIVABLE_COLLECTED DomainEvent 1 件').toBe(1);
+    expect(await prisma.outboxMessage.count({ where: { tenantId: t, eventId: { in: collectedEvs.map((e) => e.id) } } }), '回収 Outbox 1 件（Webhook 再配送なし）').toBe(1);
+    expect(await prisma.growthEvent.count({ where: { tenantId: t, entityId: invId, type: 'finance.receivable.collected' } }), '回収 Growth 1 件').toBe(1);
+    // PAYMENT_RECEIVED は成立 Payment ごと（3 件）。
+    expect(await prisma.domainEvent.count({ where: { tenantId: t, aggregateId: invId, eventType: 'PAYMENT_RECEIVED' } }), 'PAYMENT_RECEIVED は 3 件').toBe(3);
+    expect(await prisma.payment.count({ where: { invoiceId: invId } })).toBe(3);
+  } finally {
+    await cleanupInvoice(invId);
+  }
+});
+
+test('閾値越え並行入金でも RECEIVABLE_COLLECTED 1件: 異key全額入金 2本を並行しても回収eventは1件・Outbox 1件（Codex R3 #1）', async () => {
+  const t = await tenantId();
+  const uid = await ceoUserId();
+  const invId = await makeIssuedInvoice(10000);
+  try {
+    // それぞれ単独で閾値（10000）を越える 2 本を barrier 並行。FOR UPDATE 直列化＋安定 dedupe で回収は 1 件。
+    const results = await Promise.all([
+      recordInvoicePayment({ tenantId: t, userId: uid }, invId, 10000, 'bank', { idempotencyKey: mkKey() }),
+      recordInvoicePayment({ tenantId: t, userId: uid }, invId, 10000, 'bank', { idempotencyKey: mkKey() }),
+    ]);
+    for (const r of results) expect(r.ok).toBe(true);
+    // PAYMENT_RECEIVED は成立 Payment 数（2）、RECEIVABLE_COLLECTED は状態遷移 1 回のみ。
+    expect(await prisma.payment.count({ where: { invoiceId: invId } }), 'Payment 2 件').toBe(2);
+    expect(await prisma.domainEvent.count({ where: { tenantId: t, aggregateId: invId, eventType: 'PAYMENT_RECEIVED' } }), 'PAYMENT_RECEIVED 2 件').toBe(2);
+    const collectedEvs = await prisma.domainEvent.findMany({ where: { tenantId: t, aggregateId: invId, eventType: 'RECEIVABLE_COLLECTED' }, select: { id: true } });
+    expect(collectedEvs.length, 'RECEIVABLE_COLLECTED は 1 件').toBe(1);
+    expect(await prisma.outboxMessage.count({ where: { tenantId: t, eventId: { in: collectedEvs.map((e) => e.id) } } }), '配送対象 Outbox 1 件').toBe(1);
+    expect(await prisma.growthEvent.count({ where: { tenantId: t, entityId: invId, type: 'finance.receivable.collected' } }), '回収 Growth 1 件').toBe(1);
   } finally {
     await cleanupInvoice(invId);
   }

@@ -107,6 +107,9 @@ export async function recordInvoicePayment(
       const current = locked[0];
       if (!current) throw new PaymentAbort('not-found');
       if (current.status === 'VOID' || current.status === 'DRAFT') throw new PaymentAbort('not-payable');
+      // ロック下の「入金前」status。RECEIVABLE_COLLECTED は 未回収→回収済み(=非PAID→PAID) の
+      // 状態遷移イベントであり、PAID 済み invoice への追加入金では再発火させない（Codex R3 #1）。
+      const wasPaidBefore = current.status === 'PAID';
 
       // request-level 冪等: 同一キーの既存 Payment を method 含む完全 payload で照合。
       const dup = await tx.payment.findUnique({
@@ -154,8 +157,11 @@ export async function recordInvoicePayment(
         },
       });
 
-      // transactional outbox（Codex P3-FIN-1 R2 #3）: Growth/DomainEvent(+Outbox) を payment tx に同梱。
-      // DomainEvent は (tenant, eventType, aggregateId, dedupe=idempotencyKey) で per-request 冪等。
+      // transactional outbox（Codex P3-FIN-1 R2 #3 / R3 #1）: Growth/DomainEvent(+Outbox) を payment tx に同梱。
+      // dedupe の意味論はイベント種で異なる:
+      //  - PAYMENT_RECEIVED = 入金 request 単位 → dedupe=idempotencyKey（成立 Payment ごとに 1 件）。
+      //  - RECEIVABLE_COLLECTED = invoice の状態遷移（未回収→回収済み）→ **invoice 安定 dedupe**（同一 invoice で
+      //    高々 1 件）。並行で複数入金が同時に閾値を越えても FOR UPDATE 直列化＋安定 dedupe で 1 件に収束する。
       const emitEv = async (
         domainType: DomainEventType,
         growthType: string,
@@ -164,8 +170,9 @@ export async function recordInvoicePayment(
         title: string,
         evAmount: number,
         revenueImpact: number | null,
+        dedupe: string,
       ) => {
-        const key = makeIdempotencyKey({ tenantId: actor.tenantId, eventType: domainType, aggregateId: invoiceId, dedupe: idempotencyKey });
+        const key = makeIdempotencyKey({ tenantId: actor.tenantId, eventType: domainType, aggregateId: invoiceId, dedupe });
         const ev = await tx.domainEvent.create({
           data: { tenantId: actor.tenantId, eventType: domainType, aggregateType: 'Invoice', aggregateId: invoiceId, actorId: actor.userId ?? null, actorType: 'user', payload: { growthType } as any, idempotencyKey: key, status: 'pending' },
         });
@@ -174,8 +181,11 @@ export async function recordInvoicePayment(
           data: { tenantId: actor.tenantId, type: growthType, category: growthCategoryOf(growthType), title, description: '', actorId: actor.userId ?? null, actorType: 'user', entityType, entityId, amount: evAmount, revenueImpact, domainEventId: ev.id },
         });
       };
-      await emitEv('PAYMENT_RECEIVED' as DomainEventType, 'finance.payment.received', 'Payment', payment.id, `入金: ${inv.number}`, amount, amount);
-      if (paidFull) await emitEv('RECEIVABLE_COLLECTED' as DomainEventType, 'finance.receivable.collected', 'Receivable', invoiceId, `売掛金回収: ${inv.number}`, total, null);
+      await emitEv('PAYMENT_RECEIVED' as DomainEventType, 'finance.payment.received', 'Payment', payment.id, `入金: ${inv.number}`, amount, amount, idempotencyKey);
+      // 回収イベントは **非PAID→PAID の遷移時のみ** 1 回（PAID 済みへの追加入金では再発火しない・Codex R3 #1）。
+      if (paidFull && !wasPaidBefore) {
+        await emitEv('RECEIVABLE_COLLECTED' as DomainEventType, 'finance.receivable.collected', 'Receivable', invoiceId, `売掛金回収: ${inv.number}`, total, null, 'receivable-collected');
+      }
 
       // test-only fault injection（本番不到達）: イベント作成後に例外→全 rollback を検証。
       if (opts.__faultAfterEventsForTest) opts.__faultAfterEventsForTest();

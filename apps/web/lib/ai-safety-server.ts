@@ -3,6 +3,7 @@
 // 方針: high 注入のみ生成中止。medium/low は継続しフラグのみ。AI は危険ツールを直接実行不可（多重防御）。
 import { createHash } from 'node:crypto';
 import { prisma } from './db';
+import type { Prisma } from '@hokko/db';
 import { writeAIDataAccess } from './audit';
 import { recordUsageEvent } from './usage-events';
 import {
@@ -90,15 +91,20 @@ export interface SaveAIOutputResult {
 }
 
 /**
- * AIOutput を標準フォーマットで保存（task/purpose/entity/inputHash/output/confidence/cost/model/safetyFlags/citations）。
- * outputText に PII があれば safetyFlags に 'pii' を自動付与（保存本文はマスクしない＝内部参照用）。
+ * AIOutput 保存の書き込み実体（transaction 合成可能版）。呼び出し側の `$transaction` に参加でき、
+ * 業務レコードと AIOutput を all-or-nothing で確定できる。利用量記録（UsageEvent）は行わない —
+ * UsageEvent は独立 prisma client で書かれるため未コミット transaction と合成できず、rollback 時に
+ * 孤児 UsageEvent を残すから。caller が commit 後に `recordAIOutputUsage` を呼ぶこと。
  */
-export async function saveAIOutputStandard(args: SaveAIOutputArgs): Promise<SaveAIOutputResult> {
+export async function saveAIOutputStandardTx(
+  db: Prisma.TransactionClient | typeof prisma,
+  args: SaveAIOutputArgs,
+): Promise<SaveAIOutputResult> {
   const inputHash = createHash('sha256').update(JSON.stringify(args.input ?? '')).digest('hex').slice(0, 16);
   const text = args.outputText ?? '';
   const extraFlags = text ? runSafetyChecks(text, { mask: false }).flags : [];
   const safetyFlags = Array.from(new Set([...(args.safetyFlags ?? []), ...extraFlags]));
-  const out = await prisma.aIOutput.create({
+  const out = await db.aIOutput.create({
     data: {
       tenantId: args.tenantId,
       userId: args.userId ?? null,
@@ -116,9 +122,19 @@ export async function saveAIOutputStandard(args: SaveAIOutputArgs): Promise<Save
       safetyFlags,
     },
   });
-  // Phase 1-25: 非課金の利用量記録（AI出力が1件生成されたという事実のみ）。課金ではない・billing=usage_only 固定。
-  // metadata は非PIIの task/model のみ（input/output/outputText/prompt/citations/顧客情報/金額/secret は入れない）。
-  // 記録失敗は AIOutput 保存・主処理を壊さない（recordUsageEvent は例外を投げず ok:false を返すだけ）。
+  return { aiOutputId: out.id, inputHash, safetyFlags };
+}
+
+/**
+ * Phase 1-25: 非課金の利用量記録（AI出力が1件生成されたという事実のみ）。課金ではない・billing=usage_only 固定。
+ * metadata は非PIIの task/model のみ（input/output/outputText/prompt/citations/顧客情報/金額/secret は入れない）。
+ * 記録失敗は AIOutput 保存・主処理を壊さない（recordUsageEvent は例外を投げず ok:false を返すだけ）。
+ * idempotencyKey が AIOutput id に固定なので再実行しても二重計上しない。
+ */
+export async function recordAIOutputUsage(
+  aiOutputId: string,
+  args: Pick<SaveAIOutputArgs, 'tenantId' | 'userId' | 'actorType' | 'task' | 'model'>,
+): Promise<void> {
   await recordUsageEvent({
     tenantId: args.tenantId,
     actorId: args.userId ?? null,
@@ -129,22 +145,31 @@ export async function saveAIOutputStandard(args: SaveAIOutputArgs): Promise<Save
     unit: 'count',
     quantity: 1,
     sourceType: 'AIOutput',
-    sourceId: out.id,
-    idempotencyKey: `usage:ai.output.generated:${out.id}`,
+    sourceId: aiOutputId,
+    idempotencyKey: `usage:ai.output.generated:${aiOutputId}`,
     metadata: { task: args.task, model: args.model ?? 'fake' },
   });
+}
+
+/**
+ * AIOutput を標準フォーマットで保存（task/purpose/entity/inputHash/output/confidence/cost/model/safetyFlags/citations）。
+ * outputText に PII があれば safetyFlags に 'pii' を自動付与（保存本文はマスクしない＝内部参照用）。
+ */
+export async function saveAIOutputStandard(args: SaveAIOutputArgs): Promise<SaveAIOutputResult> {
+  const out = await saveAIOutputStandardTx(prisma, args);
+  await recordAIOutputUsage(out.aiOutputId, args);
   if (args.logDataAccess) {
     await writeAIDataAccess({
       tenantId: args.tenantId,
       actorId: args.userId ?? null,
       actorType: args.actorType ?? 'ai_agent',
       entityType: args.entityType ?? 'AIOutput',
-      entityId: out.id,
+      entityId: out.aiOutputId,
       label: args.label ?? ('INTERNAL' as ConfidentialityLabel),
       purpose: args.purpose ?? args.task,
     });
   }
-  return { aiOutputId: out.id, inputHash, safetyFlags };
+  return out;
 }
 
 // ============ AI ツール権限の多重防御 ============

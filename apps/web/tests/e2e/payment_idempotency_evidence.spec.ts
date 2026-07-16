@@ -32,6 +32,12 @@ async function makeIssuedInvoice(total: number): Promise<string> {
 }
 async function cleanupInvoice(id: string) {
   const t = await tenantId();
+  // Payment.id は idempotencyKey なので GrowthEvent(entityType=Payment) は payment.id で参照される。
+  const payIds = (await prisma.payment.findMany({ where: { invoiceId: id }, select: { id: true } })).map((p) => p.id);
+  const evs = await prisma.domainEvent.findMany({ where: { tenantId: t, aggregateId: id }, select: { id: true } });
+  await prisma.outboxMessage.deleteMany({ where: { tenantId: t, eventId: { in: evs.map((e) => e.id) } } });
+  await prisma.growthEvent.deleteMany({ where: { tenantId: t, entityId: { in: [id, ...payIds] } } });
+  await prisma.domainEvent.deleteMany({ where: { tenantId: t, aggregateId: id } });
   await prisma.auditLog.deleteMany({ where: { tenantId: t, entityId: id, action: 'payment_record' } });
   await prisma.financeEvent.deleteMany({ where: { tenantId: t, sourceId: id } });
   await prisma.payment.deleteMany({ where: { invoiceId: id } });
@@ -137,6 +143,114 @@ test('入力境界: idempotencyKey 欠落/不正は fail-closed（invalid-reques
     expect(bad.ok).toBe(false);
     expect(bad.reason).toBe('invalid-request');
     expect(await prisma.payment.count({ where: { invoiceId: invId } })).toBe(0);
+  } finally {
+    await cleanupInvoice(invId);
+  }
+});
+
+test('method mismatch fail-closed: 同一 key・同一 invoice/amount でも method 差異は収束させず、行/監査/event を増やさない（Codex R2 #1）', async () => {
+  const t = await tenantId();
+  const uid = await ceoUserId();
+  const invId = await makeIssuedInvoice(100000);
+  const key = mkKey();
+  try {
+    // 先行入金（method='bank'）。
+    const a = await recordInvoicePayment({ tenantId: t, userId: uid }, invId, 4000, 'bank', { idempotencyKey: key });
+    expect(a.ok).toBe(true);
+    // 同一 key・同一 invoice/amount だが method='cash'（fingerprint 差異）→ 収束禁止・fail-closed。
+    const b = await recordInvoicePayment({ tenantId: t, userId: uid }, invId, 4000, 'cash', { idempotencyKey: key });
+    expect(b.ok, 'method 差異は収束させない').toBe(false);
+    expect(b.reason).toBe('idempotency-mismatch');
+    // 既存 Payment（bank）は不変・二重計上なし・副次証拠も 1 件のまま。
+    const pays = await prisma.payment.findMany({ where: { invoiceId: invId }, select: { method: true } });
+    expect(pays.length, 'Payment は 1 件のまま').toBe(1);
+    expect(pays[0]?.method).toBe('bank');
+    expect(await prisma.auditLog.count({ where: { entityId: invId, action: 'payment_record' } })).toBe(1);
+    expect(await prisma.financeEvent.count({ where: { sourceId: invId, type: 'payment_received' } })).toBe(1);
+    expect(await prisma.domainEvent.count({ where: { tenantId: t, aggregateId: invId } })).toBe(1);
+    expect(Number((await prisma.invoice.findUnique({ where: { id: invId }, select: { paidAmount: true } }))!.paidAmount)).toBe(4000);
+  } finally {
+    await cleanupInvoice(invId);
+  }
+});
+
+test('P2002 barrier race fail-closed: 別 invoice へ同一 key を実 PostgreSQL 並行競合させると、敗者を success 扱いせず孤児 0（Codex R2 #2）', async () => {
+  const t = await tenantId();
+  const uid = await ceoUserId();
+  const invA = await makeIssuedInvoice(50000);
+  const invB = await makeIssuedInvoice(50000);
+  const key = mkKey();
+  try {
+    // 同一 key を別 invoice A/B へ同時投入。両者は別 invoice 行をロックするため invoice ロックでは直列化されず、
+    // Payment PK（deterministic）の unique が最終 barrier になる。勝者 1・敗者は P2002→再照合で mismatch→fail-closed。
+    const [ra, rb] = await Promise.all([
+      recordInvoicePayment({ tenantId: t, userId: uid }, invA, 2000, 'bank', { idempotencyKey: key }),
+      recordInvoicePayment({ tenantId: t, userId: uid }, invB, 3000, 'bank', { idempotencyKey: key }),
+    ]);
+    const oks = [ra, rb].filter((r) => r.ok);
+    const rejected = [ra, rb].filter((r) => !r.ok);
+    expect(oks.length, '勝者はちょうど 1').toBe(1);
+    expect(rejected.length, '敗者はちょうど 1').toBe(1);
+    expect(rejected[0]?.reason, '敗者は success 扱いせず fail-closed').toBe('idempotency-mismatch');
+    // Payment はキー全体で 1 件のみ（deterministic PK）。敗者 invoice 側に孤児 Payment/副次 event を作らない。
+    const totalPayments = await prisma.payment.count({ where: { OR: [{ invoiceId: invA }, { invoiceId: invB }] } });
+    expect(totalPayments, 'Payment はキーで 1 件のみ').toBe(1);
+    // 勝者 invoice を特定し、敗者 invoice には Payment/DomainEvent/GrowthEvent/Audit を一切残さない。
+    const winnerInv = (await prisma.payment.findUnique({ where: { id: key }, select: { invoiceId: true } }))!.invoiceId;
+    const loserInv = winnerInv === invA ? invB : invA;
+    expect(await prisma.payment.count({ where: { invoiceId: loserInv } }), '敗者 invoice に孤児 Payment 0').toBe(0);
+    expect(await prisma.domainEvent.count({ where: { tenantId: t, aggregateId: loserInv } }), '敗者 invoice に孤児 DomainEvent 0').toBe(0);
+    expect(await prisma.growthEvent.count({ where: { tenantId: t, entityId: loserInv } }), '敗者 invoice に孤児 GrowthEvent 0').toBe(0);
+    expect(await prisma.auditLog.count({ where: { entityId: loserInv, action: 'payment_record' } }), '敗者 invoice に孤児 Audit 0').toBe(0);
+    // 勝者側は Payment 1 + 副次 event 1 が原子的に揃う。
+    expect(await prisma.domainEvent.count({ where: { tenantId: t, aggregateId: winnerInv } })).toBe(1);
+    expect(await prisma.outboxMessage.count({ where: { tenantId: t, eventId: { in: (await prisma.domainEvent.findMany({ where: { tenantId: t, aggregateId: winnerInv }, select: { id: true } })).map((e) => e.id) } } })).toBe(1);
+  } finally {
+    await cleanupInvoice(invA);
+    await cleanupInvoice(invB);
+  }
+});
+
+test('fault injection rollback: イベント作成後の例外で Payment/DomainEvent/Outbox/Growth を孤児化せず全 rollback し、同一 key retry で 1 件へ収束（Codex R2 #3）', async () => {
+  const t = await tenantId();
+  const uid = await ceoUserId();
+  const invId = await makeIssuedInvoice(100000);
+  const key = mkKey();
+  try {
+    // 1回目: 副次イベント作成 **後** に例外注入 → 単一 tx なので Payment 含め全 rollback（孤児 0 を要求）。
+    let threw = false;
+    try {
+      await recordInvoicePayment({ tenantId: t, userId: uid }, invId, 4000, 'bank', {
+        idempotencyKey: key,
+        __faultAfterEventsForTest: () => {
+          throw new Error('injected-fault-after-events');
+        },
+      });
+    } catch {
+      threw = true;
+    }
+    expect(threw, 'fault は呼び出し側へ伝播（握り潰さない）').toBe(true);
+    // rollback により Payment/副次 event は 1 件も残らない（transactional outbox の要）。
+    expect(await prisma.payment.count({ where: { invoiceId: invId } }), 'rollback 後 Payment 孤児 0').toBe(0);
+    expect(await prisma.domainEvent.count({ where: { tenantId: t, aggregateId: invId } }), 'rollback 後 DomainEvent 孤児 0').toBe(0);
+    expect(await prisma.outboxMessage.count({ where: { tenantId: t, eventId: { in: [] } } })).toBe(0);
+    expect(await prisma.growthEvent.count({ where: { tenantId: t, entityId: invId } }), 'rollback 後 GrowthEvent 孤児 0').toBe(0);
+    expect(await prisma.financeEvent.count({ where: { sourceId: invId, type: 'payment_received' } }), 'rollback 後 FinanceEvent 孤児 0').toBe(0);
+    expect(await prisma.auditLog.count({ where: { entityId: invId, action: 'payment_record' } }), 'rollback 後 Audit 孤児 0').toBe(0);
+    expect(Number((await prisma.invoice.findUnique({ where: { id: invId }, select: { paidAmount: true } }))!.paidAmount), 'paidAmount 不変').toBe(0);
+
+    // 2回目: 同一 key で正常 retry（reconcile 相当）→ Payment 1 と副次 event が原子的に揃う。
+    const r = await recordInvoicePayment({ tenantId: t, userId: uid }, invId, 4000, 'bank', { idempotencyKey: key });
+    expect(r.ok, 'retry は成功').toBe(true);
+    expect(r.idempotent ?? false, 'retry は新規（前回は rollback 済のため収束ではない）').toBe(false);
+    expect(await prisma.payment.count({ where: { invoiceId: invId } }), 'retry 後 Payment ちょうど 1').toBe(1);
+    expect(await prisma.domainEvent.count({ where: { tenantId: t, aggregateId: invId } }), 'DomainEvent ちょうど 1').toBe(1);
+    const evIds = (await prisma.domainEvent.findMany({ where: { tenantId: t, aggregateId: invId }, select: { id: true } })).map((e) => e.id);
+    expect(await prisma.outboxMessage.count({ where: { tenantId: t, eventId: { in: evIds } } }), 'OutboxMessage ちょうど 1').toBe(1);
+    expect(await prisma.growthEvent.count({ where: { tenantId: t, entityId: key } }), 'GrowthEvent(entity=Payment) ちょうど 1').toBe(1);
+    expect(await prisma.financeEvent.count({ where: { sourceId: invId, type: 'payment_received' } }), 'FinanceEvent ちょうど 1').toBe(1);
+    expect(await prisma.auditLog.count({ where: { entityId: invId, action: 'payment_record' } }), 'Audit ちょうど 1').toBe(1);
+    expect(Number((await prisma.invoice.findUnique({ where: { id: invId }, select: { paidAmount: true } }))!.paidAmount)).toBe(4000);
   } finally {
     await cleanupInvoice(invId);
   }

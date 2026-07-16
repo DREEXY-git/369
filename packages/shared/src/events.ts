@@ -96,8 +96,17 @@ export interface DomainEventInput {
 }
 
 /**
- * 冪等キー（決定的・衝突しにくい）。同一 (tenant,type,aggregate,dedupe) は同一キー。
- * crypto不要の安定文字列 + 簡易ハッシュで短縮。
+ * 冪等キー（決定的・**無損失で衝突なし**）。同一 (tenant,type,aggregate,dedupe) は同一キー、
+ * 異なる identity は必ず異なるキー。
+ *
+ * DB 一意識別子（`DomainEvent @@unique([tenantId, idempotencyKey])` 等）に使うため、
+ * 以前の FNV-1a 32bit ハッシュ縮約は**使わない**。32bit 空間は誕生日衝突が現実的（約 7.7 万件で
+ * 50%）で、異なる aggregate（例: 別 invoice の RECEIVABLE_COLLECTED）が同一キーへ決定論的に衝突し、
+ * 正当なイベント作成を P2002 で恒久拒否し得た（Codex PR#57 R4 #1）。
+ *
+ * 代わりに **完全 canonical key** を生成する。tenant/eventType/aggregateId/dedupe の各成分を
+ * `encodeURIComponent` で符号化して連結するため、区切り文字 `:` の混入（delimiter injection）でも
+ * 別 identity が同一キーへ衝突しない（符号化後の各成分は `:` を含まない）。crypto 依存なし・client 安全。
  */
 export function makeIdempotencyKey(input: {
   tenantId: string;
@@ -105,18 +114,10 @@ export function makeIdempotencyKey(input: {
   aggregateId: string;
   dedupe?: string;
 }): string {
-  const base = `${input.tenantId}:${input.eventType}:${input.aggregateId}:${input.dedupe ?? ''}`;
-  return `${input.eventType}:${fnv1a(base)}`;
-}
-
-// FNV-1a 32bit（依存なしの安定ハッシュ。暗号用途ではない）。
-function fnv1a(s: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(16).padStart(8, '0');
+  const enc = (s: string) => encodeURIComponent(s);
+  // eventType は固定 enum（`:` を含まない）なので可読な prefix として素のまま残す。
+  // 続く成分は符号化するため、文字列中の `:` は区切りのみ＝identity→key は単射（無衝突）。
+  return `${input.eventType}:${enc(input.tenantId)}:${enc(input.aggregateId)}:${enc(input.dedupe ?? '')}`;
 }
 
 /** 指数バックオフ（ms）。再試行のスケジューリングに使用。 */

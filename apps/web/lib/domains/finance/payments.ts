@@ -195,11 +195,13 @@ export async function recordInvoicePayment(
   } catch (e) {
     if (e instanceof PaymentConverge) return convergeOk();
     if (isUniqueViolation(e)) {
-      // Payment PK の並行競合（別 invoice の同一キー衝突等）。既存 Payment を再取得し完全照合。
-      // 完全一致なら converge、一致しなければ fail-closed（任意 P2002 の無条件 success を禁止）。
+      // P2002 を **constraint/model 別**に扱う（Codex R4 #1）。Payment PK（= idempotencyKey）の並行競合なら、
+      // 勝者の Payment が我々のキーで必ずコミット済み。それを再取得し完全照合して converge/mismatch を決める。
+      // 一方、DomainEvent 等 **別 constraint の unique 違反**では我々のキーの Payment は存在しない（tx rollback）。
+      // これを Payment 収束/mismatch へ混同せず real error として再送出する（任意 P2002 の握り潰しを禁止）。
       const dup = await prisma.payment.findUnique({ where: { id: idempotencyKey }, select: { tenantId: true, invoiceId: true, amount: true, method: true } });
-      if (dup && matchesRequest(dup)) return convergeOk();
-      return { ok: false, reason: 'idempotency-mismatch' };
+      if (dup) return matchesRequest(dup) ? convergeOk() : { ok: false, reason: 'idempotency-mismatch' };
+      throw e;
     }
     if (e instanceof PaymentAbort) return { ok: false, reason: e.reason };
     throw e;

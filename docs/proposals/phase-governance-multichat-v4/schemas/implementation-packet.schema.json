@@ -1,0 +1,120 @@
+{
+  "$id": "https://candidate.invalid/schemas/implementation-packet",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "acceptanceRevision": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "baseSha": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "changedFiles": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "directorEpoch": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "fencingToken": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "headSha": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "humanGates": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "knownUnknowns": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "leaseId": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "nextReviewer": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "packetVersion": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "redGreenEvidence": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "resourceManifestHash": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "riskTier": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "rollbackPlan": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "testCounts": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "testsRun": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "unresolvedRisks": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "wipId": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "packetVersion",
+    "wipId",
+    "leaseId",
+    "fencingToken",
+    "directorEpoch",
+    "baseSha",
+    "headSha",
+    "changedFiles",
+    "resourceManifestHash",
+    "acceptanceRevision",
+    "riskTier",
+    "testsRun",
+    "testCounts",
+    "redGreenEvidence",
+    "knownUnknowns",
+    "unresolvedRisks",
+    "humanGates",
+    "rollbackPlan",
+    "nextReviewer"
+  ],
+  "title": "Implementation Packet",
+  "type": "object"
+}

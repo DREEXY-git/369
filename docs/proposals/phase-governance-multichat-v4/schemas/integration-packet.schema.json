@@ -1,0 +1,68 @@
+{
+  "$id": "https://candidate.invalid/schemas/integration-packet",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "baseDrift": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "combinedTreeHash": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "conflictResult": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "constituentShas": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "dependencyDag": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "humanGateChecklist": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "integrationChecks": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "mergeOrder": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "rollbackOrder": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "constituentShas",
+    "mergeOrder",
+    "dependencyDag",
+    "combinedTreeHash",
+    "integrationChecks",
+    "baseDrift",
+    "conflictResult",
+    "rollbackOrder",
+    "humanGateChecklist"
+  ],
+  "title": "Integration Packet",
+  "type": "object"
+}

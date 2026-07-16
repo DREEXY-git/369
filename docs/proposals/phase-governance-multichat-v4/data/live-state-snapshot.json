@@ -1,0 +1,83 @@
+{
+  "asOf": "2026-07-16T12:50:59Z",
+  "b18": {
+    "c49DetailStatus": "SOURCE_DETAIL_MISSING",
+    "mismatchCount": 0,
+    "sourceLabelsVerified": 21
+  },
+  "collision": {
+    "candidateBranchRemote": 0,
+    "candidatePathExact": 0,
+    "candidatePullRequest": 0,
+    "existingSingletonOverlapsObserved": [
+      3,
+      12,
+      14,
+      15,
+      16,
+      18,
+      20,
+      21,
+      22,
+      24,
+      28,
+      29,
+      31,
+      36,
+      38,
+      42,
+      43,
+      59
+    ],
+    "semanticSingletonOnCandidatePath": 0
+  },
+  "expiresAt": "2026-07-17T12:50:59Z",
+  "githubCapabilities": {
+    "ghCli": "MISSING_NOT_INSTALLED",
+    "inventoryMethod": "GitHub connector plus local git refs",
+    "publish": "PUBLISH_PR_AND_COMMENT",
+    "read": "READ_FULL"
+  },
+  "isolatedWorktree": {
+    "baseSha": "7e50a04df6dcc8043689958cbfd9be42e15e1af7",
+    "branch": "codex/gov-phase-multichat-v4-7e50a04",
+    "cleanAtStart": true,
+    "localPathPersisted": false,
+    "logicalId": "WT-GOV-V4-7E50A04"
+  },
+  "openPullRequests": {
+    "changedFilenamePaginationComplete": true,
+    "classificationCounts": {
+      "ACTIVE_REVIEW": 4,
+      "EVIDENCE_ONLY": 10,
+      "HOLD_CURRENT": 7,
+      "HUMAN_GATE": 4,
+      "LEGACY_STALE": 1,
+      "SUPERSEDED_CANDIDATE": 3,
+      "UNKNOWN_REVIEW_REQUIRED": 3
+    },
+    "paginationComplete": true,
+    "queryLimit": 100,
+    "total": 32
+  },
+  "repository": "DREEXY-git/369",
+  "schemaVersion": 1,
+  "scopeDeferred": [
+    "workflow run wrapper is first-page only; head status was captured for all PRs",
+    "formal close / supersession decisions require human review"
+  ],
+  "sourceCheckout": {
+    "branch": "codex/f1d-e2e-locators",
+    "changedByCandidateWork": false,
+    "headSha": "bb3e74008ad4637b531ed1ca984e04a9e598253c",
+    "modifiedEntries": 1,
+    "untrackedEntries": 7
+  },
+  "sourceMainSha": "7e50a04df6dcc8043689958cbfd9be42e15e1af7",
+  "vault": {
+    "mainSha": "8eab43618c19e6b675f11ef7f43cf33c8cf87177",
+    "openPullRequestCount": 3,
+    "repository": "DREEXY-git/369-vault",
+    "writePerformed": false
+  }
+}

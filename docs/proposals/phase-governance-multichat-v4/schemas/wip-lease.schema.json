@@ -1,0 +1,256 @@
+{
+  "$id": "https://candidate.invalid/schemas/wip-lease",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "acceptance_criteria_revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "affected_business_phases": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "allowed_paths": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "base_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    },
+    "branch": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "change_budget": {
+      "properties": {
+        "justification_required_above_budget": {
+          "type": "boolean"
+        },
+        "max_files": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_net_lines": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "max_files",
+        "max_net_lines",
+        "justification_required_above_budget"
+      ],
+      "type": "object"
+    },
+    "change_surface_manifest_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "control_revision_at_issue": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "dependencies": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "director_epoch": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "entry_gate": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "environment_lease_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "exit_gate": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "fencing_token": {
+      "pattern": "^FT-[1-9][0-9]*-[1-9][0-9]*-.+$",
+      "type": "string"
+    },
+    "forbidden_paths": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "function_ids": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "heartbeat_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "human_gates": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "issued_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "lease_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "lease_revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "lease_state": {
+      "enum": [
+        "CLAIMED",
+        "ACTIVE",
+        "FROZEN_FOR_REVIEW",
+        "LEASE_EXPIRED",
+        "REVOKED"
+      ]
+    },
+    "owner_agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "owner_role_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "owner_session_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "primary_business_phase": {
+      "pattern": "^BP(?:0[0-9]|1[0-9]|20)$",
+      "type": "string"
+    },
+    "release_program": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "resource_locks": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "resource_manifest_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "reviewers": {
+      "type": "object"
+    },
+    "risk_tier": {
+      "enum": [
+        "RT0",
+        "RT1",
+        "RT2",
+        "RT3",
+        "RT4"
+      ]
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "unmapped_candidates": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "wip_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "workstream": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "worktree_id": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "lease_id",
+    "lease_revision",
+    "fencing_token",
+    "director_epoch",
+    "control_revision_at_issue",
+    "wip_id",
+    "owner_agent_id",
+    "owner_session_id",
+    "owner_role_id",
+    "primary_business_phase",
+    "affected_business_phases",
+    "function_ids",
+    "unmapped_candidates",
+    "release_program",
+    "workstream",
+    "risk_tier",
+    "base_sha",
+    "branch",
+    "worktree_id",
+    "change_surface_manifest_id",
+    "environment_lease_id",
+    "resource_manifest_hash",
+    "allowed_paths",
+    "forbidden_paths",
+    "resource_locks",
+    "dependencies",
+    "acceptance_criteria_revision",
+    "entry_gate",
+    "exit_gate",
+    "change_budget",
+    "reviewers",
+    "human_gates",
+    "lease_state",
+    "issued_at",
+    "heartbeat_at",
+    "expires_at"
+  ],
+  "title": "WIP Lease",
+  "type": "object"
+}

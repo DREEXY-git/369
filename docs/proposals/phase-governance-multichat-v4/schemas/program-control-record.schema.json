@@ -1,0 +1,92 @@
+{
+  "$id": "https://candidate.invalid/schemas/program-control-record",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "active_leases": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "control_revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "current_main_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    },
+    "director_agent_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "director_epoch": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "domain_freezes": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "global_freeze": {
+      "type": "boolean"
+    },
+    "integration_queue": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "program_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "queue_health": {
+      "enum": [
+        "GREEN",
+        "AMBER",
+        "RED"
+      ]
+    },
+    "review_queue": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "write_capacity": {
+      "maximum": 3,
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "program_id",
+    "director_agent_id",
+    "director_epoch",
+    "control_revision",
+    "current_main_sha",
+    "write_capacity",
+    "queue_health",
+    "global_freeze",
+    "domain_freezes",
+    "active_leases",
+    "review_queue",
+    "integration_queue",
+    "updated_at"
+  ],
+  "title": "Program Control Record",
+  "type": "object"
+}

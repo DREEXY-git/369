@@ -1,0 +1,64 @@
+{
+  "acceptance_criteria_revision": 1,
+  "affected_business_phases": [
+    "BP04"
+  ],
+  "allowed_paths": [
+    "apps/web/lib/domains/synthetic/**"
+  ],
+  "base_sha": "1111111111111111111111111111111111111111",
+  "branch": "claude/wip-synthetic-002-runtime",
+  "change_budget": {
+    "justification_required_above_budget": true,
+    "max_files": null,
+    "max_net_lines": null
+  },
+  "change_surface_manifest_id": "CSM-SYNTHETIC-RT2",
+  "control_revision_at_issue": 87,
+  "dependencies": [],
+  "director_epoch": 12,
+  "entry_gate": [
+    "DoR PASS"
+  ],
+  "environment_lease_id": "ENV-SYNTHETIC-RT2",
+  "exit_gate": [
+    "independent review"
+  ],
+  "expires_at": "2026-07-17T00:00:00Z",
+  "fencing_token": "FT-12-1-00000000-0000-4000-8000-000000000002",
+  "forbidden_paths": [
+    "tasks/**",
+    ".github/**"
+  ],
+  "function_ids": [
+    "SYNTHETIC-FUNCTION-001"
+  ],
+  "heartbeat_at": "2026-07-16T00:00:00Z",
+  "human_gates": [
+    "main merge"
+  ],
+  "issued_at": "2026-07-16T00:00:00Z",
+  "lease_id": "LEASE-SYNTHETIC-RT2",
+  "lease_revision": 1,
+  "lease_state": "CLAIMED",
+  "owner_agent_id": "AGENT-DEV-SYNTHETIC",
+  "owner_role_id": "ROLE-DEV",
+  "owner_session_id": "SESSION-SYNTHETIC",
+  "primary_business_phase": "BP05",
+  "release_program": "RP-202607-PILOT-SYNTHETIC",
+  "resource_locks": [
+    "MODEL:SyntheticRecord",
+    "STATE_MACHINE:SyntheticLifecycle"
+  ],
+  "resource_manifest_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+  "reviewers": {
+    "evidence": "AGENT-QA-EVID-SYNTHETIC",
+    "security": "AGENT-QA-SEC-SYNTHETIC"
+  },
+  "risk_tier": "RT2",
+  "schema_version": 1,
+  "unmapped_candidates": [],
+  "wip_id": "WIP-SYNTHETIC-002-RUNTIME",
+  "workstream": "WS-FIN-SYNTHETIC",
+  "worktree_id": "WT-SYNTHETIC"
+}

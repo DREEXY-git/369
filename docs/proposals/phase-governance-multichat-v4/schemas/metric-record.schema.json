@@ -1,0 +1,55 @@
+{
+  "$id": "https://candidate.invalid/schemas/metric-record",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "metric": {
+      "enum": [
+        "wip_cycle_count",
+        "wip_cycle_duration",
+        "review_wait",
+        "review_rework_count",
+        "sha_invalidation_count",
+        "path_conflict_count",
+        "semantic_lock_miss_count",
+        "stale_lease_count",
+        "takeover_count",
+        "ci_retry_count",
+        "integration_failure_count",
+        "post_merge_blocker_count",
+        "escaped_defect_severity",
+        "queue_depth",
+        "writer_utilization"
+      ]
+    },
+    "observedAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "sourceSha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    },
+    "unit": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "value": {
+      "type": "number"
+    },
+    "wipId": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "wipId",
+    "metric",
+    "value",
+    "unit",
+    "observedAt",
+    "sourceSha"
+  ],
+  "title": "Metric Record",
+  "type": "object"
+}

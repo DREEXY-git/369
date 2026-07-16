@@ -1,0 +1,54 @@
+{
+  "$id": "https://candidate.invalid/schemas/decision-record",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "authority": {
+      "const": "HUMAN",
+      "type": "string"
+    },
+    "decidedAt": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "decisionId": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "evidenceRefs": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "status": {
+      "enum": [
+        "PENDING",
+        "APPROVED",
+        "REJECTED",
+        "SUPERSEDED"
+      ]
+    },
+    "subject": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "decisionId",
+    "subject",
+    "authority",
+    "status",
+    "evidenceRefs",
+    "decidedAt"
+  ],
+  "title": "Decision Record",
+  "type": "object"
+}

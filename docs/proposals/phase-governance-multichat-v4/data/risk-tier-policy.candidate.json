@@ -1,0 +1,67 @@
+{
+  "candidateVersion": "4.0.0",
+  "escalationInvalidatesPriorPass": true,
+  "schemaVersion": 1,
+  "tiers": [
+    {
+      "gates": [
+        "path boundary",
+        "link / JSON / deterministic check",
+        "secret scan",
+        "QA-EVID"
+      ],
+      "id": "RT0",
+      "parallelism": "normal",
+      "scope": "docs / read-only / generated candidate"
+    },
+    {
+      "gates": [
+        "unit",
+        "typecheck / lint",
+        "QA-EVID",
+        "security spot check"
+      ],
+      "id": "RT1",
+      "parallelism": "normal",
+      "scope": "isolated UI / pure logic / no write-side effect"
+    },
+    {
+      "gates": [
+        "unit + integration",
+        "tenant / RBAC / audit",
+        "idempotency / error path",
+        "QA-SEC + QA-EVID",
+        "integration train"
+      ],
+      "id": "RT2",
+      "parallelism": "up to current writer capacity",
+      "scope": "domain write / internal state change"
+    },
+    {
+      "gates": [
+        "independent QA-SEC + QA-EVID",
+        "realistic integration",
+        "concurrency / retry / fault injection",
+        "exact-head CI",
+        "artifact / logs",
+        "Human Gate"
+      ],
+      "id": "RT3",
+      "parallelism": "one integration at a time",
+      "scope": "finance / security / PII / worker / queue / external boundary"
+    },
+    {
+      "bootstrapAllowed": false,
+      "gates": [
+        "explicit Human Gate",
+        "rollback / backfill / migration plan",
+        "pre-production evidence",
+        "post-merge verification",
+        "secrets / environment review"
+      ],
+      "id": "RT4",
+      "parallelism": "single WIP",
+      "scope": "schema / migration / CI workflow / Production / billing / external send"
+    }
+  ]
+}

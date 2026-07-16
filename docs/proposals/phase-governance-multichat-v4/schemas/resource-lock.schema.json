@@ -1,0 +1,71 @@
+{
+  "$id": "https://candidate.invalid/schemas/resource-lock",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "fencing_token": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "lease_revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "mode": {
+      "enum": [
+        "SNAPSHOT_READ",
+        "INTENT_WRITE",
+        "WRITE",
+        "EXCLUSIVE"
+      ]
+    },
+    "owner_wip_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "resource_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "resource_type": {
+      "enum": [
+        "FILE",
+        "DIR",
+        "MODEL",
+        "MODEL_FIELD",
+        "STATE_MACHINE",
+        "STATE_TRANSITION",
+        "APPROVAL_TYPE",
+        "EVENT",
+        "IDEMPOTENCY_NAMESPACE",
+        "QUEUE",
+        "WORKER_JOB",
+        "RBAC",
+        "LABEL",
+        "AUDIT_ACTION",
+        "OUTBOX",
+        "API_ROUTE",
+        "GENERATED_ARTIFACT",
+        "DOC_CANONICAL",
+        "VAULT_INDEX",
+        "TEST_FIXTURE",
+        "SEED_TENANT",
+        "TEST_DATABASE",
+        "REDIS_QUEUE",
+        "LOCAL_PORT",
+        "ARTIFACT_PATH",
+        "ENV_CONTRACT"
+      ]
+    }
+  },
+  "required": [
+    "resource_type",
+    "resource_id",
+    "mode",
+    "owner_wip_id",
+    "lease_revision",
+    "fencing_token"
+  ],
+  "title": "Resource Lock",
+  "type": "object"
+}

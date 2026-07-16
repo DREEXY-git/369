@@ -1,0 +1,201 @@
+{
+  "candidateVersion": "4.0.0",
+  "directorPolicy": {
+    "controlRevisionRequired": true,
+    "epochIncrementOnTakeover": true,
+    "maxActiveDirectors": 1
+  },
+  "exceptionStates": [
+    "HOLD",
+    "CHANGES_REQUIRED",
+    "LEASE_EXPIRED",
+    "REVOKED",
+    "SUPERSEDED",
+    "ABANDONED"
+  ],
+  "markers": [
+    "CONTROL_REVISION",
+    "DIRECTOR_EPOCH",
+    "WIP_PROPOSED",
+    "WIP_READY",
+    "WIP_CLAIMED",
+    "IMPLEMENTATION_STARTED",
+    "IMPLEMENTATION_FREEZE",
+    "SECURITY_REVIEW_STARTED",
+    "SECURITY_CHANGES_REQUIRED",
+    "SECURITY_PASS",
+    "EVIDENCE_REVIEW_STARTED",
+    "EVIDENCE_CHANGES_REQUIRED",
+    "EVIDENCE_PASS",
+    "INTEGRATION_STARTED",
+    "INTEGRATION_PASS",
+    "READY_FOR_HUMAN_GATE",
+    "MAIN_MERGED",
+    "POST_MERGE_VERIFIED",
+    "VAULT_SYNCED",
+    "WIP_CLOSED",
+    "WIP_REVOKED",
+    "WIP_SUPERSEDED"
+  ],
+  "normalStates": [
+    "PROPOSED",
+    "READY",
+    "CLAIMED",
+    "ACTIVE",
+    "FROZEN_FOR_REVIEW",
+    "SECURITY_REVIEW",
+    "EVIDENCE_REVIEW",
+    "READY_FOR_INTEGRATION",
+    "INTEGRATION_VERIFIED",
+    "READY_FOR_HUMAN_GATE",
+    "MAIN_MERGED",
+    "POST_MERGE_VERIFIED",
+    "CLOSED"
+  ],
+  "reviewInvalidators": [
+    "head_sha",
+    "relevant_base_sha",
+    "fencing_token",
+    "lease_revision",
+    "resource_manifest_hash",
+    "acceptance_criteria_revision",
+    "risk_tier",
+    "required_test_set"
+  ],
+  "schemaVersion": 1,
+  "takeoverRequired": true,
+  "transitions": [
+    {
+      "authority": [
+        "DIR-01"
+      ],
+      "from": "PROPOSED",
+      "gates": [
+        "ARCH evidence"
+      ],
+      "to": "READY"
+    },
+    {
+      "authority": [
+        "DIR-01"
+      ],
+      "from": "READY",
+      "gates": [],
+      "to": "CLAIMED"
+    },
+    {
+      "authority": [
+        "DEV-01..03"
+      ],
+      "from": "CLAIMED",
+      "gates": [],
+      "to": "ACTIVE"
+    },
+    {
+      "authority": [
+        "DEV-01..03"
+      ],
+      "from": "ACTIVE",
+      "gates": [
+        "implementation packet"
+      ],
+      "to": "FROZEN_FOR_REVIEW"
+    },
+    {
+      "authority": [
+        "QA-SEC-01"
+      ],
+      "from": "FROZEN_FOR_REVIEW",
+      "gates": [
+        "fixed SHA"
+      ],
+      "to": "SECURITY_REVIEW"
+    },
+    {
+      "authority": [
+        "QA-EVID-01"
+      ],
+      "from": "FROZEN_FOR_REVIEW",
+      "gates": [
+        "fixed SHA"
+      ],
+      "to": "EVIDENCE_REVIEW"
+    },
+    {
+      "authority": [
+        "DIR-01",
+        "INT-01"
+      ],
+      "from": "SECURITY_REVIEW",
+      "gates": [
+        "security PASS",
+        "evidence PASS"
+      ],
+      "to": "READY_FOR_INTEGRATION"
+    },
+    {
+      "authority": [
+        "DIR-01",
+        "INT-01"
+      ],
+      "from": "EVIDENCE_REVIEW",
+      "gates": [
+        "security PASS",
+        "evidence PASS"
+      ],
+      "to": "READY_FOR_INTEGRATION"
+    },
+    {
+      "authority": [
+        "INT-01"
+      ],
+      "from": "READY_FOR_INTEGRATION",
+      "gates": [
+        "integration checks"
+      ],
+      "to": "INTEGRATION_VERIFIED"
+    },
+    {
+      "authority": [
+        "INT-01",
+        "DIR-01"
+      ],
+      "from": "INTEGRATION_VERIFIED",
+      "gates": [
+        "both roles"
+      ],
+      "to": "READY_FOR_HUMAN_GATE"
+    },
+    {
+      "authority": [
+        "HUMAN"
+      ],
+      "from": "READY_FOR_HUMAN_GATE",
+      "gates": [
+        "explicit approval"
+      ],
+      "to": "MAIN_MERGED"
+    },
+    {
+      "authority": [
+        "INT-01",
+        "QA-EVID-01"
+      ],
+      "from": "MAIN_MERGED",
+      "gates": [
+        "exact main evidence"
+      ],
+      "to": "POST_MERGE_VERIFIED"
+    },
+    {
+      "authority": [
+        "HUMAN"
+      ],
+      "from": "POST_MERGE_VERIFIED",
+      "gates": [
+        "explicit close approval"
+      ],
+      "to": "CLOSED"
+    }
+  ]
+}

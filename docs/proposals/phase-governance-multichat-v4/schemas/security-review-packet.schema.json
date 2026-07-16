@@ -1,0 +1,99 @@
+{
+  "$id": "https://candidate.invalid/schemas/security-review-packet",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "audit": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "concurrency": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "fencingToken": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "idempotency": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "manifestHash": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "piiSecret": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "preliminaryBlindVerdict": {
+      "enum": [
+        "GO",
+        "HOLD",
+        "CHANGES_REQUIRED",
+        "NG",
+        "EVIDENCE_GAP",
+        "HUMAN_GATE_REQUIRED",
+        "DEFERRED",
+        "BLOCKED"
+      ]
+    },
+    "rbacActor": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "retry": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "reviewedSha": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "tenant": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "transaction": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "verdict": {
+      "enum": [
+        "GO",
+        "HOLD",
+        "CHANGES_REQUIRED",
+        "NG",
+        "EVIDENCE_GAP",
+        "HUMAN_GATE_REQUIRED",
+        "DEFERRED",
+        "BLOCKED"
+      ]
+    }
+  },
+  "required": [
+    "reviewedSha",
+    "fencingToken",
+    "manifestHash",
+    "tenant",
+    "rbacActor",
+    "transaction",
+    "idempotency",
+    "concurrency",
+    "retry",
+    "audit",
+    "piiSecret",
+    "findings",
+    "verdict",
+    "preliminaryBlindVerdict"
+  ],
+  "title": "Security Review Packet",
+  "type": "object"
+}

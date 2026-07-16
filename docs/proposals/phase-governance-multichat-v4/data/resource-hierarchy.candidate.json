@@ -1,0 +1,110 @@
+{
+  "acquisition": {
+    "atomicBatch": true,
+    "ordering": "NORMALIZED_CODE_POINT_ASCENDING",
+    "partialAcquisitionForbidden": true,
+    "upgradeForbidden": true
+  },
+  "candidateVersion": "4.0.0",
+  "compatibility": {
+    "EXCLUSIVE": {
+      "EXCLUSIVE": false,
+      "INTENT_WRITE": false,
+      "SNAPSHOT_READ": true,
+      "WRITE": false
+    },
+    "INTENT_WRITE": {
+      "EXCLUSIVE": false,
+      "INTENT_WRITE": false,
+      "SNAPSHOT_READ": true,
+      "WRITE": false
+    },
+    "SNAPSHOT_READ": {
+      "EXCLUSIVE": true,
+      "INTENT_WRITE": true,
+      "SNAPSHOT_READ": true,
+      "WRITE": true
+    },
+    "WRITE": {
+      "EXCLUSIVE": false,
+      "INTENT_WRITE": false,
+      "SNAPSHOT_READ": true,
+      "WRITE": false
+    }
+  },
+  "hierarchy": [
+    {
+      "childType": "FILE",
+      "parentType": "DIR",
+      "rule": "normalized path containment"
+    },
+    {
+      "childType": "MODEL_FIELD",
+      "parentType": "MODEL",
+      "rule": "model name prefix"
+    },
+    {
+      "childType": "STATE_TRANSITION",
+      "parentType": "STATE_MACHINE",
+      "rule": "state machine name prefix"
+    },
+    {
+      "childType": "WORKER_JOB",
+      "parentType": "QUEUE",
+      "rule": "declared queue ownership"
+    },
+    {
+      "childType": "GENERATED_ARTIFACT",
+      "parentType": "DOC_CANONICAL",
+      "rule": "declared generation lineage"
+    }
+  ],
+  "modes": [
+    "SNAPSHOT_READ",
+    "INTENT_WRITE",
+    "WRITE",
+    "EXCLUSIVE"
+  ],
+  "resourceTypes": [
+    "FILE",
+    "DIR",
+    "MODEL",
+    "MODEL_FIELD",
+    "STATE_MACHINE",
+    "STATE_TRANSITION",
+    "APPROVAL_TYPE",
+    "EVENT",
+    "IDEMPOTENCY_NAMESPACE",
+    "QUEUE",
+    "WORKER_JOB",
+    "RBAC",
+    "LABEL",
+    "AUDIT_ACTION",
+    "OUTBOX",
+    "API_ROUTE",
+    "GENERATED_ARTIFACT",
+    "DOC_CANONICAL",
+    "VAULT_INDEX",
+    "TEST_FIXTURE",
+    "SEED_TENANT",
+    "TEST_DATABASE",
+    "REDIS_QUEUE",
+    "LOCAL_PORT",
+    "ARTIFACT_PATH",
+    "ENV_CONTRACT"
+  ],
+  "schemaVersion": 1,
+  "singletons": [
+    "Prisma schema / migration",
+    "package / lock",
+    ".github/workflows/**",
+    "central RBAC / labels",
+    "central approval dispatcher",
+    "Domain Event / Outbox core",
+    "tasks/CURRENT_STATE.md",
+    "Business Phase canonical JSON",
+    "Function Master generated files",
+    "standalone vault index.md",
+    "main integration train"
+  ]
+}

@@ -1,0 +1,227 @@
+{
+  "$id": "https://candidate.invalid/schemas/change-surface-manifest",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "affected_bps": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "allowed_paths": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "api_routes": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "approval_types": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "audit_actions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "canonical_docs": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "data_classifications": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "events": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "external_side_effects": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "forbidden_paths": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "function_ids": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "generated_artifacts": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "idempotency_namespaces": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "labels": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "manifest_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "migration_impact": {
+      "enum": [
+        "NONE",
+        "REQUIRED",
+        "UNKNOWN"
+      ]
+    },
+    "outbox_messages": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "primary_bp": {
+      "pattern": "^BP(?:0[0-9]|1[0-9]|20)$",
+      "type": "string"
+    },
+    "prisma_models": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "queues": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "rbac_permissions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "remediation_plan": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "resource_locks": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "rollback_plan": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "schema_impact": {
+      "enum": [
+        "NONE",
+        "ADDITIVE",
+        "DESTRUCTIVE",
+        "UNKNOWN"
+      ]
+    },
+    "state_machines": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "test_data_class": {
+      "enum": [
+        "SYNTHETIC",
+        "DEMO",
+        "REDACTED",
+        "NONE"
+      ]
+    },
+    "test_targets": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "unmapped_candidates": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "wip_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "worker_jobs": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "manifest_id",
+    "wip_id",
+    "primary_bp",
+    "affected_bps",
+    "function_ids",
+    "unmapped_candidates",
+    "allowed_paths",
+    "forbidden_paths",
+    "resource_locks",
+    "prisma_models",
+    "state_machines",
+    "approval_types",
+    "events",
+    "idempotency_namespaces",
+    "queues",
+    "worker_jobs",
+    "rbac_permissions",
+    "labels",
+    "data_classifications",
+    "test_data_class",
+    "audit_actions",
+    "outbox_messages",
+    "api_routes",
+    "generated_artifacts",
+    "canonical_docs",
+    "test_targets",
+    "external_side_effects",
+    "schema_impact",
+    "migration_impact",
+    "rollback_plan",
+    "remediation_plan"
+  ],
+  "title": "Change Surface Manifest",
+  "type": "object"
+}

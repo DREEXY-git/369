@@ -1,0 +1,77 @@
+{
+  "$id": "https://candidate.invalid/schemas/handoff-event",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "controlRevision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "directorEpoch": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "eventType": {
+      "enum": [
+        "CONTROL_REVISION",
+        "DIRECTOR_EPOCH",
+        "WIP_PROPOSED",
+        "WIP_READY",
+        "WIP_CLAIMED",
+        "IMPLEMENTATION_STARTED",
+        "IMPLEMENTATION_FREEZE",
+        "SECURITY_REVIEW_STARTED",
+        "SECURITY_CHANGES_REQUIRED",
+        "SECURITY_PASS",
+        "EVIDENCE_REVIEW_STARTED",
+        "EVIDENCE_CHANGES_REQUIRED",
+        "EVIDENCE_PASS",
+        "INTEGRATION_STARTED",
+        "INTEGRATION_PASS",
+        "READY_FOR_HUMAN_GATE",
+        "MAIN_MERGED",
+        "POST_MERGE_VERIFIED",
+        "VAULT_SYNCED",
+        "WIP_CLOSED",
+        "WIP_REVOKED",
+        "WIP_SUPERSEDED"
+      ]
+    },
+    "fencingToken": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "headSha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    },
+    "leaseId": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "leaseRevision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "payload": {
+      "type": "object"
+    },
+    "wipId": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "eventType",
+    "wipId",
+    "leaseId",
+    "fencingToken",
+    "directorEpoch",
+    "controlRevision",
+    "leaseRevision",
+    "headSha",
+    "payload"
+  ],
+  "title": "Handoff Event",
+  "type": "object"
+}

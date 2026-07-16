@@ -1,0 +1,108 @@
+{
+  "$id": "https://candidate.invalid/schemas/evidence-review-packet",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "acceptanceCoverage": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "artifacts": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "collectedTests": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "exactHeadCi": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "failed": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "fencingToken": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "functionEvidence": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "manifestHash": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "passed": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "preliminaryBlindVerdict": {
+      "enum": [
+        "GO",
+        "HOLD",
+        "CHANGES_REQUIRED",
+        "NG",
+        "EVIDENCE_GAP",
+        "HUMAN_GATE_REQUIRED",
+        "DEFERRED",
+        "BLOCKED"
+      ]
+    },
+    "redGreen": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "reviewedSha": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "skipped": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "verdict": {
+      "enum": [
+        "GO",
+        "HOLD",
+        "CHANGES_REQUIRED",
+        "NG",
+        "EVIDENCE_GAP",
+        "HUMAN_GATE_REQUIRED",
+        "DEFERRED",
+        "BLOCKED"
+      ]
+    }
+  },
+  "required": [
+    "reviewedSha",
+    "fencingToken",
+    "manifestHash",
+    "acceptanceCoverage",
+    "collectedTests",
+    "passed",
+    "failed",
+    "skipped",
+    "exactHeadCi",
+    "artifacts",
+    "redGreen",
+    "functionEvidence",
+    "findings",
+    "verdict",
+    "preliminaryBlindVerdict"
+  ],
+  "title": "Evidence Review Packet",
+  "type": "object"
+}

@@ -1,0 +1,154 @@
+{
+  "candidateVersion": "4.0.0",
+  "phases": [
+    {
+      "displayName": "Core OS & Trust Foundation（基盤・安全）",
+      "evidenceId": "B18-001",
+      "id": "BP00",
+      "sourceLabel": "Core OS / 安全基盤",
+      "sourceLine": "normalized-line:6505"
+    },
+    {
+      "displayName": "Company Brain & Knowledge Foundation（会社の頭脳・知識）",
+      "evidenceId": "B18-031",
+      "id": "BP01",
+      "sourceLabel": "Company Brain 基盤",
+      "sourceLine": "normalized-line:6535"
+    },
+    {
+      "displayName": "CRM / SFA Foundation（顧客・営業基盤）",
+      "evidenceId": "B18-051",
+      "id": "BP02",
+      "sourceLabel": "Salesforce Mini / CRM基盤",
+      "sourceLine": "normalized-line:6555"
+    },
+    {
+      "displayName": "Growth Intelligence（成長機会・成果分析）",
+      "evidenceId": "B18-093",
+      "id": "BP03",
+      "sourceLabel": "AI Growth Engine",
+      "sourceLine": "normalized-line:6597"
+    },
+    {
+      "displayName": "Human Certification & Action Gateway（人間承認・安全実行）",
+      "evidenceId": "B18-127",
+      "id": "BP04",
+      "sourceLabel": "Human Certification Gate / AI安全実行",
+      "sourceLine": "normalized-line:6631"
+    },
+    {
+      "displayName": "Finance & ERP Core（財務・ERP）",
+      "evidenceId": "B18-162",
+      "id": "BP05",
+      "sourceLabel": "Oracle Mini / ERP基盤",
+      "sourceLine": "normalized-line:6666"
+    },
+    {
+      "displayName": "Procurement Intelligence & PLUG（購買最適化）",
+      "evidenceId": "B18-215",
+      "id": "BP06",
+      "sourceLabel": "PLUG型 Commerce / Affiliate / 購買エンジン",
+      "sourceLine": "normalized-line:6719"
+    },
+    {
+      "displayName": "Commerce & Order Operations（EC・受注）",
+      "evidenceId": "B18-261",
+      "id": "BP07",
+      "sourceLabel": "Commerce / EC / Order Management",
+      "sourceLine": "normalized-line:6765"
+    },
+    {
+      "displayName": "Developer Cloud & Agent Development（開発基盤）",
+      "evidenceId": "B18-286",
+      "id": "BP08",
+      "sourceLabel": "Developer Cloud / 開発環境",
+      "sourceLine": "normalized-line:6790"
+    },
+    {
+      "displayName": "AI Employee Marketplace（AI社員市場）",
+      "evidenceId": "B18-357",
+      "id": "BP09",
+      "sourceLabel": "AI社員 Marketplace",
+      "sourceLine": "normalized-line:6861"
+    },
+    {
+      "displayName": "Supply Chain & Asset Operations（在庫・調達）",
+      "evidenceId": "B18-408",
+      "id": "BP10",
+      "sourceLabel": "Oracle SCM / 在庫 / 調達 / サプライチェーン",
+      "sourceLine": "normalized-line:6912"
+    },
+    {
+      "displayName": "People, Recruiting & Learning OS（人事・採用・教育）",
+      "evidenceId": "B18-434",
+      "id": "BP11",
+      "sourceLabel": "HCM / 採用 / 教育 / 人事",
+      "sourceLine": "normalized-line:6938"
+    },
+    {
+      "displayName": "Data Cloud, BI & Business Twin（データ・経営分析）",
+      "evidenceId": "B18-460",
+      "id": "BP12",
+      "sourceLabel": "Data Cloud / BI / Analytics",
+      "sourceLine": "normalized-line:6964"
+    },
+    {
+      "displayName": "Customer Service & Success（顧客支援）",
+      "evidenceId": "B18-487",
+      "id": "BP13",
+      "sourceLabel": "Service Cloud / Contact Center / Customer Success",
+      "sourceLine": "normalized-line:6991"
+    },
+    {
+      "displayName": "Marketing Cloud & Growth Operations（マーケティング運用）",
+      "evidenceId": "B18-508",
+      "id": "BP14",
+      "sourceLabel": "Marketing Cloud / 広告代理店 / 共有ダッシュボード",
+      "sourceLine": "normalized-line:7012"
+    },
+    {
+      "displayName": "Industry Cloud & Vertical Factory（業界特化）",
+      "evidenceId": "B18-532",
+      "id": "BP15",
+      "sourceLabel": "Industry Cloud / 業界別OS",
+      "sourceLine": "normalized-line:7036"
+    },
+    {
+      "displayName": "Employee Experience & Distribution（従業員体験）",
+      "evidenceId": "B18-559",
+      "id": "BP16",
+      "sourceLabel": "従業員配布基盤",
+      "sourceLine": "normalized-line:7063"
+    },
+    {
+      "displayName": "API & Integration Platform（外部連携基盤）",
+      "evidenceId": "B18-584",
+      "id": "BP17",
+      "sourceLabel": "External API / Integration Hub",
+      "sourceLine": "normalized-line:7088"
+    },
+    {
+      "displayName": "Billing, Metering & Revenue Share（課金・利用量・分配）",
+      "evidenceId": "B18-603",
+      "id": "BP18",
+      "sourceLabel": "Billing / Metering / Revenue Share",
+      "sourceLine": "normalized-line:7107"
+    },
+    {
+      "displayName": "Enterprise Trust & Governance（Enterprise統制）",
+      "evidenceId": "B18-624",
+      "id": "BP19",
+      "sourceLabel": "Enterprise Governance",
+      "sourceLine": "normalized-line:7128"
+    },
+    {
+      "displayName": "Open AI Workforce Economy（AI社員経済圏）",
+      "evidenceId": "B18-647",
+      "id": "BP20",
+      "sourceLabel": "369経済圏 / AI社員OS",
+      "sourceLine": "normalized-line:7151"
+    }
+  ],
+  "schemaVersion": 1,
+  "source": "docs/function-master/COMPLETE_FUNCTION_LEDGER_V1.md#B18"
+}

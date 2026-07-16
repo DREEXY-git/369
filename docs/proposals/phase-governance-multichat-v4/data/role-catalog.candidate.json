@@ -1,0 +1,192 @@
+{
+  "candidateVersion": "4.0.0",
+  "independentReview": {
+    "evidenceRole": "QA-EVID-01",
+    "preliminaryBlindVerdict": true,
+    "sameChatForbidden": true,
+    "sameFixedShaRequired": true,
+    "securityRole": "QA-SEC-01"
+  },
+  "raci": [
+    {
+      "accountable": "DIR",
+      "consulted": "ARCH",
+      "informed": "DEV / QA",
+      "responsible": "DIR / SCOUT",
+      "subject": "WIP提案"
+    },
+    {
+      "accountable": "DIR",
+      "consulted": "ARCH / OPS",
+      "informed": "DEV / QA",
+      "responsible": "DIR",
+      "subject": "Lease grant"
+    },
+    {
+      "accountable": "DEV",
+      "consulted": "ARCH",
+      "informed": "DIR",
+      "responsible": "DEV",
+      "subject": "実装"
+    },
+    {
+      "accountable": "QA-SEC",
+      "consulted": "ARCH",
+      "informed": "DIR / DEV",
+      "responsible": "QA-SEC",
+      "subject": "Security判定"
+    },
+    {
+      "accountable": "QA-EVID",
+      "consulted": "OPS",
+      "informed": "DIR / DEV",
+      "responsible": "QA-EVID",
+      "subject": "Evidence判定"
+    },
+    {
+      "accountable": "Human Gate",
+      "consulted": "DIR / QA",
+      "informed": "DEV / GOV",
+      "responsible": "INT",
+      "subject": "Integration順"
+    },
+    {
+      "accountable": "Human",
+      "consulted": "INT / DIR",
+      "informed": "all roles",
+      "responsible": "Human",
+      "subject": "main merge"
+    },
+    {
+      "accountable": "Human or explicit owner",
+      "consulted": "DIR / QA",
+      "informed": "all roles",
+      "responsible": "GOV",
+      "subject": "Evidence / vault sync"
+    }
+  ],
+  "roles": [
+    {
+      "forbidden": [
+        "feature code変更",
+        "QA PASS代行",
+        "main merge"
+      ],
+      "id": "DIR-01",
+      "name": "Program Director / Lease Authority",
+      "responsibilities": [
+        "live main・queue・Human Gate管理",
+        "DoR確認",
+        "Leaseとepoch/control revision管理",
+        "capacity/backpressure管理"
+      ]
+    },
+    {
+      "forbidden": [
+        "feature write"
+      ],
+      "id": "ARCH-01",
+      "name": "Architecture / Dependency Scout",
+      "responsibilities": [
+        "read-only dependency監査",
+        "semantic change surface検証",
+        "lockとDAG検証"
+      ]
+    },
+    {
+      "forbidden": [
+        "Production endpoint",
+        "secret参照",
+        "feature write"
+      ],
+      "id": "OPS-01",
+      "name": "Environment / CI Capacity Coordinator",
+      "responsibilities": [
+        "execution environment分離",
+        "CI/local capacity把握",
+        "cleanup計画"
+      ]
+    },
+    {
+      "forbidden": [
+        "自己assign",
+        "複数WIP",
+        "scope自己拡大",
+        "自己QA",
+        "main merge"
+      ],
+      "id": "DEV-01..03",
+      "name": "Implementation Lanes",
+      "responsibilities": [
+        "grant済み1 WIP実装",
+        "targeted tests",
+        "implementation packetとfixed SHA freeze"
+      ]
+    },
+    {
+      "forbidden": [
+        "target branch write"
+      ],
+      "id": "QA-SEC-01",
+      "name": "Security / Correctness Reviewer",
+      "responsibilities": [
+        "tenant/RBAC/actor",
+        "transaction/concurrency/retry/idempotency",
+        "audit/PII/secret",
+        "fixed SHA read-only review"
+      ]
+    },
+    {
+      "forbidden": [
+        "target branch write"
+      ],
+      "id": "QA-EVID-01",
+      "name": "Test / Evidence Reviewer",
+      "responsibilities": [
+        "acceptance coverage",
+        "test collection/skip/exact-head CI",
+        "artifact/Function Evidence",
+        "fixed SHA read-only review"
+      ]
+    },
+    {
+      "forbidden": [
+        "feature implementation",
+        "Human Gateなしmerge"
+      ],
+      "id": "INT-01",
+      "name": "Integration / Release Queue Manager",
+      "responsibilities": [
+        "両QA PASS SHAだけをqueue投入",
+        "base driftとintegration train",
+        "rollback順序"
+      ]
+    },
+    {
+      "forbidden": [
+        "Draftをmain済みと記録",
+        "PreviewをProductionと記録",
+        "runtime write"
+      ],
+      "id": "GOV-01",
+      "name": "Governance / Evidence / Vault Sync",
+      "responsibilities": [
+        "main統合後Evidence同期候補",
+        "Phase/Alias/vault mirror候補"
+      ]
+    },
+    {
+      "forbidden": [
+        "write leaseなしの変更"
+      ],
+      "id": "SCOUT-*",
+      "name": "Read-Only Specialist",
+      "responsibilities": [
+        "domain read-only調査",
+        "finding永続化",
+        "DIRへ返却"
+      ]
+    }
+  ],
+  "schemaVersion": 1
+}

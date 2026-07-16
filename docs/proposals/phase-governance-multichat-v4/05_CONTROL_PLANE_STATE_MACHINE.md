@@ -1,0 +1,76 @@
+# Control Plane State Machine
+
+> Status: **Pilot-Ready Candidate / READY_FOR_HUMAN_REVIEW候補**
+> Version: 4.0.0
+> Program: GOV-PHASE-MULTICHAT-CONTROL-PLANE-V4
+> 正式採用・main merge・運用開始を意味しません。
+
+
+## Normal states
+
+1. PROPOSED
+2. READY
+3. CLAIMED
+4. ACTIVE
+5. FROZEN_FOR_REVIEW
+6. SECURITY_REVIEW
+7. EVIDENCE_REVIEW
+8. READY_FOR_INTEGRATION
+9. INTEGRATION_VERIFIED
+10. READY_FOR_HUMAN_GATE
+11. MAIN_MERGED
+12. POST_MERGE_VERIFIED
+13. CLOSED
+
+Exception states: HOLD / CHANGES_REQUIRED / LEASE_EXPIRED / REVOKED / SUPERSEDED / ABANDONED
+
+## Transition authority
+
+| From | To | Authority | Gate |
+| --- | --- | --- | --- |
+| PROPOSED | READY | DIR-01 | ARCH evidence |
+| READY | CLAIMED | DIR-01 | none |
+| CLAIMED | ACTIVE | DEV-01..03 | none |
+| ACTIVE | FROZEN_FOR_REVIEW | DEV-01..03 | implementation packet |
+| FROZEN_FOR_REVIEW | SECURITY_REVIEW | QA-SEC-01 | fixed SHA |
+| FROZEN_FOR_REVIEW | EVIDENCE_REVIEW | QA-EVID-01 | fixed SHA |
+| SECURITY_REVIEW | READY_FOR_INTEGRATION | DIR-01, INT-01 | security PASS, evidence PASS |
+| EVIDENCE_REVIEW | READY_FOR_INTEGRATION | DIR-01, INT-01 | security PASS, evidence PASS |
+| READY_FOR_INTEGRATION | INTEGRATION_VERIFIED | INT-01 | integration checks |
+| INTEGRATION_VERIFIED | READY_FOR_HUMAN_GATE | INT-01, DIR-01 | both roles |
+| READY_FOR_HUMAN_GATE | MAIN_MERGED | HUMAN | explicit approval |
+| MAIN_MERGED | POST_MERGE_VERIFIED | INT-01, QA-EVID-01 | exact main evidence |
+| POST_MERGE_VERIFIED | CLOSED | HUMAN | explicit close approval |
+
+## Invariants
+
+- active Directorは1 instance。交代時にdirector_epochを+1する。
+- DEVはREADY_FOR_HUMAN_GATE、MAIN_MERGED、CLOSEDへ自己遷移できない。
+- 両QA PASSは同一fixed SHA、token、lease revision、manifest hash、acceptance revisionに紐づく。
+- 重要操作直前にcontrol revisionを再読する。
+- 不正遷移はmarkerを書かずHOLDへ返す。
+
+## GitHub markers
+
+- CONTROL_REVISION
+- DIRECTOR_EPOCH
+- WIP_PROPOSED
+- WIP_READY
+- WIP_CLAIMED
+- IMPLEMENTATION_STARTED
+- IMPLEMENTATION_FREEZE
+- SECURITY_REVIEW_STARTED
+- SECURITY_CHANGES_REQUIRED
+- SECURITY_PASS
+- EVIDENCE_REVIEW_STARTED
+- EVIDENCE_CHANGES_REQUIRED
+- EVIDENCE_PASS
+- INTEGRATION_STARTED
+- INTEGRATION_PASS
+- READY_FOR_HUMAN_GATE
+- MAIN_MERGED
+- POST_MERGE_VERIFIED
+- VAULT_SYNCED
+- WIP_CLOSED
+- WIP_REVOKED
+- WIP_SUPERSEDED

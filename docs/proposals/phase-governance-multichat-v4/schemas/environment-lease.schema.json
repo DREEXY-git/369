@@ -1,0 +1,139 @@
+{
+  "$id": "https://candidate.invalid/schemas/environment-lease",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "artifact_dir_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "branch": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "database_name_or_schema": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "database_strategy": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "environment_lease_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "execution_host_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "execution_scope": {
+      "enum": [
+        "SHARED_HOST",
+        "ISOLATED_SANDBOX",
+        "CI"
+      ]
+    },
+    "external_send_enabled": {
+      "const": false,
+      "type": "boolean"
+    },
+    "lease_state": {
+      "enum": [
+        "PROPOSED",
+        "GRANTED",
+        "ACTIVE",
+        "RELEASED",
+        "EXPIRED"
+      ]
+    },
+    "llm_provider": {
+      "const": "fake",
+      "type": "string"
+    },
+    "local_worktree_path": {
+      "description": "local-only field; never persist an absolute value in public GitHub records",
+      "type": "string"
+    },
+    "log_namespace": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "mail_provider": {
+      "const": "log",
+      "type": "string"
+    },
+    "playwright_output_dir_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "production_endpoints_allowed": {
+      "const": false,
+      "type": "boolean"
+    },
+    "queue_prefix": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "redis_port_or_db": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "redis_strategy": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "temp_dir_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "test_tenant_prefix": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "web_port": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "wip_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "worker_namespace": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "worktree_id": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "environment_lease_id",
+    "wip_id",
+    "execution_scope",
+    "execution_host_id",
+    "worktree_id",
+    "local_worktree_path",
+    "branch",
+    "temp_dir_id",
+    "artifact_dir_id",
+    "web_port",
+    "worker_namespace",
+    "database_strategy",
+    "database_name_or_schema",
+    "redis_strategy",
+    "redis_port_or_db",
+    "queue_prefix",
+    "playwright_output_dir_id",
+    "test_tenant_prefix",
+    "log_namespace",
+    "external_send_enabled",
+    "llm_provider",
+    "mail_provider",
+    "production_endpoints_allowed",
+    "lease_state"
+  ],
+  "title": "Execution Environment Lease",
+  "type": "object"
+}

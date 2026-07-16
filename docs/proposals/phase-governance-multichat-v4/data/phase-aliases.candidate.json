@@ -1,0 +1,796 @@
+{
+  "aliases": [
+    {
+      "aliasId": "LEGACY-STRATEGY-PHASE-0",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategyPhase": "SP0",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGY",
+      "legacyId": "Phase 0",
+      "legacyLabel": "旧Strategy Phase 0",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-STRATEGY-PHASE-1",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategyPhase": "SP1",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGY",
+      "legacyId": "Phase 1",
+      "legacyLabel": "旧Strategy Phase 1",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-STRATEGY-PHASE-2",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategyPhase": "SP2",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGY",
+      "legacyId": "Phase 2",
+      "legacyLabel": "旧Strategy Phase 2",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-STRATEGY-PHASE-3",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategyPhase": "SP3",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGY",
+      "legacyId": "Phase 3",
+      "legacyLabel": "旧Strategy Phase 3",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-STRATEGY-PHASE-4",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategyPhase": "SP4",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGY",
+      "legacyId": "Phase 4",
+      "legacyLabel": "旧Strategy Phase 4",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-STRATEGY-PHASE-5",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategyPhase": "SP5",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGY",
+      "legacyId": "Phase 5",
+      "legacyLabel": "旧Strategy Phase 5",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-STRATEGY-PHASE-6",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategyPhase": "SP6",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGY",
+      "legacyId": "Phase 6",
+      "legacyLabel": "旧Strategy Phase 6",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-STRATEGY-PHASE-7",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategyPhase": "SP7",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGY",
+      "legacyId": "Phase 7",
+      "legacyLabel": "旧Strategy Phase 7",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-STRATEGY-PHASE-8",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategyPhase": "SP8",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGY",
+      "legacyId": "Phase 8",
+      "legacyLabel": "旧Strategy Phase 8",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-STRATEGY-PHASE-9",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategyPhase": "SP9",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGY",
+      "legacyId": "Phase 9",
+      "legacyLabel": "旧Strategy Phase 9",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-STRATEGY-PHASE-X",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategyPhase": "SPX",
+        "workstream": "WS-QUALITY-TRACK"
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGY",
+      "legacyId": "Phase X",
+      "legacyLabel": "旧Strategy Phase X / Quality Track",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-STRATEGY-PHASE-Y",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategyPhase": "SPY",
+        "workstream": "WS-GTM-TRACK"
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGY",
+      "legacyId": "Phase Y",
+      "legacyLabel": "旧Strategy Phase Y / GTM Track",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-HORIZON-PHASE-18-5",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategicHorizon": "SH18.5",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGIC_HORIZON",
+      "legacyId": "Phase 18.5",
+      "legacyLabel": "Agent Runtime Standardization",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-HORIZON-PHASE-19",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategicHorizon": "SH19",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGIC_HORIZON",
+      "legacyId": "Phase 19",
+      "legacyLabel": "Company Brain API Public",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-HORIZON-PHASE-20",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategicHorizon": "SH20",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGIC_HORIZON",
+      "legacyId": "Phase 20",
+      "legacyLabel": "AI Employee Studio Template",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-HORIZON-PHASE-21",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategicHorizon": "SH21",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGIC_HORIZON",
+      "legacyId": "Phase 21",
+      "legacyLabel": "Block Builder",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-HORIZON-PHASE-22",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategicHorizon": "SH22",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGIC_HORIZON",
+      "legacyId": "Phase 22",
+      "legacyLabel": "SDK & Developer Portal",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-HORIZON-PHASE-23",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategicHorizon": "SH23",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGIC_HORIZON",
+      "legacyId": "Phase 23",
+      "legacyLabel": "Safety Review & Certification",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-HORIZON-PHASE-24",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategicHorizon": "SH24",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGIC_HORIZON",
+      "legacyId": "Phase 24",
+      "legacyLabel": "Marketplace Launch",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-HORIZON-PHASE-25",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategicHorizon": "SH25",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGIC_HORIZON",
+      "legacyId": "Phase 25",
+      "legacyLabel": "Developer Ecosystem Expansion",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-HORIZON-PHASE-26",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "strategicHorizon": "SH26",
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "V4 master prompt §4.3"
+      ],
+      "legacyAxis": "STRATEGIC_HORIZON",
+      "legacyId": "Phase 26",
+      "legacyLabel": "Open AI Workforce Economy",
+      "mappingStatus": "SOURCE_VERIFIED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-REPOSITORY-PHASE-1-33",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "legacy document inventory; semantic mapping not approved"
+      ],
+      "legacyAxis": "REPOSITORY_WORK_ITEM",
+      "legacyId": "Phase 1-33",
+      "legacyLabel": "旧Repository work item Phase 1-33",
+      "mappingStatus": "UNKNOWN_REVIEW_REQUIRED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-REPOSITORY-PHASE-1-34",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "legacy document inventory; semantic mapping not approved"
+      ],
+      "legacyAxis": "REPOSITORY_WORK_ITEM",
+      "legacyId": "Phase 1-34",
+      "legacyLabel": "旧Repository work item Phase 1-34",
+      "mappingStatus": "UNKNOWN_REVIEW_REQUIRED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-REPOSITORY-PHASE-1-35",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "legacy document inventory; semantic mapping not approved"
+      ],
+      "legacyAxis": "REPOSITORY_WORK_ITEM",
+      "legacyId": "Phase 1-35",
+      "legacyLabel": "旧Repository work item Phase 1-35",
+      "mappingStatus": "UNKNOWN_REVIEW_REQUIRED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-REPOSITORY-PHASE-1-50",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "legacy document inventory; semantic mapping not approved"
+      ],
+      "legacyAxis": "REPOSITORY_WORK_ITEM",
+      "legacyId": "Phase 1-50",
+      "legacyLabel": "旧Repository work item Phase 1-50",
+      "mappingStatus": "UNKNOWN_REVIEW_REQUIRED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-REPOSITORY-PHASE-2-A",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "legacy document inventory; semantic mapping not approved"
+      ],
+      "legacyAxis": "REPOSITORY_WORK_ITEM",
+      "legacyId": "Phase 2-A",
+      "legacyLabel": "旧Repository work item Phase 2-A",
+      "mappingStatus": "UNKNOWN_REVIEW_REQUIRED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-REPOSITORY-PHASE-2-B",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "legacy document inventory; semantic mapping not approved"
+      ],
+      "legacyAxis": "REPOSITORY_WORK_ITEM",
+      "legacyId": "Phase 2-B",
+      "legacyLabel": "旧Repository work item Phase 2-B",
+      "mappingStatus": "UNKNOWN_REVIEW_REQUIRED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-REPOSITORY-PHASE-2-C",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "legacy document inventory; semantic mapping not approved"
+      ],
+      "legacyAxis": "REPOSITORY_WORK_ITEM",
+      "legacyId": "Phase 2-C",
+      "legacyLabel": "旧Repository work item Phase 2-C",
+      "mappingStatus": "UNKNOWN_REVIEW_REQUIRED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-REPOSITORY-PHASE-3",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "legacy document inventory; semantic mapping not approved"
+      ],
+      "legacyAxis": "REPOSITORY_WORK_ITEM",
+      "legacyId": "Phase 3",
+      "legacyLabel": "旧Repository work item Phase 3",
+      "mappingStatus": "UNKNOWN_REVIEW_REQUIRED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-REPOSITORY-PHASE-3-5",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "legacy document inventory; semantic mapping not approved"
+      ],
+      "legacyAxis": "REPOSITORY_WORK_ITEM",
+      "legacyId": "Phase 3.5",
+      "legacyLabel": "旧Repository work item Phase 3.5",
+      "mappingStatus": "UNKNOWN_REVIEW_REQUIRED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-REPOSITORY-PHASE-4",
+      "candidateMapping": {
+        "businessPhase": null,
+        "releaseProgram": null,
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "legacy document inventory; semantic mapping not approved"
+      ],
+      "legacyAxis": "REPOSITORY_WORK_ITEM",
+      "legacyId": "Phase 4",
+      "legacyLabel": "旧Repository work item Phase 4",
+      "mappingStatus": "UNKNOWN_REVIEW_REQUIRED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-WORKSTREAM-P3-GROWTH",
+      "candidateMapping": {
+        "businessPhase": "BP03",
+        "releaseProgram": null,
+        "workstream": "WS-GROWTH-AI-GROWTH"
+      },
+      "evidenceRefs": [
+        "legacy naming evidence"
+      ],
+      "legacyAxis": "WORKSTREAM",
+      "legacyId": "P3-GROWTH",
+      "legacyLabel": "旧Growth workstream",
+      "mappingStatus": "MACHINE_PROPOSED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-WORKSTREAM-P3-Q2C",
+      "candidateMapping": {
+        "businessPhase": "BP05",
+        "releaseProgram": null,
+        "workstream": "WS-FIN-Q2C"
+      },
+      "evidenceRefs": [
+        "legacy naming evidence"
+      ],
+      "legacyAxis": "WORKSTREAM",
+      "legacyId": "P3-Q2C",
+      "legacyLabel": "旧Quote-to-Cash workstream",
+      "mappingStatus": "MACHINE_PROPOSED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-WORKSTREAM-P35-CHANNELS",
+      "candidateMapping": {
+        "businessPhase": "BP14",
+        "releaseProgram": null,
+        "workstream": "WS-MKT-GROWTH-CHANNELS"
+      },
+      "evidenceRefs": [
+        "legacy naming evidence"
+      ],
+      "legacyAxis": "WORKSTREAM",
+      "legacyId": "P35-CHANNELS",
+      "legacyLabel": "旧Growth Channels workstream",
+      "mappingStatus": "MACHINE_PROPOSED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-WORKSTREAM-P4-WORKFORCE",
+      "candidateMapping": {
+        "affectedBusinessPhases": [
+          "BP08",
+          "BP09"
+        ],
+        "businessPhase": null,
+        "releaseProgram": null,
+        "workstream": "WS-AI-WORKFORCE"
+      },
+      "evidenceRefs": [
+        "must not be confused with BP04"
+      ],
+      "legacyAxis": "WORKSTREAM",
+      "legacyId": "P4-WORKFORCE",
+      "legacyLabel": "旧AI Workforce workstream",
+      "mappingStatus": "UNKNOWN_REVIEW_REQUIRED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-PORTFOLIO-WAVE-1",
+      "candidateMapping": {
+        "businessPhase": null,
+        "portfolioWave": null,
+        "releaseProgram": null,
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "no automatic equivalence to PW names"
+      ],
+      "legacyAxis": "PORTFOLIO_WAVE",
+      "legacyId": "Wave 1",
+      "legacyLabel": "旧Wave 1",
+      "mappingStatus": "UNKNOWN_REVIEW_REQUIRED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-PORTFOLIO-WAVE-2",
+      "candidateMapping": {
+        "businessPhase": null,
+        "portfolioWave": null,
+        "releaseProgram": null,
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "no automatic equivalence to PW names"
+      ],
+      "legacyAxis": "PORTFOLIO_WAVE",
+      "legacyId": "Wave 2",
+      "legacyLabel": "旧Wave 2",
+      "mappingStatus": "UNKNOWN_REVIEW_REQUIRED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-PORTFOLIO-WAVE-3",
+      "candidateMapping": {
+        "businessPhase": null,
+        "portfolioWave": null,
+        "releaseProgram": null,
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "no automatic equivalence to PW names"
+      ],
+      "legacyAxis": "PORTFOLIO_WAVE",
+      "legacyId": "Wave 3",
+      "legacyLabel": "旧Wave 3",
+      "mappingStatus": "UNKNOWN_REVIEW_REQUIRED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-PORTFOLIO-WAVE-4",
+      "candidateMapping": {
+        "businessPhase": null,
+        "portfolioWave": null,
+        "releaseProgram": null,
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "no automatic equivalence to PW names"
+      ],
+      "legacyAxis": "PORTFOLIO_WAVE",
+      "legacyId": "Wave 4",
+      "legacyLabel": "旧Wave 4",
+      "mappingStatus": "UNKNOWN_REVIEW_REQUIRED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    },
+    {
+      "aliasId": "LEGACY-PORTFOLIO-WAVE-5",
+      "candidateMapping": {
+        "businessPhase": null,
+        "portfolioWave": null,
+        "releaseProgram": null,
+        "workstream": null
+      },
+      "evidenceRefs": [
+        "no automatic equivalence to PW names"
+      ],
+      "legacyAxis": "PORTFOLIO_WAVE",
+      "legacyId": "Wave 5",
+      "legacyLabel": "旧Wave 5",
+      "mappingStatus": "UNKNOWN_REVIEW_REQUIRED",
+      "relationship": {
+        "forward": "LEGACY_ALIAS_OF",
+        "inverse": "HAS_LEGACY_ALIAS"
+      }
+    }
+  ],
+  "candidateVersion": "4.0.0",
+  "schemaVersion": 1
+}

@@ -1,0 +1,69 @@
+{
+  "candidateVersion": "4.0.0",
+  "decisions": [
+    {
+      "authority": "HUMAN",
+      "candidateMayDecide": false,
+      "decisionId": "DEC-GOV-V4-ADOPTION",
+      "status": "PENDING",
+      "subject": "Candidateの正式採用"
+    },
+    {
+      "authority": "HUMAN",
+      "candidateMayDecide": false,
+      "decisionId": "DEC-GOV-V4-CONTROL-ISSUES",
+      "status": "PENDING",
+      "subject": "GitHub Control Issue / WIP Issue導入"
+    },
+    {
+      "authority": "HUMAN",
+      "candidateMayDecide": false,
+      "decisionId": "DEC-GOV-V4-BRANCH-PROTECTION",
+      "status": "PENDING",
+      "subject": "branch protection / required checks / merge queue"
+    },
+    {
+      "authority": "HUMAN",
+      "candidateMayDecide": false,
+      "decisionId": "DEC-GOV-V4-STATE-MIGRATION",
+      "status": "PENDING",
+      "subject": "CURRENT_STATE / CLAUDE.md適用"
+    },
+    {
+      "authority": "HUMAN",
+      "candidateMayDecide": false,
+      "decisionId": "DEC-GOV-V4-VAULT-MIRROR",
+      "status": "PENDING",
+      "subject": "Obsidian生成鏡像"
+    },
+    {
+      "authority": "HUMAN",
+      "candidateMayDecide": false,
+      "decisionId": "DEC-GOV-V4-LEGACY-MAPPING",
+      "status": "PENDING",
+      "subject": "legacy記録の一括mapping"
+    },
+    {
+      "authority": "HUMAN",
+      "candidateMayDecide": false,
+      "decisionId": "DEC-DELIVERY-V4-PILOT",
+      "status": "PENDING",
+      "subject": "2-lane Pilot開始"
+    },
+    {
+      "authority": "HUMAN",
+      "candidateMayDecide": false,
+      "decisionId": "DEC-DELIVERY-V4-SCALE",
+      "status": "PENDING",
+      "subject": "3-lane拡張"
+    },
+    {
+      "authority": "HUMAN",
+      "candidateMayDecide": false,
+      "decisionId": "DEC-RT4-BOUNDARIES",
+      "status": "OUT_OF_SCOPE_AND_PENDING",
+      "subject": "schema / migration / Production / external send / real LLM / billing"
+    }
+  ],
+  "schemaVersion": 1
+}

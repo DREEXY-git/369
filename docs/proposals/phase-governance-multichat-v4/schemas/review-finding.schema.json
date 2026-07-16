@@ -1,0 +1,83 @@
+{
+  "$id": "https://candidate.invalid/schemas/review-finding",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "blocking": {
+      "type": "boolean"
+    },
+    "evidencePath": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "expectedSafeBehavior": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "findingId": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "invariant": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "recommendedFixBoundary": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "regressionTestRequired": {
+      "type": "boolean"
+    },
+    "reproduction": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "reviewedSha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    },
+    "reviewerRole": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "severity": {
+      "enum": [
+        "Critical",
+        "High",
+        "Release-blocking Medium",
+        "Medium",
+        "Low",
+        "Evidence Gap"
+      ]
+    },
+    "status": {
+      "enum": [
+        "OPEN",
+        "FIXED_PENDING_VERIFY",
+        "RESOLVED",
+        "DEFERRED"
+      ]
+    }
+  },
+  "required": [
+    "findingId",
+    "reviewerRole",
+    "reviewedSha",
+    "severity",
+    "blocking",
+    "invariant",
+    "evidencePath",
+    "reproduction",
+    "expectedSafeBehavior",
+    "recommendedFixBoundary",
+    "regressionTestRequired",
+    "status"
+  ],
+  "title": "Review Finding",
+  "type": "object"
+}

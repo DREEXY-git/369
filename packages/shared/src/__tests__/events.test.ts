@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   makeIdempotencyKey,
+  makeLegacyIdempotencyKey,
   isDomainEventType,
   nextRetryDelayMs,
   DOMAIN_EVENT_TYPES,
@@ -52,6 +53,17 @@ describe('events', () => {
     const x = makeIdempotencyKey({ tenantId: 't', eventType: 'PAYMENT_RECEIVED', aggregateId: 'a', dedupe: 'b:c' });
     const y = makeIdempotencyKey({ tenantId: 't', eventType: 'PAYMENT_RECEIVED', aggregateId: 'a:b', dedupe: 'c' });
     expect(x).not.toBe(y);
+  });
+
+  it('legacy key は旧 FNV 形式を再現する（dual-read 用・Codex PR#57 R5 #1）', () => {
+    // 旧実装（FNV-1a 32bit）の値を保持する: Codex 衝突 fixture は legacy では同一キー、canonical では別キー。
+    const A = { tenantId: 'tenant-evidence', eventType: 'RECEIVABLE_COLLECTED', aggregateId: 'cq9iaml5de11dumtx4u1esvz6', dedupe: 'receivable-collected' };
+    const B = { ...A, aggregateId: 'cvo49ccci03xjt8an4vyr0u9p' };
+    expect(makeLegacyIdempotencyKey(A)).toBe('RECEIVABLE_COLLECTED:0df3fbed');
+    expect(makeLegacyIdempotencyKey(A)).toBe(makeLegacyIdempotencyKey(B));
+    expect(makeIdempotencyKey(A)).not.toBe(makeIdempotencyKey(B));
+    // 同一 identity では legacy key も決定的。
+    expect(makeLegacyIdempotencyKey(A)).toBe(makeLegacyIdempotencyKey({ ...A }));
   });
 
   it('retry backoff grows and is capped', () => {

@@ -120,6 +120,32 @@ export function makeIdempotencyKey(input: {
   return `${input.eventType}:${enc(input.tenantId)}:${enc(input.aggregateId)}:${enc(input.dedupe ?? '')}`;
 }
 
+/**
+ * **旧形式**の冪等キー（FNV-1a 32bit 縮約・upgrade 互換の dual-read 専用）。
+ *
+ * canonical key 導入前（main の従来実装）に永続化された DomainEvent は
+ * `eventType:<fnv32(tenant:type:aggregate:dedupe)>` 形式のキーを持つ。key 形式の全面置換だけでは
+ * デプロイ後に同一論理イベントを retry/re-emit した際、canonical key で既存行を検出できず
+ * DomainEvent/Outbox を二重作成する（Codex PR#57 R5 #1）。そのため読み取り側は canonical key に
+ * 加えて本 legacy key でも既存行を照合する（**新規書込には使わない**。FNV 32bit は identity を
+ * 無損失に保持しないため、legacy 照合の際は保存行の tenantId/eventType/aggregateId 列との
+ * 完全一致も必須とし、別 identity の FNV 衝突を同一 request と混同しない）。
+ */
+export function makeLegacyIdempotencyKey(input: {
+  tenantId: string;
+  eventType: string;
+  aggregateId: string;
+  dedupe?: string;
+}): string {
+  const base = `${input.tenantId}:${input.eventType}:${input.aggregateId}:${input.dedupe ?? ''}`;
+  let h = 0x811c9dc5;
+  for (let i = 0; i < base.length; i++) {
+    h ^= base.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return `${input.eventType}:${(h >>> 0).toString(16).padStart(8, '0')}`;
+}
+
 /** 指数バックオフ（ms）。再試行のスケジューリングに使用。 */
 export function nextRetryDelayMs(retryCount: number, baseMs = 2000, maxMs = 3_600_000): number {
   const d = baseMs * Math.pow(2, Math.max(0, retryCount));

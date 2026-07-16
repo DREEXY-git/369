@@ -4,6 +4,7 @@
 import { prisma } from './db';
 import {
   makeIdempotencyKey,
+  makeLegacyIdempotencyKey,
   nextRetryDelayMs,
   MAX_EVENT_RETRIES,
   type DomainEventType,
@@ -28,9 +29,43 @@ export interface EmitResult {
   duplicated: boolean;
 }
 
+/** 同一論理 identity の既存 DomainEvent を canonical/legacy 両キーで探す（upgrade-safe dual-read・Codex PR#57 R5 #1）。
+ *  legacy FNV キーは identity を無損失に保持しない（別 identity が衝突し得る）ため、legacy 一致は
+ *  保存行の tenantId/eventType/aggregateId 列の完全一致も必須にし、衝突を同一 identity と混同しない。
+ *  （legacy キーは dedupe をハッシュ内にのみ含むため列照合できないが、キー自体が我々の identity から
+ *  計算した値である以上、tenant/type/aggregate まで一致して dedupe だけ異なる衝突は実質空集合。） */
+async function findExistingByIdentity(
+  input: EmitEventInput,
+  canonicalKey: string,
+): Promise<{ id: string } | null> {
+  const byCanonical = await prisma.domainEvent.findUnique({
+    where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: canonicalKey } },
+    select: { id: true },
+  });
+  if (byCanonical) return byCanonical;
+  const legacyKey = makeLegacyIdempotencyKey({
+    tenantId: input.tenantId,
+    eventType: input.eventType,
+    aggregateId: input.aggregateId,
+    dedupe: input.dedupe,
+  });
+  return prisma.domainEvent.findFirst({
+    where: {
+      tenantId: input.tenantId,
+      idempotencyKey: legacyKey,
+      eventType: input.eventType,
+      aggregateId: input.aggregateId,
+    },
+    select: { id: true },
+  });
+}
+
 /**
  * ドメインイベントを発火（永続化）。同一 idempotencyKey は二重発火しない。
  * DomainEvent と OutboxMessage を1トランザクションで作成（Outboxパターン）。
+ * 既存行の照合は canonical key に加え **旧 FNV 形式キーでも dual-read** し、key 形式移行前に
+ * 保存された同一論理イベントの retry/re-emit で二重 DomainEvent/Outbox を作らない（upgrade 互換）。
+ * 新規書込は常に canonical key（fresh identity の無衝突性は不変）。
  */
 export async function emitDomainEvent(input: EmitEventInput): Promise<EmitResult> {
   const idempotencyKey = makeIdempotencyKey({
@@ -40,10 +75,7 @@ export async function emitDomainEvent(input: EmitEventInput): Promise<EmitResult
     dedupe: input.dedupe,
   });
 
-  const existing = await prisma.domainEvent.findUnique({
-    where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey } },
-    select: { id: true },
-  });
+  const existing = await findExistingByIdentity(input, idempotencyKey);
   if (existing) {
     return { eventId: existing.id, idempotencyKey, duplicated: true };
   }
@@ -77,11 +109,8 @@ export async function emitDomainEvent(input: EmitEventInput): Promise<EmitResult
     });
     return { eventId: event.id, idempotencyKey, duplicated: false };
   } catch (e: any) {
-    // 競合（同時発火）で unique 制約に当たった場合も冪等に扱う
-    const dup = await prisma.domainEvent.findUnique({
-      where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey } },
-      select: { id: true },
-    });
+    // 競合（同時発火）で unique 制約に当たった場合も冪等に扱う（canonical/legacy 両キーで再照合）
+    const dup = await findExistingByIdentity(input, idempotencyKey);
     if (dup) return { eventId: dup.id, idempotencyKey, duplicated: true };
     throw e;
   }

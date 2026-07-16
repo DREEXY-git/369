@@ -2,7 +2,7 @@
 // 設計ルール: docs/audit/12_maintenance_architecture.md。Server Action はこのサービスを呼ぶだけ。
 import { prisma, writeAudit } from '@/lib/db';
 import { emitGrowthEvent } from '@/lib/growth';
-import { createApprovalRequestTx, executeApprovedAction } from '@/lib/approval';
+import { createApprovalRequestTx } from '@/lib/approval';
 import { applyInventoryMovement } from '@/lib/operations';
 import { toNumber } from '@/lib/utils';
 import { requiresApproval, growthCategoryOf, makeIdempotencyKey, type DomainEventType } from '@hokko/shared';
@@ -21,6 +21,15 @@ class PoNotClaimable extends Error {
   constructor() {
     super('po-not-claimable');
     this.name = 'PoNotClaimable';
+  }
+}
+
+/** 承認実行時の ApprovalRequest claim 敗北（未 APPROVED/失効/既実行/tenant・action・対象不一致）。
+ *  reason を保持して fail-closed（Codex PR#58 R5: claim〜終端を業務 tx と同一 tx に収める）。 */
+class ApprovalNotClaimable extends Error {
+  constructor(public readonly reason: string) {
+    super(reason);
+    this.name = 'ApprovalNotClaimable';
   }
 }
 
@@ -106,19 +115,29 @@ export interface ExecuteApprovedPoResult {
 }
 
 export interface ExecuteApprovedPoOptions {
+  /** test-only: Approval claim 直後・PO CAS 前に例外を注入し、claim ごと全 rollback を検証（Codex PR#58 R5 #3）。 */
+  __faultAfterApprovalClaimForTest?: () => void;
   /** test-only: PO CAS 後・Audit 前に例外を注入し、tx 全 rollback（半確定なし）を検証（Codex PR#58 R4 #3）。 */
   __faultAfterCasForTest?: () => void;
   /** test-only: DomainEvent/Outbox 作成後・GrowthEvent 作成時に例外を注入し、全 rollback を検証（Codex PR#58 R4 #3）。 */
   __faultAfterEventsForTest?: () => void;
+  /** test-only: 全 Evidence 作成後・Approval 終端化（executed）前に例外を注入し、全 rollback を検証（Codex PR#58 R5 #3）。 */
+  __faultBeforeApprovalTerminalForTest?: () => void;
 }
 
 /** 承認済み高額発注を確定（pending_approval→ordered）。二重実行防止つき。
- *  堅牢化（Codex PR#58 R2 #2 / R4）: `status='pending_approval' AND approvalId=この承認` の CAS でのみ ordered 化。
- *  received/cancelled/ordered や別 approval の PO は count!==1 で弾き、received→ordered の差し戻し
- *  （＝二重入庫の再開）を構造的に不可能にする。executeApprovedAction が executedAt を原子 claim し
- *  二重 submit / stale 実行を防ぐ。
- *  **R4 all-or-nothing**: PO CAS・Audit・DomainEvent(+Outbox)・GrowthEvent を **単一 $transaction** で確定する。
- *  途中 fault は PO=ordered を含め全 rollback され、半確定（PO=ordered だが Audit/Growth 欠落）を残さない。
+ *  堅牢化（Codex PR#58 R2 #2 / R4 / **R5**）:
+ *   - `status='pending_approval' AND approvalId=この承認` の CAS でのみ ordered 化。received/cancelled/ordered
+ *     や別 approval の PO は count!==1 で弾き、received→ordered の差し戻し（＝二重入庫の再開）を構造的に不可能にする。
+ *   - **R5 all-or-nothing（claim〜終端まで同一 tx）**: ApprovalRequest の claim（APPROVED・未失効・未実行・同 tenant・
+ *     requestedForAction=purchase_order_issue・対象 entity 一致 を条件に executedAt を CAS で claim）から、
+ *     PO CAS・必須 Audit・DomainEvent(+Outbox)・GrowthEvent、そして Approval の `executed` 終端化までを
+ *     **単一 $transaction** で確定する。途中 fault（PO CAS 後・Evidence 作成後・終端前 いずれも）は
+ *     ApprovalRequest の claim を含め **全 rollback** され、「PO=ordered・Evidence 済みなのに Approval だけ
+ *     executing/failed で終端に収束しない」半確定を残さない（Codex R5）。executor commit と Approval 終端更新を
+ *     別 commit にしていた旧実装（executeApprovedAction 経由）の分離を解消する。
+ *   - claim の CAS（executedAt=null 限定）が行ロック＋exactly-once ゲートを兼ね、逐次 retry・並行 2 本でも
+ *     PO/Audit/Domain/Outbox/Growth 各 1・Approval は exactly-once で executed に収束する。
  *  DomainEvent は (tenant, PURCHASE_ORDER_APPROVED, poId, dedupe=approvalId) の固定 idempotency key で作られ、
  *  Outbox 経由 worker 配送が失敗しても既存 outbox 機構で再開可能（Evidence lineage を保つ）。 */
 export async function executeApprovedPurchaseOrderIssue(
@@ -130,55 +149,83 @@ export async function executeApprovedPurchaseOrderIssue(
   // 承認済み発注の実行も人間専用（AI/mixed-role は DB 接触前に拒否・Codex PR#58 R3 P2-1）。
   if (actor.actorIsAi) return { executed: false, reason: 'forbidden' };
   try {
-    const r = await executeApprovedAction(
-      approvalId,
-      async () => {
-        // PO CAS + Audit + Domain/Outbox/Growth を単一 tx で確定（R4: 途中 fault は全 rollback）。
-        return prisma.$transaction(async (tx) => {
-          const claim = await tx.purchaseOrder.updateMany({
-            where: { id: poId, tenantId: actor.tenantId, status: 'pending_approval', approvalId },
-            data: { status: 'ordered' },
-          });
-          if (claim.count !== 1) throw new PoNotClaimable();
+    return await prisma.$transaction(async (tx) => {
+      // 1) ApprovalRequest を DB barrier 内で claim（Codex R5 #1/#2）。
+      //    APPROVED・未失効・未実行(executedAt=null)・同 tenant・requestedForAction=purchase_order_issue・
+      //    対象 entity 一致 を条件に executedAt を CAS で claim。updateMany の行ロックが並行 2 本を直列化し
+      //    （敗者は先行 commit 後に executedAt!=null を見て count=0）、exactly-once を保証する。
+      const now = new Date();
+      const approvalClaim = await tx.approvalRequest.updateMany({
+        where: {
+          id: approvalId,
+          tenantId: actor.tenantId,
+          status: 'APPROVED',
+          requestedForAction: 'purchase_order_issue',
+          entityType: 'PurchaseOrder',
+          entityId: poId,
+          executedAt: null,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+        data: { executedAt: now, executedById: actor.userId ?? null, executionStatus: 'executing' },
+      });
+      if (approvalClaim.count !== 1) {
+        // claim 敗北の理由を判定（既実行なら already-executed、それ以外は invalid/expired）。読取のみで throw→rollback。
+        const cur = await tx.approvalRequest.findFirst({ where: { id: approvalId, tenantId: actor.tenantId }, select: { executedAt: true } });
+        throw new ApprovalNotClaimable(cur?.executedAt ? 'already-executed' : 'approval-invalid-or-expired');
+      }
 
-          // test-only: PO CAS 後・Audit 前 fault（本番不到達）。
-          if (opts.__faultAfterCasForTest) opts.__faultAfterCasForTest();
+      // test-only: Approval claim 直後・PO CAS 前 fault（本番不到達）→ claim ごと全 rollback を検証（R5 #3）。
+      if (opts.__faultAfterApprovalClaimForTest) opts.__faultAfterApprovalClaimForTest();
 
-          const po = await tx.purchaseOrder.findFirst({ where: { id: poId, tenantId: actor.tenantId }, select: { orderNo: true, totalAmount: true } });
-          await tx.auditLog.create({
-            data: {
-              tenantId: actor.tenantId,
-              actorId: actor.userId ?? null,
-              actorType: 'user',
-              action: 'purchase_order_issue',
-              entityType: 'PurchaseOrder',
-              entityId: poId,
-              summary: `高額発注を承認確定: ${po?.orderNo ?? poId}（approval=${approvalId}）`,
-            },
-          });
+      // 2) PO CAS: pending_approval AND approvalId=この承認 → ordered（received/cancelled/別 approval は count=0）。
+      const claim = await tx.purchaseOrder.updateMany({
+        where: { id: poId, tenantId: actor.tenantId, status: 'pending_approval', approvalId },
+        data: { status: 'ordered' },
+      });
+      if (claim.count !== 1) throw new PoNotClaimable();
 
-          // transactional outbox: DomainEvent(+Outbox)+GrowthEvent を tx 内で原子的に作成。
-          // 固定 idempotency key（dedupe=approvalId）で 1 実行=1 lineage。post-commit 消失（fault window）を排除。
-          const growthType = 'inventory.purchase_order.created';
-          const key = makeIdempotencyKey({ tenantId: actor.tenantId, eventType: 'PURCHASE_ORDER_APPROVED', aggregateId: poId, dedupe: approvalId });
-          const ev = await tx.domainEvent.create({
-            data: { tenantId: actor.tenantId, eventType: 'PURCHASE_ORDER_APPROVED', aggregateType: 'PurchaseOrder', aggregateId: poId, actorId: actor.userId ?? null, actorType: 'user', payload: { growthType } as any, idempotencyKey: key, status: 'pending' },
-          });
-          await tx.outboxMessage.create({ data: { tenantId: actor.tenantId, eventId: ev.id, eventType: 'PURCHASE_ORDER_APPROVED', payload: { growthType } as any, status: 'pending' } });
+      // test-only: PO CAS 後・Audit 前 fault（本番不到達）。
+      if (opts.__faultAfterCasForTest) opts.__faultAfterCasForTest();
 
-          // test-only: DomainEvent/Outbox 作成後・GrowthEvent 作成時 fault（本番不到達）。
-          if (opts.__faultAfterEventsForTest) opts.__faultAfterEventsForTest();
+      const po = await tx.purchaseOrder.findFirst({ where: { id: poId, tenantId: actor.tenantId }, select: { orderNo: true, totalAmount: true } });
+      await tx.auditLog.create({
+        data: {
+          tenantId: actor.tenantId,
+          actorId: actor.userId ?? null,
+          actorType: 'user',
+          action: 'purchase_order_issue',
+          entityType: 'PurchaseOrder',
+          entityId: poId,
+          summary: `高額発注を承認確定: ${po?.orderNo ?? poId}（approval=${approvalId}）`,
+        },
+      });
 
-          await tx.growthEvent.create({
-            data: { tenantId: actor.tenantId, type: growthType, category: growthCategoryOf(growthType), title: `発注確定: ${po?.orderNo ?? poId}`, description: '', actorId: actor.userId ?? null, actorType: 'user', entityType: 'PurchaseOrder', entityId: poId, amount: Number(po?.totalAmount ?? 0), revenueImpact: null, domainEventId: ev.id },
-          });
-          return poId;
-        });
-      },
-      { executedById: actor.userId },
-    );
-    return { executed: r.executed, reason: r.reason };
+      // transactional outbox: DomainEvent(+Outbox)+GrowthEvent を tx 内で原子的に作成。
+      // 固定 idempotency key（dedupe=approvalId）で 1 実行=1 lineage。post-commit 消失（fault window）を排除。
+      const growthType = 'inventory.purchase_order.created';
+      const key = makeIdempotencyKey({ tenantId: actor.tenantId, eventType: 'PURCHASE_ORDER_APPROVED', aggregateId: poId, dedupe: approvalId });
+      const ev = await tx.domainEvent.create({
+        data: { tenantId: actor.tenantId, eventType: 'PURCHASE_ORDER_APPROVED', aggregateType: 'PurchaseOrder', aggregateId: poId, actorId: actor.userId ?? null, actorType: 'user', payload: { growthType } as any, idempotencyKey: key, status: 'pending' },
+      });
+      await tx.outboxMessage.create({ data: { tenantId: actor.tenantId, eventId: ev.id, eventType: 'PURCHASE_ORDER_APPROVED', payload: { growthType } as any, status: 'pending' } });
+
+      // test-only: DomainEvent/Outbox 作成後・GrowthEvent 作成時 fault（本番不到達）。
+      if (opts.__faultAfterEventsForTest) opts.__faultAfterEventsForTest();
+
+      await tx.growthEvent.create({
+        data: { tenantId: actor.tenantId, type: growthType, category: growthCategoryOf(growthType), title: `発注確定: ${po?.orderNo ?? poId}`, description: '', actorId: actor.userId ?? null, actorType: 'user', entityType: 'PurchaseOrder', entityId: poId, amount: Number(po?.totalAmount ?? 0), revenueImpact: null, domainEventId: ev.id },
+      });
+
+      // test-only: 全 Evidence 作成後・Approval 終端化前 fault（本番不到達）→ Approval claim を含め全 rollback を検証（R5 #3）。
+      if (opts.__faultBeforeApprovalTerminalForTest) opts.__faultBeforeApprovalTerminalForTest();
+
+      // 3) Approval を executed へ終端化（同一 tx）。claim〜終端が原子確定し、半確定を残さない（Codex R5）。
+      await tx.approvalRequest.update({ where: { id: approvalId }, data: { executionStatus: 'executed' } });
+
+      return { executed: true };
+    });
   } catch (e) {
+    if (e instanceof ApprovalNotClaimable) return { executed: false, reason: e.reason };
     if (e instanceof PoNotClaimable) return { executed: false, reason: 'po-not-claimable' };
     throw e;
   }

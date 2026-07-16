@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
+import { isHumanUser } from '@hokko/shared';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
@@ -15,7 +16,8 @@ export default async function PurchaseOrderDetailPage({ params, searchParams }: 
   const user = await requireUser();
   const { id } = await params;
   const sp = await searchParams;
-  const canEdit = hasPermission(user, 'inventory', 'update');
+  // 発注確定/入庫は人間専用（role 由来）。AI role 混在にはボタン自体を出さない（Codex PR#58 R8）。
+  const canEdit = hasPermission(user, 'inventory', 'update') && isHumanUser({ roles: user.roles });
   const canViewAmount = hasPermission(user, 'finance', 'read');
 
   const po = await prisma.purchaseOrder.findFirst({

@@ -1,4 +1,5 @@
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
+import { isHumanUser } from '@hokko/shared';
 import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Table, Th, Td, Badge, EmptyState, Button, Input, Select } from '@/components/ui';
@@ -33,7 +34,8 @@ const MSG: Record<string, string> = {
 export default async function OperationsActionsPage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const user = await requireUser();
   const sp = await searchParams;
-  if (!hasPermission(user, 'inventory', 'update')) {
+  // 承認済み実行は人間専用（role 由来 fail-closed・Codex PR#58 R8）。
+  if (!hasPermission(user, 'inventory', 'update') || !isHumanUser({ roles: user.roles })) {
     return (
       <div>
         <PageHeader title="Operations 承認済み実行" />

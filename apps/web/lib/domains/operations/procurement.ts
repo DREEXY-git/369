@@ -5,7 +5,7 @@ import { emitGrowthEvent } from '@/lib/growth';
 import { createApprovalRequestTx } from '@/lib/approval';
 import { applyInventoryMovement } from '@/lib/operations';
 import { toNumber } from '@/lib/utils';
-import { requiresApproval, growthCategoryOf, makeIdempotencyKey, type DomainEventType } from '@hokko/shared';
+import { requiresApproval, growthCategoryOf, makeIdempotencyKey, isHumanUser, type DomainEventType, type RoleKey } from '@hokko/shared';
 
 /** high-value 発注確定の tx 内で PO の draft→pending_approval claim に敗れた敗者シグナル。
  *  throw で承認申請＋監査ごと rollback し、孤児 PENDING/Audit を残さない。 */
@@ -36,8 +36,15 @@ class ApprovalNotClaimable extends Error {
 export interface Actor {
   tenantId: string;
   userId?: string | null;
-  /** 実行主体が AI か（true は DB 接触前に一律拒否。発注確定/入庫/承認実行は人間専用・Codex PR#58 R3 P2-1）。 */
-  actorIsAi?: boolean;
+  /** 実行主体のロール（**必須**）。発注確定/入庫/承認実行は人間専用のため、`isHumanUser`（正本
+   *  packages/shared/src/rbac.ts）で role 由来 fail-closed 判定する。省略・空配列・AI_AGENT/AI_ASSISTANT
+   *  を1つでも含む混在はすべて拒否（Codex PR#58 R8: 任意の自己申告 boolean で human を表現しない）。 */
+  roles: RoleKey[];
+}
+
+/** 人間 actor 判定（fail-closed）。roles 非配列/空/AI混在はすべて false。 */
+function actorIsHuman(actor: Actor): boolean {
+  return Array.isArray(actor.roles) && isHumanUser({ roles: actor.roles });
 }
 
 export interface ConfirmPurchaseOrderResult {
@@ -49,8 +56,9 @@ export interface ConfirmPurchaseOrderResult {
 
 /** 発注確定。高額（閾値以上）は承認申請（pending_approval）。少額は即 ordered。 */
 export async function confirmPurchaseOrder(actor: Actor, poId: string): Promise<ConfirmPurchaseOrderResult> {
-  // 発注確定は人間専用（AI/mixed-role は action 境界に加え domain でも DB 接触前に拒否・Codex PR#58 R3 P2-1）。
-  if (actor.actorIsAi) return { found: false, requiresApproval: false, forbidden: true };
+  // 発注確定は人間専用（AI/mixed-role/roles欠落 は action 境界に加え domain でも role 由来で
+  // DB 接触前に拒否・Codex PR#58 R3 P2-1 / R8）。
+  if (!actorIsHuman(actor)) return { found: false, requiresApproval: false, forbidden: true };
   const po = await prisma.purchaseOrder.findFirst({ where: { id: poId, tenantId: actor.tenantId } });
   if (!po) return { found: false, requiresApproval: false };
   // 発注確定は draft からのみ許可する（STATE2 C2）。ordered/received/cancelled/pending_approval を
@@ -152,8 +160,8 @@ export async function executeApprovedPurchaseOrderIssue(
   poId: string,
   opts: ExecuteApprovedPoOptions = {},
 ): Promise<ExecuteApprovedPoResult> {
-  // 承認済み発注の実行も人間専用（AI/mixed-role は DB 接触前に拒否・Codex PR#58 R3 P2-1）。
-  if (actor.actorIsAi) return { executed: false, reason: 'forbidden' };
+  // 承認済み発注の実行も人間専用（AI/mixed-role/roles欠落 は role 由来で DB 接触前に拒否・R3 P2-1 / R8）。
+  if (!actorIsHuman(actor)) return { executed: false, reason: 'forbidden' };
   try {
     return await prisma.$transaction(async (tx) => {
       // legacy 半確定（main の旧 3-commit 経路が残した「PO/Evidence 完了・Approval 未終端」）の完全 lineage 照合
@@ -168,13 +176,23 @@ export async function executeApprovedPurchaseOrderIssue(
       };
       const legacyEvidenceComplete = async (): Promise<boolean> => {
         if (!(await legacyPoReached())) return false;
-        const audit = await tx.auditLog.count({ where: { tenantId: actor.tenantId, entityType: 'PurchaseOrder', entityId: poId, action: 'purchase_order_issue' } });
+        // Audit はこの approval に**結合**したものだけを数える（Codex R7）。旧 main / 新経路とも承認実行
+        // Audit の summary は `（approval=<approvalId>）` を含む。別 approval・発注作成 Audit の寄せ集めを
+        // 完全 lineage と誤認しない。
+        const audit = await tx.auditLog.count({
+          where: { tenantId: actor.tenantId, entityType: 'PurchaseOrder', entityId: poId, action: 'purchase_order_issue', summary: { contains: `approval=${approvalId}` } },
+        });
         if (audit < 1) return false;
         const evs = await tx.domainEvent.findMany({ where: { tenantId: actor.tenantId, aggregateId: poId, eventType: 'PURCHASE_ORDER_APPROVED' }, select: { id: true } });
         if (evs.length < 1) return false;
         const outbox = await tx.outboxMessage.count({ where: { tenantId: actor.tenantId, eventId: { in: evs.map((e) => e.id) } } });
         if (outbox < 1) return false;
-        const growth = await tx.growthEvent.count({ where: { tenantId: actor.tenantId, entityType: 'PurchaseOrder', entityId: poId, type: 'inventory.purchase_order.created' } });
+        // Growth は **PURCHASE_ORDER_APPROVED event へ domainEventId で結合**したものだけを数える（Codex R7）。
+        // 発注作成時 Growth は同じ type だが PURCHASE_ORDER_CREATED event に結合しており、承認実行用 Growth の
+        // 欠落（旧 3-commit 経路の Growth create 前 fault）をここで正しく検出する（誤 terminalize しない）。
+        const growth = await tx.growthEvent.count({
+          where: { tenantId: actor.tenantId, entityType: 'PurchaseOrder', entityId: poId, type: 'inventory.purchase_order.created', domainEventId: { in: evs.map((e) => e.id) } },
+        });
         return growth >= 1;
       };
 
@@ -298,7 +316,7 @@ export async function executeApprovedPurchaseOrderIssue(
  *  （applyInventoryMovement 自体は PR#47 で行ロック＋単一transaction 済み＝各入庫は原子的。） */
 export async function receivePurchaseOrder(actor: Actor, poId: string): Promise<boolean> {
   // 入庫も人間専用（AI/mixed-role は DB 接触前に拒否・Codex PR#58 R3 P2-1）。
-  if (actor.actorIsAi) return false;
+  if (!actorIsHuman(actor)) return false;
   const po = await prisma.purchaseOrder.findFirst({ where: { id: poId, tenantId: actor.tenantId }, include: { lines: true } });
   if (!po) return false;
 

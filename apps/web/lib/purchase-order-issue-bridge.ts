@@ -10,6 +10,8 @@
 //     approve 時も対象 PO が pending_approval かつ approvalId 一致であることを確認（stale/別 approval を排除）。
 // **外部送信・課金・実 LLM・在庫移動は一切行わない**（発注の社内ステータス遷移のみ）。db は注入。
 
+import { isHumanUser, type RoleKey } from '@hokko/shared';
+
 interface PoIssueTx {
   approvalRequest: { updateMany(args: unknown): Promise<{ count: number }> };
   purchaseOrder: {
@@ -32,8 +34,9 @@ export interface DecidePoIssueInput {
   decidedById: string;
   note: string;
   approvalTitle: string;
-  /** AI ロールは（action 境界の拒否に加え）core でも決定不可（二重防御）。 */
-  actorIsAi: boolean;
+  /** 決定主体のロール（**必須**）。AI role 混在・空roles は（action 境界の拒否に加え）core でも
+   *  role 由来 fail-closed で決定不可（二重防御・自己申告 boolean を信頼しない・Codex R8）。 */
+  decidedByRoles: RoleKey[];
 }
 
 export type DecidePoIssueResult = { outcome: 'decided' } | { outcome: 'already' } | { outcome: 'forbidden' };
@@ -51,7 +54,7 @@ export async function decidePurchaseOrderIssueCore(
   db: PoIssueBridgeDb,
   input: DecidePoIssueInput,
 ): Promise<DecidePoIssueResult> {
-  if (input.actorIsAi) return { outcome: 'forbidden' };
+  if (!Array.isArray(input.decidedByRoles) || !isHumanUser({ roles: input.decidedByRoles })) return { outcome: 'forbidden' };
   if (!input.purchaseOrderId) throw new Error('purchase_order_issue approval without purchaseOrderId');
   const status = input.decision === 'approve' ? 'APPROVED' : 'REJECTED';
   return db.$transaction(async (tx) => {

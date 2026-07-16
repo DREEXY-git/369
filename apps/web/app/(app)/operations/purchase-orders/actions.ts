@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 import type { DomainEventType } from '@hokko/shared';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
+import { isHumanUser } from '@hokko/shared';
 import { prisma, writeAudit } from '@/lib/db';
 import { emitGrowthEvent } from '@/lib/growth';
 import { confirmPurchaseOrder, receivePurchaseOrder } from '@/lib/domains/operations/procurement';
@@ -92,10 +93,12 @@ export async function createPurchaseOrderAction(formData: FormData) {
 /** 発注確定。業務ロジックは lib/domains/operations/procurement.ts。 */
 export async function confirmPurchaseOrderAction(formData: FormData) {
   const user = await requireUser();
-  // 発注確定は人間専用。AI/mixed-role（isAi=true + OWNER 等の権限和集合）は DB 接触前に fail-closed（Codex PR#58 R3 P2-1）。
-  if (!hasPermission(user, 'inventory', 'update') || user.isAi) redirect('/operations/purchase-orders?denied=1');
+  // 発注確定は人間専用。role 由来 fail-closed（isHumanUser: AI_AGENT/AI_ASSISTANT を1つでも含む混在・
+  // 空roles を拒否）。session の isAi boolean は User.isAiAgent 由来で role と整合制約がないため、
+  // boolean 単独では判定しない（Codex PR#58 R3 P2-1 / R8）。
+  if (!hasPermission(user, 'inventory', 'update') || !isHumanUser({ roles: user.roles })) redirect('/operations/purchase-orders?denied=1');
   const id = String(formData.get('purchaseOrderId') ?? '');
-  const res = await confirmPurchaseOrder({ tenantId: user.tenantId, userId: user.userId, actorIsAi: user.isAi }, id);
+  const res = await confirmPurchaseOrder({ tenantId: user.tenantId, userId: user.userId, roles: user.roles }, id);
   if (res.forbidden) redirect('/operations/purchase-orders?denied=1');
   if (!res.found) redirect('/operations/purchase-orders');
   redirect(res.requiresApproval ? `/operations/purchase-orders/${id}?pending=1` : `/operations/purchase-orders/${id}?ordered=1`);
@@ -104,9 +107,9 @@ export async function confirmPurchaseOrderAction(formData: FormData) {
 /** 入庫処理。業務ロジックは lib/domains/operations/procurement.ts。 */
 export async function receivePurchaseOrderAction(formData: FormData) {
   const user = await requireUser();
-  // 入庫も人間専用（Codex PR#58 R3 P2-1）。
-  if (!hasPermission(user, 'inventory', 'update') || user.isAi) redirect('/operations/purchase-orders?denied=1');
+  // 入庫も人間専用（role 由来 fail-closed・Codex PR#58 R3 P2-1 / R8）。
+  if (!hasPermission(user, 'inventory', 'update') || !isHumanUser({ roles: user.roles })) redirect('/operations/purchase-orders?denied=1');
   const id = String(formData.get('purchaseOrderId') ?? '');
-  const ok = await receivePurchaseOrder({ tenantId: user.tenantId, userId: user.userId, actorIsAi: user.isAi }, id);
+  const ok = await receivePurchaseOrder({ tenantId: user.tenantId, userId: user.userId, roles: user.roles }, id);
   redirect(ok ? `/operations/purchase-orders/${id}?received=1` : '/operations/purchase-orders');
 }

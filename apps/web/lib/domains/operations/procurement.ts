@@ -112,11 +112,17 @@ export async function confirmPurchaseOrder(actor: Actor, poId: string): Promise<
 export interface ExecuteApprovedPoResult {
   executed: boolean;
   reason?: string;
+  /** legacy 半確定（旧 3-commit 経路の残骸）を完全 lineage 照合の上で executed へ収束した場合 true（Codex R6 #1）。 */
+  reconciled?: boolean;
 }
 
 export interface ExecuteApprovedPoOptions {
   /** test-only: Approval claim 直後・PO CAS 前に例外を注入し、claim ごと全 rollback を検証（Codex PR#58 R5 #3）。 */
   __faultAfterApprovalClaimForTest?: () => void;
+  /** test-only: Approval claim 直後・PO CAS 前に自 backend PID を渡して await する非同期 gate。
+   *  「winner が claim 済み・row lock 保持中」を ready signal で固定し、loser の実 lock 競合を
+   *  pg_blocking_pids で観測する 2 並列 evidence 用（Codex PR#58 R6 #2・本番不到達）。 */
+  __gateAfterApprovalClaimForTest?: (backendPid: number) => Promise<void>;
   /** test-only: PO CAS 後・Audit 前に例外を注入し、tx 全 rollback（半確定なし）を検証（Codex PR#58 R4 #3）。 */
   __faultAfterCasForTest?: () => void;
   /** test-only: DomainEvent/Outbox 作成後・GrowthEvent 作成時に例外を注入し、全 rollback を検証（Codex PR#58 R4 #3）。 */
@@ -150,6 +156,28 @@ export async function executeApprovedPurchaseOrderIssue(
   if (actor.actorIsAi) return { executed: false, reason: 'forbidden' };
   try {
     return await prisma.$transaction(async (tx) => {
+      // legacy 半確定（main の旧 3-commit 経路が残した「PO/Evidence 完了・Approval 未終端」）の完全 lineage 照合
+      // （Codex R6 #1）。tenant/approvalId を含む PO 到達（ordered、または実行後に正規 receive 済みの received）と、
+      // 旧経路が作った必須 Evidence（Audit / DomainEvent / Outbox / Growth）の**全在**を確認する。
+      const legacyPoReached = async (): Promise<boolean> => {
+        const po = await tx.purchaseOrder.findFirst({
+          where: { id: poId, tenantId: actor.tenantId, approvalId, status: { in: ['ordered', 'received'] } },
+          select: { id: true },
+        });
+        return !!po;
+      };
+      const legacyEvidenceComplete = async (): Promise<boolean> => {
+        if (!(await legacyPoReached())) return false;
+        const audit = await tx.auditLog.count({ where: { tenantId: actor.tenantId, entityType: 'PurchaseOrder', entityId: poId, action: 'purchase_order_issue' } });
+        if (audit < 1) return false;
+        const evs = await tx.domainEvent.findMany({ where: { tenantId: actor.tenantId, aggregateId: poId, eventType: 'PURCHASE_ORDER_APPROVED' }, select: { id: true } });
+        if (evs.length < 1) return false;
+        const outbox = await tx.outboxMessage.count({ where: { tenantId: actor.tenantId, eventId: { in: evs.map((e) => e.id) } } });
+        if (outbox < 1) return false;
+        const growth = await tx.growthEvent.count({ where: { tenantId: actor.tenantId, entityType: 'PurchaseOrder', entityId: poId, type: 'inventory.purchase_order.created' } });
+        return growth >= 1;
+      };
+
       // 1) ApprovalRequest を DB barrier 内で claim（Codex R5 #1/#2）。
       //    APPROVED・未失効・未実行(executedAt=null)・同 tenant・requestedForAction=purchase_order_issue・
       //    対象 entity 一致 を条件に executedAt を CAS で claim。updateMany の行ロックが並行 2 本を直列化し
@@ -169,20 +197,52 @@ export async function executeApprovedPurchaseOrderIssue(
         data: { executedAt: now, executedById: actor.userId ?? null, executionStatus: 'executing' },
       });
       if (approvalClaim.count !== 1) {
-        // claim 敗北の理由を判定（既実行なら already-executed、それ以外は invalid/expired）。読取のみで throw→rollback。
-        const cur = await tx.approvalRequest.findFirst({ where: { id: approvalId, tenantId: actor.tenantId }, select: { executedAt: true } });
-        throw new ApprovalNotClaimable(cur?.executedAt ? 'already-executed' : 'approval-invalid-or-expired');
+        // claim 敗北の理由判定。tenant/action/entity 完全一致の行だけを対象に読む。
+        const cur = await tx.approvalRequest.findFirst({
+          where: { id: approvalId, tenantId: actor.tenantId, requestedForAction: 'purchase_order_issue', entityType: 'PurchaseOrder', entityId: poId },
+          select: { status: true, executedAt: true, executionStatus: true },
+        });
+        if (!cur || cur.status !== 'APPROVED' || !cur.executedAt) {
+          throw new ApprovalNotClaimable(cur?.executedAt ? 'already-executed' : 'approval-invalid-or-expired');
+        }
+        if (cur.executionStatus === 'executed') throw new ApprovalNotClaimable('already-executed');
+        // **legacy state2（Codex R6 #1）**: executedAt!=null なのに executed へ終端していない
+        //（旧 3-commit 経路で executor commit 後に process crash → Approval=executing のまま）。
+        // 完全 lineage（PO 到達＋全 Evidence）が確証できたときだけ、Approval を executed へ終端 CAS で収束
+        //（exactly-once）。部分 Evidence は誤 terminalize せず明示 HOLD（fail-closed）。
+        if (!(await legacyEvidenceComplete())) throw new ApprovalNotClaimable('legacy-partial-evidence-hold');
+        const term = await tx.approvalRequest.updateMany({
+          where: { id: approvalId, tenantId: actor.tenantId, status: 'APPROVED', requestedForAction: 'purchase_order_issue', entityType: 'PurchaseOrder', entityId: poId, executionStatus: { not: 'executed' } },
+          data: { executionStatus: 'executed' },
+        });
+        if (term.count !== 1) throw new ApprovalNotClaimable('already-executed');
+        return { executed: true, reconciled: true };
       }
 
       // test-only: Approval claim 直後・PO CAS 前 fault（本番不到達）→ claim ごと全 rollback を検証（R5 #3）。
       if (opts.__faultAfterApprovalClaimForTest) opts.__faultAfterApprovalClaimForTest();
+      // test-only: claim 保持のまま停止する非同期 gate（2 並列の実 lock 競合 evidence 用・R6 #2・本番不到達）。
+      if (opts.__gateAfterApprovalClaimForTest) {
+        const pidRows = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+        await opts.__gateAfterApprovalClaimForTest(pidRows[0]!.pid);
+      }
 
       // 2) PO CAS: pending_approval AND approvalId=この承認 → ordered（received/cancelled/別 approval は count=0）。
       const claim = await tx.purchaseOrder.updateMany({
         where: { id: poId, tenantId: actor.tenantId, status: 'pending_approval', approvalId },
         data: { status: 'ordered' },
       });
-      if (claim.count !== 1) throw new PoNotClaimable();
+      if (claim.count !== 1) {
+        // **legacy state1（Codex R6 #1）**: Approval は failed/executedAt=null（claim は成功する）が、
+        // PO は旧 3-commit 経路で既に ordered＋Evidence 作成済み → 新 CAS は count=0。
+        // この approval で PO へ到達済みかを照合し、無関係（stale/別 approval/received 差し戻し攻撃）は
+        // 従来どおり po-not-claimable。到達済みで Evidence が完全なときだけ Approval を executed へ終端し
+        // 収束（claim は本 tx で保持済み＝exactly-once）。部分 Evidence は明示 HOLD（throw で claim ごと rollback）。
+        if (!(await legacyPoReached())) throw new PoNotClaimable();
+        if (!(await legacyEvidenceComplete())) throw new ApprovalNotClaimable('legacy-partial-evidence-hold');
+        await tx.approvalRequest.update({ where: { id: approvalId }, data: { executionStatus: 'executed' } });
+        return { executed: true, reconciled: true };
+      }
 
       // test-only: PO CAS 後・Audit 前 fault（本番不到達）。
       if (opts.__faultAfterCasForTest) opts.__faultAfterCasForTest();

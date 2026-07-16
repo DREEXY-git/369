@@ -1,6 +1,7 @@
 // Operations OS（在庫/リース/イベント会社）の共通処理。Phase 1-6。
 // 在庫移動を単一の真実源として ProductAsset を更新し、Audit / DomainEvent / GrowthEvent に接続する。
 import { prisma, writeAudit } from './db';
+import type { Prisma } from '@hokko/db';
 import { emitGrowthEvent, type EmitGrowthInput } from './growth';
 import { toNumber } from './utils';
 import {
@@ -31,73 +32,86 @@ export interface ApplyMovementInput {
 }
 
 /**
+ * 在庫移動の書き込み実体（transaction 合成可能版・P3-INV-2）。呼び出し側の `$transaction` に参加でき、
+ * 予約ライン等の業務レコードと InventoryMovement / ProductAsset 更新 / 監査を all-or-nothing で確定できる。
+ * 対象 ProductAsset 行を FOR UPDATE でロックし、**ロック取得後に同 tx で資産を再読取**してから
+ * 数量更新・移動台帳・監査を書く（receive/adjust の read-modify-write を lost update から守る）。
+ * Growth/DomainEvent は行わない — caller が commit 後 emit するか、同 tx 内で outbox 行を直接作成すること。
+ */
+export async function applyInventoryMovementTx(tx: Prisma.TransactionClient, input: ApplyMovementInput) {
+  const effect = inventoryEffectOfMovement(input.type);
+  const qty = Math.max(0, input.quantity ?? 1);
+
+  const locked = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "ProductAsset" WHERE id = ${input.assetId} AND "tenantId" = ${input.tenantId} FOR UPDATE`;
+  if (locked.length === 0) throw new Error('asset not found');
+  const asset = await tx.productAsset.findFirst({ where: { id: input.assetId, tenantId: input.tenantId } });
+  if (!asset) throw new Error('asset not found');
+
+  const beforeStatus = asset.status;
+  const data: Record<string, unknown> = {};
+  if (effect.status) data.status = effect.status;
+  if (effect.condition) data.condition = effect.condition;
+  if (effect.setsLocation && input.toLocationId) data.locationId = input.toLocationId;
+  if (effect.changesQuantity) {
+    if (input.type === 'receive') data.quantity = asset.quantity + qty;
+    else if (input.type === 'adjust') data.quantity = Math.max(0, input.setQuantity ?? asset.quantity);
+  }
+  if (input.type === 'dispatch') {
+    data.usageCount = asset.usageCount + 1;
+    data.lastUsedAt = new Date();
+  }
+
+  const updated =
+    Object.keys(data).length > 0
+      ? await tx.productAsset.update({ where: { id: asset.id }, data })
+      : asset;
+
+  const movement = await tx.inventoryMovement.create({
+    data: {
+      tenantId: input.tenantId,
+      assetId: asset.id,
+      type: input.type,
+      quantity: qty,
+      fromLocationId: input.fromLocationId ?? asset.locationId ?? null,
+      toLocationId: input.toLocationId ?? null,
+      reservationId: input.reservationId ?? null,
+      eventId: input.eventId ?? null,
+      beforeStatus,
+      afterStatus: updated.status,
+      note: input.note ?? '',
+      actorId: input.actorId ?? null,
+    },
+  });
+
+  await tx.auditLog.create({
+    data: {
+      tenantId: input.tenantId,
+      actorId: input.actorId ?? null,
+      actorType: 'user',
+      action: 'inventory_movement',
+      entityType: 'InventoryMovement',
+      entityId: movement.id,
+      summary: `${INVENTORY_MOVEMENT_LABEL[input.type]}: ${asset.name}（${beforeStatus}→${updated.status}）`,
+    },
+  });
+
+  return { movement, updated, asset, beforeStatus };
+}
+
+/**
  * 在庫移動を適用する。InventoryMovement を記録し ProductAsset を更新、
  * Audit ＋ DomainEvent（INVENTORY_MOVEMENT_CREATED / STATUS_CHANGED）＋ GrowthEvent を発火する。
  * ProductAsset の status/condition/locationId/quantity を一元更新（単一の真実源）。
  */
 export async function applyInventoryMovement(input: ApplyMovementInput) {
-  const effect = inventoryEffectOfMovement(input.type);
   const qty = Math.max(0, input.quantity ?? 1);
 
   // 原子性＋並列直列化（在庫破損の根絶）: 対象 ProductAsset 行を FOR UPDATE でロックし、資産読取・
   // 数量更新・移動台帳・監査を単一 $transaction で確定する。receive の quantity=asset.quantity+qty は
   // read-modify-write のため、行ロックが無いと同一資産への並行入庫で lost update（在庫数破損）を起こす。
-  const { movement, updated, asset, beforeStatus } = await prisma.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "ProductAsset" WHERE id = ${input.assetId} AND "tenantId" = ${input.tenantId} FOR UPDATE`;
-    if (locked.length === 0) throw new Error('asset not found');
-    const asset = await tx.productAsset.findFirst({ where: { id: input.assetId, tenantId: input.tenantId } });
-    if (!asset) throw new Error('asset not found');
-
-    const beforeStatus = asset.status;
-    const data: Record<string, unknown> = {};
-    if (effect.status) data.status = effect.status;
-    if (effect.condition) data.condition = effect.condition;
-    if (effect.setsLocation && input.toLocationId) data.locationId = input.toLocationId;
-    if (effect.changesQuantity) {
-      if (input.type === 'receive') data.quantity = asset.quantity + qty;
-      else if (input.type === 'adjust') data.quantity = Math.max(0, input.setQuantity ?? asset.quantity);
-    }
-    if (input.type === 'dispatch') {
-      data.usageCount = asset.usageCount + 1;
-      data.lastUsedAt = new Date();
-    }
-
-    const updated =
-      Object.keys(data).length > 0
-        ? await tx.productAsset.update({ where: { id: asset.id }, data })
-        : asset;
-
-    const movement = await tx.inventoryMovement.create({
-      data: {
-        tenantId: input.tenantId,
-        assetId: asset.id,
-        type: input.type,
-        quantity: qty,
-        fromLocationId: input.fromLocationId ?? asset.locationId ?? null,
-        toLocationId: input.toLocationId ?? null,
-        reservationId: input.reservationId ?? null,
-        eventId: input.eventId ?? null,
-        beforeStatus,
-        afterStatus: updated.status,
-        note: input.note ?? '',
-        actorId: input.actorId ?? null,
-      },
-    });
-
-    await tx.auditLog.create({
-      data: {
-        tenantId: input.tenantId,
-        actorId: input.actorId ?? null,
-        actorType: 'user',
-        action: 'inventory_movement',
-        entityType: 'InventoryMovement',
-        entityId: movement.id,
-        summary: `${INVENTORY_MOVEMENT_LABEL[input.type]}: ${asset.name}（${beforeStatus}→${updated.status}）`,
-      },
-    });
-
-    return { movement, updated, asset, beforeStatus };
-  });
+  const { movement, updated, asset, beforeStatus } = await prisma.$transaction((tx) =>
+    applyInventoryMovementTx(tx, input),
+  );
 
   // growth event（成果可視化・非クリティカル）は commit 後に emit（失敗しても在庫確定は済み）。
   const statusChanged = beforeStatus !== updated.status;

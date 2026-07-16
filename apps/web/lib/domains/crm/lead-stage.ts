@@ -42,6 +42,9 @@ export interface LeadStageTestHooks {
   /** 真lock競合テスト用: waiter を意図的に長時間 block させるため tx timeout を延長する
    *  （未指定時は Prisma 既定のまま — 本番挙動は不変）。 */
   __txTimeoutMsForTest?: number;
+  /** 真lock競合テスト用: FOR UPDATE 取得**前**に自 backend PID を通知する（lock 前 PID 通知 —
+   *  呼出しと観測 backend の一対一固定用。未指定時は追加 query なし）。 */
+  __beforeLockForTest?: (backendPid: number) => Promise<void> | void;
 }
 
 /**
@@ -99,6 +102,10 @@ export async function updateLeadStage(
     ? { timeout: opts.__txTimeoutMsForTest, maxWait: Math.min(opts.__txTimeoutMsForTest, 10000) }
     : undefined;
   return prisma.$transaction(async (tx) => {
+    if (opts.__beforeLockForTest) {
+      const pidRows = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid()::int AS pid`;
+      await opts.__beforeLockForTest(pidRows[0]!.pid);
+    }
     // tenant-scoped FOR UPDATE — 並行する手動変更・自動遷移と直列化し、判定は lock 下の再読取値で行う。
     const locked = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "LocalBusinessLead" WHERE id = ${input.leadId} AND "tenantId" = ${actor.tenantId} FOR UPDATE`;
     if (locked.length === 0) return { ok: false, reason: 'notfound' } as const;

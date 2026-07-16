@@ -22,7 +22,8 @@ export async function uploadMeetingAction(formData: FormData) {
   );
 
   if (!result.ok) {
-    // 失敗理由をそのまま upload 画面へ差し戻す（blocked = high 注入検出で生成中止）。
+    // 失敗理由をそのまま upload 画面へ差し戻す（blocked = high 注入検出で生成中止 /
+    // idempotency-mismatch = 同一 requestId の異内容再利用を fail-closed / in-progress = winner 処理中）。
     redirect(`/meetings/upload?error=${encodeURIComponent(result.reason)}`);
   }
   revalidatePath('/meetings');

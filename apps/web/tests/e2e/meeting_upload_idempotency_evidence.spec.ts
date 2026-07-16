@@ -3,18 +3,24 @@ import { prisma } from '@hokko/db';
 import {
   processMeetingUpload,
   makeMeetingUploadIdempotencyKey,
+  makeMeetingUploadFingerprint,
   type MeetingUploadActor,
   type MeetingUploadFaultPoint,
   type MeetingUploadProviders,
 } from '../../lib/domains/meetings/upload';
 
-// P3-MEETING（Codex CR #4964764958）の実 PostgreSQL 証拠。
+// P3-MEETING（Codex CR #4964764958 / R2 #4989554075）の実 PostgreSQL 証拠。
 // processMeetingUpload は
 //  (1) 安全検査（safeAiInput）を AI/Embedding 呼び出しの前に実施し、high 注入は provider 未到達で中止する
 //  (2) 中核＋AIOutput＋KnowledgeDocument/Chunk/DataLineage＋DomainEvent/Outbox を単一 $transaction で確定する
-//  (3) requestId で upload 全体を冪等化し、retry / 並行 submit は同一 Meeting へ収束する
-// 本 spec は fault 注入（transaction 各段）で全レコード 0 件、retry 収束、並行 2-submit で 1 組、
-// sentinel が provider へ渡らない否定テストを実 DB で検証する。
+//  (3) requestId + 内容 fingerprint（fp）で upload 全体を冪等化し、同一 payload の retry / 並行 submit は
+//      同一 Meeting へ収束する。同一 requestId + 異 payload は idempotency-mismatch で fail-closed。
+//  (4) provider 呼び出し**前**に durable claim（DomainEvent status='processing'・Outbox なし）を獲得し、
+//      winner だけが guard + provider を実行する（follower は poll 収束 = provider 呼び出し 0）。
+//      winner 失敗は claim 解放、crash 相当の残留 claim は TTL 超過で CAS takeover する。
+// 本 spec は fault 注入（transaction 各段 + provider 各段）で全レコード 0 件、retry 収束、並行 N-submit で
+// provider 合計各1回、fp 不一致 fail-closed、stale claim takeover、sentinel が provider へ渡らない否定
+// テストを実 DB で検証する。
 // 外部作用なし（社内レコードのみ・FakeLLM は決定論・実 provider 呼び出しなし）。
 
 const TRANSCRIPT =
@@ -261,38 +267,57 @@ test('fault注入: transaction各段の失敗で全モデル0件（部分状態�
   }
 });
 
-test('並行2submit（barrier）: 同一requestIdの同時実行でも Meeting は1組・両者が同一idへ収束する', async () => {
+test('並行Nsubmit（winner gate）: claimがprovider前barrierとなり transcribe/summarize/embed は合計各1回・全レコード1組', async () => {
+  test.setTimeout(90_000);
   const actor = await getActor();
   const uniqueType = uid('mtg-race');
   const requestId = uid('req');
+  const N = 4; // CR R2 指定レンジ（2-6）の中央値
+  // 全 submit で **同一の** provider spy を共有する = カウンタは N 本合計の呼び出し回数を観測する。
+  const { calls, providers } = watchProviders(false);
   try {
-    // 両者が transaction 開始直前まで到達してから同時に進む barrier（check-then-act の隙間を実発火させる）。
-    let arrived = 0;
-    let release!: () => void;
-    const gate = new Promise<void>((res) => (release = res));
-    const barrier = async () => {
-      arrived += 1;
-      if (arrived >= 2) release();
-      await gate;
+    // winner だけが通る gate（claim 獲得直後・guard/provider 実行前）。winner を gate で停止させ、
+    // follower 全員が「処理中 claim を見て poll に入る」状況を実発火させる。
+    let gatePassed = 0;
+    let releaseGate!: () => void;
+    const gate = new Promise<void>((res) => (releaseGate = res));
+    const opts = {
+      __providersForTest: providers,
+      __gateAfterClaimForTest: async () => {
+        gatePassed += 1;
+        await gate;
+      },
+      __claimPollForTest: { intervalMs: 50, budgetMs: 30_000 },
     };
     const input = { title: 'RACE-並行', type: uniqueType, transcript: TRANSCRIPT, requestId };
-    const [a, b] = await Promise.all([
-      processMeetingUpload(actor, input, { __beforeTxForTest: barrier }),
-      processMeetingUpload(actor, input, { __beforeTxForTest: barrier }),
-    ]);
-    expect(a.ok).toBe(true);
-    expect(b.ok).toBe(true);
-    if (!a.ok || !b.ok) return;
-    expect(a.meetingId, '両者が同一 Meeting へ収束').toBe(b.meetingId);
-    expect([a.duplicated, b.duplicated].filter((d) => d === false).length, '勝者はちょうど1人').toBe(1);
+    const promises = Array.from({ length: N }, () => processMeetingUpload(actor, input, opts));
+    // winner が claim を保持したまま gate で停止している間に follower が poll へ入る猶予。
+    await new Promise((res) => setTimeout(res, 500));
+    expect(gatePassed, 'claim（lease）を獲得できるのはちょうど1人').toBe(1);
+    expect(calls, 'gate 解放前は provider 未到達 = claim が provider 前の barrier').toEqual({ transcribe: 0, summarize: 0, embed: 0 });
+    releaseGate();
+    const results = await Promise.all(promises);
+    const okResults = results.flatMap((r) => (r.ok ? [r] : []));
+    expect(okResults.length, '全員が成功で返る').toBe(N);
+    expect(new Set(okResults.map((r) => r.meetingId)).size, '全員が同一 Meeting へ収束').toBe(1);
+    expect(okResults.filter((r) => !r.duplicated).length, '勝者はちょうど1人').toBe(1);
+    // CR R2 中核: AI 実行は upload 1回分だけ（follower は provider を一切呼ばない）。
+    expect(calls, 'provider 呼び出しは N 本合計で各1回').toEqual({ transcribe: 1, summarize: 1, embed: 1 });
     const c = await countRows(actor.tenantId, uniqueType, requestId);
     expect(c.meeting, '並行 submit でも Meeting は1件').toBe(1);
     expect(c.transcript).toBe(1);
     expect(c.minutes).toBe(1);
     expect(c.docs).toBe(1);
-    expect(c.events).toBe(1);
+    expect(c.events, 'claim 行がそのまま anchor（余分な行なし）').toBe(1);
     expect(c.outbox).toBe(1);
     expect(c.aiOutput).toBe(1);
+    const out = await prisma.aIOutput.findFirst({ where: { tenantId: actor.tenantId, task: 'summarizeMeeting', purpose: uniqueType } });
+    expect(await prisma.usageEvent.count({ where: { sourceType: 'AIOutput', sourceId: out!.id } }), 'UsageEvent は1件').toBe(1);
+    // guard は winner だけが実行する = AISafetyLog は upload 1回につき1行。
+    expect(
+      await prisma.aISafetyLog.count({ where: { tenantId: actor.tenantId, entityType: 'MeetingUploadRequest', entityId: requestId } }),
+      'AISafetyLog は winner の1件のみ',
+    ).toBe(1);
   } finally {
     await cleanup(actor.tenantId, uniqueType, requestId);
   }
@@ -340,6 +365,230 @@ test('medium注入は続行し AIOutput.safetyFlags にフラグが残る（bloc
     const out = await prisma.aIOutput.findFirst({ where: { tenantId: actor.tenantId, task: 'summarizeMeeting', purpose: uniqueType } });
     expect(out, 'AIOutput が確定').not.toBeNull();
     expect(out!.safetyFlags, 'medium フラグが記録される').toContain('injection:medium');
+  } finally {
+    await cleanup(actor.tenantId, uniqueType, requestId);
+  }
+});
+
+test('fp照合: 成功後の同一requestId・異payload再送信は idempotency-mismatch（provider 0・Meeting増 0）', async () => {
+  const actor = await getActor();
+  const uniqueType = uid('mtg-fp');
+  const requestId = uid('req');
+  try {
+    const r1 = await processMeetingUpload(actor, { title: 'FP-初回', type: uniqueType, transcript: TRANSCRIPT, requestId });
+    expect(r1.ok).toBe(true);
+    const { calls, providers } = watchProviders(true);
+    // transcript の差し替え（requestId 再利用攻撃/バグ）: 既存 Meeting へ「成功」偽装で収束させない。
+    const r2 = await processMeetingUpload(
+      actor,
+      { title: 'FP-初回', type: uniqueType, transcript: TRANSCRIPT + '（改ざんされた別内容）', requestId },
+      { __providersForTest: providers },
+    );
+    expect(r2.ok).toBe(false);
+    if (!r2.ok) expect(r2.reason, '異 payload は fail-closed').toBe('idempotency-mismatch');
+    // title 違いも fp 不一致（fp は tenantId/actorId/title/type/transcript を束ねる）。
+    const r3 = await processMeetingUpload(
+      actor,
+      { title: 'FP-別タイトル', type: uniqueType, transcript: TRANSCRIPT, requestId },
+      { __providersForTest: providers },
+    );
+    expect(r3.ok).toBe(false);
+    if (!r3.ok) expect(r3.reason).toBe('idempotency-mismatch');
+    // actor 違いも fp 不一致（同一 requestId を別 actor が再利用しても既存 Meeting へ収束しない）。
+    const r4 = await processMeetingUpload(
+      { ...actor, userId: `${actor.userId}-other-actor` },
+      { title: 'FP-初回', type: uniqueType, transcript: TRANSCRIPT, requestId },
+      { __providersForTest: providers },
+    );
+    expect(r4.ok).toBe(false);
+    if (!r4.ok) expect(r4.reason).toBe('idempotency-mismatch');
+    expect(calls, 'mismatch は provider 到達前に遮断').toEqual({ transcribe: 0, summarize: 0, embed: 0 });
+    const c = await countRows(actor.tenantId, uniqueType, requestId);
+    expect(c.meeting, '2つ目の Meeting は作られない').toBe(1);
+    expect(c.events).toBe(1);
+    expect(c.outbox).toBe(1);
+  } finally {
+    await cleanup(actor.tenantId, uniqueType, requestId);
+  }
+});
+
+test('fp照合（並行）: 処理中claimに対する異payload同時submitは pollせず即 idempotency-mismatch・winnerは完走する', async () => {
+  const actor = await getActor();
+  const uniqueType = uid('mtg-fpc');
+  const requestId = uid('req');
+  const winnerWatch = watchProviders(false);
+  const loserWatch = watchProviders(true);
+  try {
+    // winner(A) が claim を確実に保持した状態を gate 通過で観測してから B を投入する（決定論的順序）。
+    let claimedResolve!: () => void;
+    const claimed = new Promise<void>((res) => (claimedResolve = res));
+    let releaseWinner!: () => void;
+    const winnerGate = new Promise<void>((res) => (releaseWinner = res));
+    const pA = processMeetingUpload(
+      actor,
+      { title: 'FPC-A', type: uniqueType, transcript: TRANSCRIPT, requestId },
+      {
+        __providersForTest: winnerWatch.providers,
+        __gateAfterClaimForTest: async () => {
+          claimedResolve();
+          await winnerGate;
+        },
+      },
+    );
+    await claimed;
+    const rB = await processMeetingUpload(
+      actor,
+      { title: 'FPC-B', type: uniqueType, transcript: TRANSCRIPT + ' 別内容', requestId },
+      { __providersForTest: loserWatch.providers },
+    );
+    expect(rB.ok).toBe(false);
+    if (!rB.ok) expect(rB.reason, '異 payload は winner の完了を待たず即 fail-closed').toBe('idempotency-mismatch');
+    expect(loserWatch.calls, 'mismatch 側は provider 呼び出し 0').toEqual({ transcribe: 0, summarize: 0, embed: 0 });
+    releaseWinner();
+    const rA = await pA;
+    expect(rA.ok, 'winner は影響を受けず完走').toBe(true);
+    if (rA.ok) expect(rA.duplicated).toBe(false);
+    expect(winnerWatch.calls).toEqual({ transcribe: 1, summarize: 1, embed: 1 });
+    const c = await countRows(actor.tenantId, uniqueType, requestId);
+    expect(c.meeting, 'winner の1件のみ').toBe(1);
+    expect(c.events).toBe(1);
+    expect(c.outbox).toBe(1);
+  } finally {
+    await cleanup(actor.tenantId, uniqueType, requestId);
+  }
+});
+
+test('provider各段fault: claimが解放され（イベント行0・全レコード0）retryが新winnerとして1組へ収束する', async () => {
+  test.setTimeout(90_000);
+  const actor = await getActor();
+  for (const stage of ['transcribe', 'summarize', 'embed'] as const) {
+    const uniqueType = uid(`mtg-pfault-${stage}`);
+    const requestId = uid('req');
+    try {
+      const good = watchProviders(false);
+      const faulty: MeetingUploadProviders = {
+        transcribe: async (i) => {
+          if (stage === 'transcribe') throw new Error(`provider-fault:${stage}`);
+          return good.providers.transcribe(i);
+        },
+        summarize: async (i) => {
+          if (stage === 'summarize') throw new Error(`provider-fault:${stage}`);
+          return good.providers.summarize(i);
+        },
+        embed: async (t) => {
+          if (stage === 'embed') throw new Error(`provider-fault:${stage}`);
+          return good.providers.embed(t);
+        },
+      };
+      await expect(
+        processMeetingUpload(
+          actor,
+          { title: `PFAULT-${stage}`, type: uniqueType, transcript: TRANSCRIPT, requestId },
+          { __providersForTest: faulty },
+        ),
+        `provider ${stage} fault で例外`,
+      ).rejects.toThrow(`provider-fault:${stage}`);
+      // claim（DomainEvent processing 行）も解放済み = events 0 を含む全レコード 0。
+      expectAllZero(await countRows(actor.tenantId, uniqueType, requestId), `provider fault ${stage}`);
+      // retry（同一 requestId・正常 provider）→ 残留 claim に阻まれず新 winner として完走。
+      const r = await processMeetingUpload(actor, { title: `PFAULT-${stage}`, type: uniqueType, transcript: TRANSCRIPT, requestId });
+      expect(r.ok, `provider fault ${stage} 後の retry は成功`).toBe(true);
+      if (r.ok) expect(r.duplicated, 'retry は収束ではなく新規実行').toBe(false);
+      const c = await countRows(actor.tenantId, uniqueType, requestId);
+      expect(c.meeting).toBe(1);
+      expect(c.events).toBe(1);
+      expect(c.outbox).toBe(1);
+      expect(c.aiOutput).toBe(1);
+    } finally {
+      await cleanup(actor.tenantId, uniqueType, requestId);
+    }
+  }
+});
+
+test('stale claim（TTL超過）: crash相当の残留claimをCAS takeoverし、同一行がanchorへ昇格して1組確定する', async () => {
+  const actor = await getActor();
+  const uniqueType = uid('mtg-stale');
+  const requestId = uid('req');
+  const input = { title: 'STALE-回収', type: uniqueType, transcript: TRANSCRIPT, requestId };
+  const key = makeMeetingUploadIdempotencyKey(requestId);
+  try {
+    // winner が claim 獲得直後に crash した状態を seed（occurredAt = 3分前 > TTL 2分・解放されていない）。
+    const fp = makeMeetingUploadFingerprint({ tenantId: actor.tenantId, userId: actor.userId }, input);
+    const seeded = await prisma.domainEvent.create({
+      data: {
+        tenantId: actor.tenantId,
+        eventType: 'MEETING_MINUTES_CREATED',
+        aggregateType: 'Meeting',
+        aggregateId: 'pending',
+        actorId: actor.userId ?? null,
+        actorType: 'user',
+        payload: {},
+        metadata: { requestId, fp, phase: 'claimed' },
+        idempotencyKey: key,
+        status: 'processing',
+        occurredAt: new Date(Date.now() - 3 * 60 * 1000),
+      },
+      select: { id: true },
+    });
+    const r = await processMeetingUpload(actor, input);
+    expect(r.ok, 'TTL 超過 claim は takeover され upload が完走する').toBe(true);
+    if (!r.ok) return;
+    expect(r.duplicated, 'takeover は新 winner としての実行').toBe(false);
+    const ev = await prisma.domainEvent.findUnique({
+      where: { tenantId_idempotencyKey: { tenantId: actor.tenantId, idempotencyKey: key } },
+    });
+    expect(ev!.id, '新規行ではなく残留 claim 行そのものが anchor へ昇格').toBe(seeded.id);
+    expect(ev!.status).toBe('pending');
+    expect(ev!.aggregateId).toBe(r.meetingId);
+    expect((ev!.metadata as { phase?: string }).phase).toBe('complete');
+    const c = await countRows(actor.tenantId, uniqueType, requestId);
+    expect(c.meeting).toBe(1);
+    expect(c.events).toBe(1);
+    expect(c.outbox).toBe(1);
+    expect(c.aiOutput).toBe(1);
+  } finally {
+    await cleanup(actor.tenantId, uniqueType, requestId);
+  }
+});
+
+test('処理中claim（TTL内・same payload）: poll予算内に完了しなければ in-progress fail-closed（takeover/二重AI実行なし）', async () => {
+  const actor = await getActor();
+  const uniqueType = uid('mtg-prog');
+  const requestId = uid('req');
+  const input = { title: 'PROG-処理中', type: uniqueType, transcript: TRANSCRIPT, requestId };
+  const key = makeMeetingUploadIdempotencyKey(requestId);
+  const { calls, providers } = watchProviders(true);
+  try {
+    // 他プロセスの winner が処理中（TTL 内・完了しない）状態を seed。
+    const fp = makeMeetingUploadFingerprint({ tenantId: actor.tenantId, userId: actor.userId }, input);
+    await prisma.domainEvent.create({
+      data: {
+        tenantId: actor.tenantId,
+        eventType: 'MEETING_MINUTES_CREATED',
+        aggregateType: 'Meeting',
+        aggregateId: 'pending',
+        actorId: actor.userId ?? null,
+        actorType: 'user',
+        payload: {},
+        metadata: { requestId, fp, phase: 'claimed' },
+        idempotencyKey: key,
+        status: 'processing',
+        occurredAt: new Date(),
+      },
+    });
+    const r = await processMeetingUpload(actor, input, {
+      __providersForTest: providers,
+      __claimPollForTest: { intervalMs: 50, budgetMs: 300 },
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason, 'TTL 内は takeover せず in-progress で返す').toBe('in-progress');
+    expect(calls, '待機側は provider を一切呼ばない').toEqual({ transcribe: 0, summarize: 0, embed: 0 });
+    expect(await prisma.meeting.count({ where: { tenantId: actor.tenantId, type: uniqueType } }), 'Meeting は作られない').toBe(0);
+    const still = await prisma.domainEvent.findUnique({
+      where: { tenantId_idempotencyKey: { tenantId: actor.tenantId, idempotencyKey: key } },
+      select: { status: true },
+    });
+    expect(still!.status, '他者の claim は奪わず残す').toBe('processing');
   } finally {
     await cleanup(actor.tenantId, uniqueType, requestId);
   }

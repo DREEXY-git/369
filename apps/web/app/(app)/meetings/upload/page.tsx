@@ -15,6 +15,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   empty: 'テキストを入力してください。',
   blocked: '入力テキストに危険な命令（プロンプト注入）が検出されたため、AI生成を中止しました。内容を確認してください。',
   'invalid-request-id': 'フォームの有効期限が切れています。ページを開き直して再送信してください。',
+  'idempotency-mismatch':
+    'この送信トークンは別の内容で既に使用されています。内容を変更して取込む場合は、ページを開き直して再送信してください。',
+  'in-progress': '同じ取込みが現在処理中です。しばらく待ってから会議一覧を確認するか、再度お試しください。',
 };
 
 export default async function MeetingUploadPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {

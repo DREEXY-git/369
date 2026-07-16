@@ -260,23 +260,96 @@ test('all-or-nothing: Lead更新後 / History後 の fault で全rollback（stag
   }
 });
 
-test('並行4本の同一遷移: FOR UPDATE＋CAS で直列化され勝者ちょうど1本（History/Audit 各1・敗者は already で書き込み0）', async () => {
+test('真lock競合（v9.0 standard・retries=0 反復）: holder が row lock 保持中に waiter 4本が holder へ直接 block（pg_blocking_pids で backend PID 一意観測）→ 全waiter pending 確認後 release → 勝者1・History/Audit 各1', async () => {
   const ctx = await getCtx();
-  const { lead, campaign } = await makeLead(ctx.tenantId, 'REPLIED');
-  try {
-    const results = await Promise.all(
-      Array.from({ length: 4 }, () => updateLeadStage(humanOwner(ctx), { leadId: lead.id, stage: 'APPOINTMENT' })),
-    );
-    expect(results.filter((r) => r.ok).length, '勝者はちょうど1本').toBe(1);
-    for (const r of results) {
-      if (!r.ok) expect(r.reason, '敗者は lock 下再読取で already').toBe('already');
+  // 反復（retries=0 のまま同一シナリオを複数回実測し、偶然の逐次化ではないことを固定する）。
+  for (let iter = 0; iter < 2; iter++) {
+    const { lead, campaign } = await makeLead(ctx.tenantId, 'REPLIED');
+    let releaseHolder!: () => void;
+    const holderGate = new Promise<void>((res) => (releaseHolder = res));
+    try {
+      // holder: 対象 Lead 行を FOR UPDATE で保持し、backend PID を得てから ready 通知。
+      let holderReady!: (pid: number) => void;
+      const ready = new Promise<number>((res) => (holderReady = res));
+      const holder = prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT id FROM "LocalBusinessLead" WHERE id = ${lead.id} AND "tenantId" = ${ctx.tenantId} FOR UPDATE`;
+          const pidRows = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid()::int AS pid`;
+          holderReady(pidRows[0]!.pid);
+          await holderGate;
+        },
+        { timeout: 30000 },
+      );
+      const holderPid = await ready;
+
+      // waiters: holder が lock を保持したままの状態で起動（自然逐次化の余地なし）。
+      const WAITERS = 4;
+      const waiters = Array.from({ length: WAITERS }, () =>
+        updateLeadStage(humanOwner(ctx), { leadId: lead.id, stage: 'APPOINTMENT' }),
+      );
+
+      // 全 waiter が holder の row lock に block されていることを pg_blocking_pids で観測する。
+      // PostgreSQL は row lock の待機を queue 化するため、「holder へ直接 block」されるのは先頭 waiter
+      // のみで、後続は先頭 waiter（tuple lock 保持）に block される。そこで waiter を backend PID で
+      // 一意化し、(a) 待機 backend がちょうど WAITERS 本、(b) 各 waiter の blocking chain を辿ると
+      // 必ず holder PID に到達、(c) 先頭 waiter は holder へ**直接** block、を全て観測する。
+      let snapshot: Array<{ pid: number; blockers: number[] }> = [];
+      const chainOk = (rows: Array<{ pid: number; blockers: number[] }>): boolean => {
+        if (rows.length !== WAITERS) return false;
+        const byPid = new Map(rows.map((r) => [r.pid, r.blockers]));
+        if (byPid.has(holderPid)) return false; // holder 自身は block されない
+        // 各 waiter から blocking graph を辿って holder へ到達できるか（lock queue が holder に根差す）。
+        const reachesHolder = (pid: number, seen: Set<number>): boolean => {
+          if (seen.has(pid)) return false;
+          seen.add(pid);
+          const blockers = byPid.get(pid) ?? [];
+          if (blockers.includes(holderPid)) return true;
+          return blockers.some((b) => reachesHolder(b, seen));
+        };
+        return rows.every((r) => r.blockers.length > 0 && reachesHolder(r.pid, new Set()));
+      };
+      for (let i = 0; i < 160; i++) {
+        snapshot = await prisma.$queryRaw<Array<{ pid: number; blockers: number[] }>>`
+          SELECT pid::int AS pid, pg_blocking_pids(pid)::int[] AS blockers
+          FROM pg_stat_activity
+          WHERE wait_event_type = 'Lock'
+            AND query ILIKE '%FROM "LocalBusinessLead"%FOR UPDATE%'`;
+        if (chainOk(snapshot)) break;
+        await new Promise((res) => setTimeout(res, 25));
+      }
+      const waiterPids = snapshot.map((r) => r.pid);
+      expect(new Set(waiterPids).size, `iter${iter}: 待機 waiter は一意 backend PID で ${WAITERS} 本`).toBe(WAITERS);
+      expect(
+        chainOk(snapshot),
+        `iter${iter}: 全 waiter の blocking chain が holder(pid=${holderPid}) に根差す（snapshot=${JSON.stringify(snapshot)}）`,
+      ).toBe(true);
+      expect(
+        snapshot.filter((r) => r.blockers.includes(holderPid)).length,
+        `iter${iter}: 先頭 waiter は holder へ直接 block`,
+      ).toBeGreaterThanOrEqual(1);
+
+      // 全 waiter pending を確認してから release（finally でも保険 release）。
+      releaseHolder();
+      await holder;
+      const results = await Promise.all(waiters);
+      expect(results.filter((r) => r.ok).length, `iter${iter}: 勝者はちょうど1本`).toBe(1);
+      for (const r of results) {
+        if (!r.ok) expect(r.reason, '敗者は lock 下再読取で already').toBe('already');
+      }
+      // 最終状態は再 fetch で検証（green badge/戻り値だけに依存しない）。
+      expect((await fullLead(lead.id))!.stage).toBe('APPOINTMENT');
+      const c = await counts(ctx.tenantId, lead.id);
+      expect(c.history, `iter${iter}: History はちょうど1（duplicate/lost 0）`).toBe(1);
+      expect(c.audit).toBe(1);
+      const rows = await prisma.leadPipelineStageHistory.findMany({
+        where: { tenantId: ctx.tenantId, leadId: lead.id },
+        select: { fromStage: true, toStage: true },
+      });
+      expect(rows).toEqual([{ fromStage: 'REPLIED', toStage: 'APPOINTMENT' }]);
+    } finally {
+      releaseHolder(); // timeout/失敗時も必ず解放（二重 resolve は no-op）
+      await cleanup(ctx.tenantId, campaign.id, lead.id);
     }
-    expect((await fullLead(lead.id))!.stage).toBe('APPOINTMENT');
-    const c = await counts(ctx.tenantId, lead.id);
-    expect(c.history, 'History はちょうど1（duplicate/lost 0）').toBe(1);
-    expect(c.audit).toBe(1);
-  } finally {
-    await cleanup(ctx.tenantId, campaign.id, lead.id);
   }
 });
 
@@ -306,27 +379,40 @@ test('境界の否定: cross-tenant は実在 lead でも notfound・不存在 l
 
 const AI_OWNER_EMAIL = `ai-owner-stage-${process.pid}-${Date.now()}@ikezaki.local`;
 const READONLY_EMAIL = `readonly-stage-${process.pid}-${Date.now()}@ikezaki.local`;
+const AI_AGENT_EMAIL = `ai-agent-stage-${process.pid}-${Date.now()}@ikezaki.local`;
+const AI_ASSISTANT_EMAIL = `ai-assistant-stage-${process.pid}-${Date.now()}@ikezaki.local`;
+const MIXED_HUMAN_EMAIL = `mixed-human-stage-${process.pid}-${Date.now()}@ikezaki.local`;
 const fixtureUserIds: string[] = [];
 
-test.describe('認証済み Action 対（OWNER肯定・AI+OWNER/READ_ONLY 否定）', () => {
+test.describe('認証済み Action 対（OWNER肯定・AI_AGENT/AI_ASSISTANT/AI+OWNER×2/READ_ONLY 否定）', () => {
   test.beforeAll(async () => {
     const ceo = await prisma.user.findFirst({ where: { email: 'ceo@ikezaki.local' }, select: { tenantId: true, passwordHash: true } });
     if (!ceo) throw new Error('seed ceo not found');
-    const ownerRole = await prisma.role.findFirst({ where: { tenantId: ceo.tenantId, key: 'OWNER' }, select: { id: true } });
-    const readOnlyRole = await prisma.role.findFirst({ where: { tenantId: ceo.tenantId, key: 'READ_ONLY' }, select: { id: true } });
-    if (!ownerRole || !readOnlyRole) throw new Error('seed roles not found');
-    // AI+OWNER 誤設定 fixture: role は OWNER（leadmap:update あり）だがセッションは AI —
-    // isAi 二重防御（Action の user.isAi !== false と domain の sessionIsAi !== false）を実 POST で証明する。
-    const aiOwner = await prisma.user.create({
-      data: { tenantId: ceo.tenantId, email: AI_OWNER_EMAIL, name: 'STAGE AI+OWNER fixture', passwordHash: ceo.passwordHash, isAiAgent: true },
-    });
-    fixtureUserIds.push(aiOwner.id);
-    await prisma.userRole.create({ data: { tenantId: ceo.tenantId, userId: aiOwner.id, roleId: ownerRole.id } });
-    const readOnly = await prisma.user.create({
-      data: { tenantId: ceo.tenantId, email: READONLY_EMAIL, name: 'STAGE READ_ONLY fixture', passwordHash: ceo.passwordHash, isAiAgent: false },
-    });
-    fixtureUserIds.push(readOnly.id);
-    await prisma.userRole.create({ data: { tenantId: ceo.tenantId, userId: readOnly.id, roleId: readOnlyRole.id } });
+    const roleId = async (key: RoleKey) => {
+      const role = await prisma.role.findFirst({ where: { tenantId: ceo.tenantId, key }, select: { id: true } });
+      if (!role) throw new Error(`seed role not found: ${key}`);
+      return role.id;
+    };
+    const makeUser = async (email: string, name: string, isAiAgent: boolean, roleKeys: RoleKey[]) => {
+      const user = await prisma.user.create({
+        data: { tenantId: ceo.tenantId, email, name, passwordHash: ceo.passwordHash, isAiAgent },
+      });
+      fixtureUserIds.push(user.id);
+      for (const key of roleKeys) {
+        await prisma.userRole.create({ data: { tenantId: ceo.tenantId, userId: user.id, roleId: await roleId(key) } });
+      }
+    };
+    // AI+OWNER（AIセッション）: role は OWNER（leadmap:update あり）だが isAiAgent=true —
+    // isAi 二重防御（Action の user.isAi !== false と domain の sessionIsAi !== false）を実 POST で証明。
+    await makeUser(AI_OWNER_EMAIL, 'STAGE AI+OWNER fixture', true, ['OWNER']);
+    // READ_ONLY（人間・leadmap:update なし）: RBAC 側の fail-closed を実 POST で証明。
+    await makeUser(READONLY_EMAIL, 'STAGE READ_ONLY fixture', false, ['READ_ONLY']);
+    // R2 追加: pure AI_AGENT / pure AI_ASSISTANT（AIセッション・AI role）。
+    await makeUser(AI_AGENT_EMAIL, 'STAGE AI_AGENT fixture', true, ['AI_AGENT']);
+    await makeUser(AI_ASSISTANT_EMAIL, 'STAGE AI_ASSISTANT fixture', true, ['AI_ASSISTANT']);
+    // R2 追加: AI_AGENT+OWNER mixed role かつ isAi=false（人間セッション）—
+    // Action の isAi/hasPermission は通過し得るが、domain の isHumanUser（role 混在拒否）が最後の砦になる経路。
+    await makeUser(MIXED_HUMAN_EMAIL, 'STAGE AI+OWNER mixed(isAi=false) fixture', false, ['AI_AGENT', 'OWNER']);
   });
 
   test.afterAll(async () => {
@@ -359,11 +445,10 @@ test.describe('認証済み Action 対（OWNER肯定・AI+OWNER/READ_ONLY 否定
     }
   });
 
-  test('認証済み Action 否定: 捕捉した実 POST を AI+OWNER / READ_ONLY セッションで replay しても denied（Lead不変・History/Audit 0）・同一 POST は人間 OWNER では成立（肯定対照）', async ({ page, browser }) => {
+  test('認証済み Action 否定マトリクス: 捕捉した実 POST を AI_AGENT / AI_ASSISTANT / AI+OWNER(isAi=true) / AI+OWNER mixed(isAi=false) / READ_ONLY の実セッションで replay しても denied（Lead不変・History/Audit 0）・同一 POST は人間 OWNER では成立（肯定対照）', async ({ page, browser }) => {
     const ctx = await getCtx();
     const { lead, campaign } = await makeLead(ctx.tenantId, 'REPLIED');
-    let aiCtx: BrowserContext | null = null;
-    let roCtx: BrowserContext | null = null;
+    const denyCtxs: BrowserContext[] = [];
     try {
       // 1) 人間 OWNER が実フォームから送信する POST を捕捉し、サーバー到達前に abort（Lead は REPLIED のまま）。
       await login(page, 'ceo@ikezaki.local');
@@ -392,39 +477,42 @@ test.describe('認証済み Action 対（OWNER肯定・AI+OWNER/READ_ONLY 否定
         return out;
       };
 
-      // 2) AI+OWNER セッション（role は leadmap:update を持つが isAi）で同一 POST を replay → 拒否。
-      aiCtx = await browser.newContext();
-      const aiPage = await aiCtx.newPage();
-      await login(aiPage, AI_OWNER_EMAIL);
-      const aiRes = await aiCtx.request.post(captured!.url, { headers: replayHeaders(captured!.headers), data: captured!.body });
-      expect(aiRes.status(), 'AI replay もサーバーは応答する（500 ではなく拒否）').toBeLessThan(500);
-      expect((await fullLead(lead.id))!.stage, 'AI+OWNER では変更されない').toBe('REPLIED');
-      let c = await counts(ctx.tenantId, lead.id);
-      expect(c.history).toBe(0);
-      expect(c.audit).toBe(0);
+      // 2) 否定マトリクス（R1+R2 要求の全5主体）: 同一 POST を各実セッションで replay → すべて拒否。
+      //    - AI_AGENT / AI_ASSISTANT: pure AI role・AIセッション（Action の isAi ガードで遮断）
+      //    - AI+OWNER(isAi=true): role は leadmap:update 保持・AIセッション（isAi 二重防御）
+      //    - AI+OWNER mixed(isAi=false): 人間セッション・role 混在 — domain の isHumanUser が最後の砦
+      //    - READ_ONLY: 人間セッション・leadmap:update なし（RBAC）
+      const before = await fullLead(lead.id);
+      const denyEmails: Array<[string, string]> = [
+        ['pure AI_AGENT', AI_AGENT_EMAIL],
+        ['pure AI_ASSISTANT', AI_ASSISTANT_EMAIL],
+        ['AI+OWNER（isAi=true）', AI_OWNER_EMAIL],
+        ['AI+OWNER mixed（isAi=false）', MIXED_HUMAN_EMAIL],
+        ['READ_ONLY（人間・権限なし）', READONLY_EMAIL],
+      ];
+      for (const [label, email] of denyEmails) {
+        const denyCtx = await browser.newContext();
+        denyCtxs.push(denyCtx);
+        const denyPage = await denyCtx.newPage();
+        await login(denyPage, email);
+        const res = await denyCtx.request.post(captured!.url, { headers: replayHeaders(captured!.headers), data: captured!.body });
+        expect(res.status(), `${label}: replay もサーバーは応答する（500 ではなく拒否）`).toBeLessThan(500);
+        expect(await fullLead(lead.id), `${label}: Lead は全字段 deep-equal 不変`).toEqual(before);
+        const c = await counts(ctx.tenantId, lead.id);
+        expect(c.history, `${label}: History 0`).toBe(0);
+        expect(c.audit, `${label}: Audit 0`).toBe(0);
+      }
 
-      // 3) READ_ONLY（人間・leadmap:update なし）で replay → 拒否。
-      roCtx = await browser.newContext();
-      const roPage = await roCtx.newPage();
-      await login(roPage, READONLY_EMAIL);
-      const roRes = await roCtx.request.post(captured!.url, { headers: replayHeaders(captured!.headers), data: captured!.body });
-      expect(roRes.status()).toBeLessThan(500);
-      expect((await fullLead(lead.id))!.stage, 'READ_ONLY では変更されない').toBe('REPLIED');
-      c = await counts(ctx.tenantId, lead.id);
-      expect(c.history).toBe(0);
-      expect(c.audit).toBe(0);
-
-      // 4) 肯定対照: 同一 POST を人間 OWNER セッションで replay すると成立
-      //    （捕捉 POST が本物であり、2)3) の不成立が guard によることを証明）。
+      // 3) 肯定対照: 同一 POST を人間 OWNER セッションで replay すると成立
+      //    （捕捉 POST が本物であり、2) の不成立が guard によることを証明）。
       const okRes = await page.context().request.post(captured!.url, { headers: replayHeaders(captured!.headers), data: captured!.body });
       expect(okRes.status()).toBeLessThan(500);
       expect((await fullLead(lead.id))!.stage, '人間 OWNER の同一 POST は成立').toBe('APPOINTMENT');
-      c = await counts(ctx.tenantId, lead.id);
+      const c = await counts(ctx.tenantId, lead.id);
       expect(c.history).toBe(1);
       expect(c.audit).toBe(1);
     } finally {
-      await aiCtx?.close();
-      await roCtx?.close();
+      for (const dc of denyCtxs) await dc.close();
       await cleanup(ctx.tenantId, campaign.id, lead.id);
     }
   });

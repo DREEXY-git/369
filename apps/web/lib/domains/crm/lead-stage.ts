@@ -39,6 +39,9 @@ export interface LeadStageTestHooks {
   __faultAfterHistoryForTest?: () => void;
   /** FOR UPDATE 取得後に停止させ、並行直列化を観測する。 */
   __gateAfterLockForTest?: () => Promise<void> | void;
+  /** 真lock競合テスト用: waiter を意図的に長時間 block させるため tx timeout を延長する
+   *  （未指定時は Prisma 既定のまま — 本番挙動は不変）。 */
+  __txTimeoutMsForTest?: number;
 }
 
 /**
@@ -92,6 +95,9 @@ export async function updateLeadStage(
   }
   const toStage = input.stage;
 
+  const txOptions = opts.__txTimeoutMsForTest
+    ? { timeout: opts.__txTimeoutMsForTest, maxWait: Math.min(opts.__txTimeoutMsForTest, 10000) }
+    : undefined;
   return prisma.$transaction(async (tx) => {
     // tenant-scoped FOR UPDATE — 並行する手動変更・自動遷移と直列化し、判定は lock 下の再読取値で行う。
     const locked = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "LocalBusinessLead" WHERE id = ${input.leadId} AND "tenantId" = ${actor.tenantId} FOR UPDATE`;
@@ -138,5 +144,5 @@ export async function updateLeadStage(
       },
     });
     return { ok: true, fromStage, toStage } as const;
-  });
+  }, txOptions);
 }

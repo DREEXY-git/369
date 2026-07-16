@@ -82,6 +82,9 @@ for (const [label, roleKeys, isAiAgent] of [
   ['isAiAgent=false + AI_AGENT role（mismatch bypass）', ['AI_AGENT'], false],
   ['isAiAgent=false + AI_AGENT+OWNER 混在', ['AI_AGENT', 'OWNER'], false],
   ['通常AI（isAiAgent=true + AI_AGENT）', ['AI_AGENT'], true],
+  // Codex V90 R4: AI_ASSISTANT も認証済み Action 境界（同じ非空振り replay harness）で対にする。
+  ['isAiAgent=false + AI_ASSISTANT role（mismatch bypass）', ['AI_ASSISTANT'], false],
+  ['isAiAgent=false + AI_ASSISTANT+OWNER 混在', ['AI_ASSISTANT', 'OWNER'], false],
 ] as const) {
   test(`AI/非人間 fail-closed（addendum High / R2 P2-4）: ${label} は Action 境界で denied・全モデル0・Lead不変・UI非表示`, async ({ page, browser }) => {
     const t = await tenantId();
@@ -109,20 +112,26 @@ for (const [label, roleKeys, isAiAgent] of [
       const replayHeaders = { ...cap.headers };
       delete replayHeaders['cookie'];
       delete replayHeaders['authorization'];
+      // Codex V90 R4: Lead **全字段**の before/after deep equality（replay 直前 snapshot と比較）。
+      const leadBefore = await prisma.localBusinessLead.findUnique({ where: { id: target.leadId } });
+      expect(leadBefore, '被験 lead が replay 前に存在').not.toBeNull();
       const resp = await aiCtx.request.post(cap.url, { headers: replayHeaders, data: Buffer.from(body, 'latin1'), maxRedirects: 0 });
       const redirectTarget = resp.headers()['x-action-redirect'] ?? resp.headers()['location'] ?? '';
       expect(redirectTarget, `Action 境界は denied=1 へ redirect（status=${resp.status()}）`).toContain('denied=1');
-      // 全モデル 0・Lead 完全不変を実測。
-      const lead = await prisma.localBusinessLead.findUnique({ where: { id: target.leadId } });
-      expect(lead!.customerId, 'AI 経由で customer 未連携').toBeNull();
-      expect(lead!.dealId).toBeNull();
-      expect(lead!.stage, 'stage 不変').toBe('NEW');
+      // 全6書込面 0・Lead 完全不変を実測（Codex V90 R4）。
+      const leadAfter = await prisma.localBusinessLead.findUnique({ where: { id: target.leadId } });
+      expect(leadAfter, 'Lead 全字段 before/after deep equality（DB接触前拒否）').toEqual(leadBefore);
+      expect(leadAfter!.customerId, 'AI 経由で customer 未連携').toBeNull();
+      expect(leadAfter!.dealId).toBeNull();
+      expect(leadAfter!.stage, 'stage 不変').toBe('NEW');
       expect(await prisma.deal.count({ where: { tenantId: t, leadId: target.leadId } }), 'Deal 0').toBe(0);
       expect(await prisma.leadPipelineStageHistory.count({ where: { leadId: target.leadId } }), 'History 0').toBe(0);
+      // CustomerTimelineEvent 0（AI 主体 actorId で直接スコープ・空集合検索に依存しない）。
+      expect(await prisma.customerTimelineEvent.count({ where: { tenantId: t, actorId: aiUserId } }), 'CustomerTimelineEvent 0').toBe(0);
       // 商談化（Customer 作成）の Audit を AI 主体で残さない（人間として偽装記録しない）。login 監査等は対象外。
       expect(await prisma.auditLog.count({ where: { tenantId: t, actorId: aiUserId, action: 'create', entityType: 'Customer' } }), 'AI 経由の商談化 Audit 0').toBe(0);
       // Customer 自体も作られない（この lead 由来の Customer 孤児 0）。
-      expect(await prisma.customer.count({ where: { tenantId: t, name: (await prisma.localBusinessLead.findUnique({ where: { id: target.leadId }, select: { name: true } }))!.name } }), 'Customer 0').toBe(0);
+      expect(await prisma.customer.count({ where: { tenantId: t, name: leadBefore!.name } }), 'Customer 0').toBe(0);
     } finally {
       await aiCtx.close();
       await cleanupLead(t, target.leadId, target.campaignId);

@@ -172,7 +172,8 @@ export async function executeApprovedStocktakeAdjustmentAction(formData: FormDat
 /** 承認済みの高額発注を確定（PurchaseOrder→ordered）。 */
 export async function executeApprovedPurchaseOrderIssueAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'update')) redirect('/admin/operations-actions?denied=1');
+  // 承認済み発注の実行も人間専用。AI/mixed-role は DB 接触前に fail-closed（Codex PR#58 R3 P2-1）。
+  if (!hasPermission(user, 'inventory', 'update') || user.isAi) redirect('/admin/operations-actions?denied=1');
   const approvalId = String(formData.get('approvalId') ?? '');
   const req = await prisma.approvalRequest.findFirst({
     where: { id: approvalId, tenantId: user.tenantId, requestedForAction: 'purchase_order_issue' },
@@ -182,7 +183,7 @@ export async function executeApprovedPurchaseOrderIssueAction(formData: FormData
 
   // 実行の CAS/監査/growth はサービス層（procurement）に集約。received/cancelled/別 approval の
   // 差し戻しはサービス側の status+approvalId CAS で構造的に不可（Codex PR#58 R2 #2）。
-  const r = await executeApprovedPurchaseOrderIssue({ tenantId: user.tenantId, userId: user.userId }, approvalId, poId);
+  const r = await executeApprovedPurchaseOrderIssue({ tenantId: user.tenantId, userId: user.userId, actorIsAi: user.isAi }, approvalId, poId);
   if (!r.executed) redirect(`/admin/operations-actions?error=${r.reason}`);
   redirect('/admin/operations-actions?executed=po');
 }

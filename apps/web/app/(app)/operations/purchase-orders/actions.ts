@@ -92,9 +92,11 @@ export async function createPurchaseOrderAction(formData: FormData) {
 /** 発注確定。業務ロジックは lib/domains/operations/procurement.ts。 */
 export async function confirmPurchaseOrderAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/purchase-orders?denied=1');
+  // 発注確定は人間専用。AI/mixed-role（isAi=true + OWNER 等の権限和集合）は DB 接触前に fail-closed（Codex PR#58 R3 P2-1）。
+  if (!hasPermission(user, 'inventory', 'update') || user.isAi) redirect('/operations/purchase-orders?denied=1');
   const id = String(formData.get('purchaseOrderId') ?? '');
-  const res = await confirmPurchaseOrder({ tenantId: user.tenantId, userId: user.userId }, id);
+  const res = await confirmPurchaseOrder({ tenantId: user.tenantId, userId: user.userId, actorIsAi: user.isAi }, id);
+  if (res.forbidden) redirect('/operations/purchase-orders?denied=1');
   if (!res.found) redirect('/operations/purchase-orders');
   redirect(res.requiresApproval ? `/operations/purchase-orders/${id}?pending=1` : `/operations/purchase-orders/${id}?ordered=1`);
 }
@@ -102,8 +104,9 @@ export async function confirmPurchaseOrderAction(formData: FormData) {
 /** 入庫処理。業務ロジックは lib/domains/operations/procurement.ts。 */
 export async function receivePurchaseOrderAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/purchase-orders?denied=1');
+  // 入庫も人間専用（Codex PR#58 R3 P2-1）。
+  if (!hasPermission(user, 'inventory', 'update') || user.isAi) redirect('/operations/purchase-orders?denied=1');
   const id = String(formData.get('purchaseOrderId') ?? '');
-  const ok = await receivePurchaseOrder({ tenantId: user.tenantId, userId: user.userId }, id);
+  const ok = await receivePurchaseOrder({ tenantId: user.tenantId, userId: user.userId, actorIsAi: user.isAi }, id);
   redirect(ok ? `/operations/purchase-orders/${id}?received=1` : '/operations/purchase-orders');
 }

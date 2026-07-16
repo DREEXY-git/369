@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { prisma } from '@hokko/db';
 import { confirmPurchaseOrder, receivePurchaseOrder, executeApprovedPurchaseOrderIssue } from '../../lib/domains/operations/procurement';
 import { approveRequest } from '../../lib/approval';
+import { decidePurchaseOrderIssueCore, type PoIssueBridgeDb } from '../../lib/purchase-order-issue-bridge';
 
 // STATE2 C2（Codex 事前監査・原子性 HIGH）の実 PostgreSQL 証拠。
 // confirmPurchaseOrder は status を検証せず draft 前提の無条件 update で 'ordered' へ書き戻していたため、
@@ -182,6 +183,128 @@ test('高額承認実行: pending_approval→ordered→received、二重実行�
     expect(await receivePurchaseOrder(actor, poId), '再入庫は no-op').toBe(false);
     expect((await prisma.productAsset.findUnique({ where: { id: assetId }, select: { quantity: true } }))!.quantity, 'qty 水増しなし').toBe(1);
     expect(await prisma.inventoryMovement.count({ where: { assetId, type: 'receive' } }), '入庫台帳 1 件のみ').toBe(1);
+  } finally {
+    await cleanup(poId, assetId);
+  }
+});
+
+test('AI/mixed-role fail-closed: confirm/receive/承認実行は actorIsAi で DB 接触前に拒否し行不変（Codex R3 P2-1）', async () => {
+  const t = await tenantId();
+  const uid = await ceoUserId();
+  const { poId, assetId } = await makeHighValueDraftPo();
+  const aiActor = { tenantId: t, userId: uid, actorIsAi: true };
+  try {
+    // confirm: AI は forbidden・PO は draft のまま・Approval も作られない（孤児 0）。
+    const c = await confirmPurchaseOrder(aiActor, poId);
+    expect(c.forbidden, 'AI confirm は forbidden').toBe(true);
+    expect((await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { status: true } }))!.status, 'PO は draft 不変').toBe('draft');
+    expect(await prisma.approvalRequest.count({ where: { tenantId: t, entityType: 'PurchaseOrder', entityId: poId } }), 'ApprovalRequest 0').toBe(0);
+
+    // 人間が pending_approval → 承認まで進めた状態を作る。
+    const human = { tenantId: t, userId: uid };
+    await confirmPurchaseOrder(human, poId);
+    const approvalId = (await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { approvalId: true } }))!.approvalId!;
+    await approveRequest(approvalId, uid, 'ok');
+    // execute: AI は forbidden・PO は pending_approval 不変（ordered 化しない）。
+    const e = await executeApprovedPurchaseOrderIssue(aiActor, approvalId, poId);
+    expect(e.executed, 'AI execute は不可').toBe(false);
+    expect(e.reason).toBe('forbidden');
+    expect((await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { status: true } }))!.status, 'PO は pending_approval 不変').toBe('pending_approval');
+
+    // 人間が execute → ordered。receive: AI は no-op・在庫移動 0・PO は ordered 不変。
+    await executeApprovedPurchaseOrderIssue(human, approvalId, poId);
+    const aiReceive = await receivePurchaseOrder(aiActor, poId);
+    expect(aiReceive, 'AI receive は no-op').toBe(false);
+    expect(await prisma.inventoryMovement.count({ where: { assetId, type: 'receive' } }), 'AI 経由の入庫 0').toBe(0);
+    expect((await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { status: true } }))!.status, 'PO は ordered 不変').toBe('ordered');
+  } finally {
+    await cleanup(poId, assetId);
+  }
+});
+
+test('reject bridge: 却下で PO を draft へ差し戻し approvalId 解除・dangling pending_approval 0・再申請可能（Codex R3 P2-2）', async () => {
+  const t = await tenantId();
+  const uid = await ceoUserId();
+  const { poId, assetId } = await makeHighValueDraftPo();
+  const human = { tenantId: t, userId: uid };
+  try {
+    await confirmPurchaseOrder(human, poId);
+    const approvalId = (await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { approvalId: true } }))!.approvalId!;
+    // 却下（専用 bridge）: ApprovalRequest REJECTED＋PO draft/approvalId=null＋監査を単一 tx で確定。
+    const r = await decidePurchaseOrderIssueCore(prisma as unknown as PoIssueBridgeDb, {
+      tenantId: t, approvalId, purchaseOrderId: poId, decision: 'reject', decidedById: uid, note: 'no', approvalTitle: 'x', actorIsAi: false,
+    });
+    expect(r.outcome).toBe('decided');
+    const po = await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { status: true, approvalId: true } });
+    expect(po!.status, 'PO は draft へ差し戻し').toBe('draft');
+    expect(po!.approvalId, 'approvalId 解除').toBeNull();
+    expect((await prisma.approvalRequest.findUnique({ where: { id: approvalId }, select: { status: true } }))!.status).toBe('REJECTED');
+    // dangling pending_approval 0（この PO を指す pending_approval の Approval が残らない）。
+    expect(await prisma.purchaseOrder.count({ where: { id: poId, status: 'pending_approval' } }), 'dangling pending_approval 0').toBe(0);
+    // 再申請可能: draft から再度 confirm できる（新しい approval で pending_approval）。
+    const re = await confirmPurchaseOrder(human, poId);
+    expect(re.requiresApproval, '却下後に再申請できる').toBe(true);
+    expect((await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { status: true } }))!.status).toBe('pending_approval');
+  } finally {
+    await cleanup(poId, assetId);
+  }
+});
+
+test('decision 競合/整合: approve/reject 並行は勝者1本・approve target mismatch は rollback・cross-tenant 無効（Codex R3 P2-2）', async () => {
+  const t = await tenantId();
+  const uid = await ceoUserId();
+  const { poId, assetId } = await makeHighValueDraftPo();
+  const human = { tenantId: t, userId: uid };
+  const foreignTenant = await prisma.tenant.create({ data: { name: `POR3-FOREIGN-${process.pid}-${Date.now()}` } });
+  try {
+    await confirmPurchaseOrder(human, poId);
+    const approvalId = (await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { approvalId: true } }))!.approvalId!;
+
+    // cross-tenant: 別 tenant からの決定は ApprovalRequest（PENDING 限定 tenant scoped CAS）に当たらず 'already'・PO 不変。
+    const foreign = await decidePurchaseOrderIssueCore(prisma as unknown as PoIssueBridgeDb, {
+      tenantId: foreignTenant.id, approvalId, purchaseOrderId: poId, decision: 'reject', decidedById: uid, note: '', approvalTitle: 'x', actorIsAi: false,
+    });
+    expect(foreign.outcome, 'cross-tenant は決定できない').toBe('already');
+    expect((await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { status: true } }))!.status).toBe('pending_approval');
+
+    // approve/reject 並行 → PENDING 限定 CAS で勝者ちょうど 1・敗者 'already'。
+    const [a, b] = await Promise.all([
+      decidePurchaseOrderIssueCore(prisma as unknown as PoIssueBridgeDb, { tenantId: t, approvalId, purchaseOrderId: poId, decision: 'approve', decidedById: uid, note: '', approvalTitle: 'x', actorIsAi: false }),
+      decidePurchaseOrderIssueCore(prisma as unknown as PoIssueBridgeDb, { tenantId: t, approvalId, purchaseOrderId: poId, decision: 'reject', decidedById: uid, note: '', approvalTitle: 'x', actorIsAi: false }),
+    ]);
+    const decided = [a, b].filter((x) => x.outcome === 'decided');
+    const already = [a, b].filter((x) => x.outcome === 'already');
+    expect(decided.length, '勝者ちょうど 1').toBe(1);
+    expect(already.length, '敗者は already').toBe(1);
+    // ApprovalRequest はいずれか一方の decision に確定（PENDING ではない）。
+    expect((await prisma.approvalRequest.findUnique({ where: { id: approvalId }, select: { status: true } }))!.status).not.toBe('PENDING');
+  } finally {
+    await prisma.tenant.deleteMany({ where: { id: foreignTenant.id } });
+    await cleanup(poId, assetId);
+  }
+});
+
+test('approve target mismatch: 別 PO/approvalId 不一致の approve は rollback し ApprovalRequest は PENDING のまま（Codex R3 P2-2）', async () => {
+  const t = await tenantId();
+  const uid = await ceoUserId();
+  const { poId, assetId } = await makeHighValueDraftPo();
+  const human = { tenantId: t, userId: uid };
+  try {
+    await confirmPurchaseOrder(human, poId);
+    const approvalId = (await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { approvalId: true } }))!.approvalId!;
+    // 存在しない PO を指して approve → PO 整合確認 count!==1 → throw で決定ごと rollback。
+    let threw = false;
+    try {
+      await decidePurchaseOrderIssueCore(prisma as unknown as PoIssueBridgeDb, {
+        tenantId: t, approvalId, purchaseOrderId: 'po_does_not_exist_000', decision: 'approve', decidedById: uid, note: '', approvalTitle: 'x', actorIsAi: false,
+      });
+    } catch {
+      threw = true;
+    }
+    expect(threw, 'target mismatch は throw').toBe(true);
+    // rollback により ApprovalRequest は PENDING のまま（人間が再判断できる）・PO も pending_approval 不変。
+    expect((await prisma.approvalRequest.findUnique({ where: { id: approvalId }, select: { status: true } }))!.status, 'ApprovalRequest PENDING のまま').toBe('PENDING');
+    expect((await prisma.purchaseOrder.findUnique({ where: { id: poId }, select: { status: true } }))!.status).toBe('pending_approval');
   } finally {
     await cleanup(poId, assetId);
   }

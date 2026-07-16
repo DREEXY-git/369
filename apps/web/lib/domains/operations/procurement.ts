@@ -27,15 +27,21 @@ class PoNotClaimable extends Error {
 export interface Actor {
   tenantId: string;
   userId?: string | null;
+  /** 実行主体が AI か（true は DB 接触前に一律拒否。発注確定/入庫/承認実行は人間専用・Codex PR#58 R3 P2-1）。 */
+  actorIsAi?: boolean;
 }
 
 export interface ConfirmPurchaseOrderResult {
   found: boolean;
   requiresApproval: boolean;
+  /** AI 主体（実確定不可）で DB 接触前に拒否した場合 true。 */
+  forbidden?: boolean;
 }
 
 /** 発注確定。高額（閾値以上）は承認申請（pending_approval）。少額は即 ordered。 */
 export async function confirmPurchaseOrder(actor: Actor, poId: string): Promise<ConfirmPurchaseOrderResult> {
+  // 発注確定は人間専用（AI/mixed-role は action 境界に加え domain でも DB 接触前に拒否・Codex PR#58 R3 P2-1）。
+  if (actor.actorIsAi) return { found: false, requiresApproval: false, forbidden: true };
   const po = await prisma.purchaseOrder.findFirst({ where: { id: poId, tenantId: actor.tenantId } });
   if (!po) return { found: false, requiresApproval: false };
   // 発注確定は draft からのみ許可する（STATE2 C2）。ordered/received/cancelled/pending_approval を
@@ -109,6 +115,8 @@ export async function executeApprovedPurchaseOrderIssue(
   approvalId: string,
   poId: string,
 ): Promise<ExecuteApprovedPoResult> {
+  // 承認済み発注の実行も人間専用（AI/mixed-role は DB 接触前に拒否・Codex PR#58 R3 P2-1）。
+  if (actor.actorIsAi) return { executed: false, reason: 'forbidden' };
   try {
     const r = await executeApprovedAction(
       approvalId,
@@ -154,6 +162,8 @@ export async function executeApprovedPurchaseOrderIssue(
  *  claim を勝ち取った1回だけが InventoryMovement を発行するため、同一 PO の再入庫で在庫が水増しされない。
  *  （applyInventoryMovement 自体は PR#47 で行ロック＋単一transaction 済み＝各入庫は原子的。） */
 export async function receivePurchaseOrder(actor: Actor, poId: string): Promise<boolean> {
+  // 入庫も人間専用（AI/mixed-role は DB 接触前に拒否・Codex PR#58 R3 P2-1）。
+  if (actor.actorIsAi) return false;
   const po = await prisma.purchaseOrder.findFirst({ where: { id: poId, tenantId: actor.tenantId }, include: { lines: true } });
   if (!po) return false;
 

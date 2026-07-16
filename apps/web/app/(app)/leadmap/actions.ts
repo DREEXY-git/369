@@ -2,7 +2,6 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import type { LeadStage } from '@hokko/shared';
 import { classifyOutreachReply } from '@hokko/ai';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
@@ -14,6 +13,7 @@ import {
 } from '@/lib/leadmap';
 import { safeAiInput, saveAIOutputStandard } from '@/lib/ai-safety-server';
 import { prepareExternalPayload } from '@/lib/safe-external-send';
+import { updateLeadStage } from '@/lib/domains/crm/lead-stage';
 
 const ADVANCE_ON: Record<string, true> = { interested: true, quote: true, doc: true, later: true, forward: true, appointment: true };
 
@@ -279,26 +279,31 @@ export async function classifyReplyAction(formData: FormData) {
   redirect(`/leadmap/leads/${draft.leadId}/outreach?classified=${cls.classification}`);
 }
 
+/** リードの手動ステージ変更。業務ロジックは lib/domains/crm/lead-stage.ts（V90 P3-CRM STAGE_MUTATION:
+ *  対象取得前の leadmap:update ＋ role 由来 human-only（sessionIsAi===false 厳密）fail-closed、
+ *  leadId/stage の runtime 検証＋許容遷移の明示、Lead CAS＋StageHistory＋Audit の単一 transaction）。 */
 export async function updateLeadStageAction(formData: FormData) {
   const user = await requireUser();
   const leadId = String(formData.get('leadId') ?? '');
-  const stage = String(formData.get('stage') ?? '') as LeadStage;
-  const lead = await prisma.localBusinessLead.findFirst({ where: { id: leadId, tenantId: user.tenantId } });
-  if (!lead) redirect('/leadmap/pipeline');
-  await prisma.localBusinessLead.update({ where: { id: leadId }, data: { stage } });
-  await prisma.leadPipelineStageHistory.create({
-    data: { tenantId: user.tenantId, leadId, fromStage: lead.stage, toStage: stage, changedById: user.userId },
-  });
-  await writeAudit({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    action: 'update',
-    entityType: 'LocalBusinessLead',
-    entityId: leadId,
-    summary: `リードのステージを ${stage} に変更`,
-  });
+  const stage = String(formData.get('stage') ?? '');
+  const back = leadId && leadId.length <= 64 ? `/leadmap/leads/${encodeURIComponent(leadId)}` : '/leadmap/pipeline';
+  // Action 層でも DB 接触前に fail-closed（domain と二重防御）。
+  if (user.isAi !== false || !hasPermission(user, 'leadmap', 'update')) redirect(`${back}?denied=1`);
+
+  const result = await updateLeadStage(
+    { tenantId: user.tenantId, userId: user.userId, roles: user.roles, sessionIsAi: user.isAi },
+    { leadId, stage },
+  );
+  if (!result.ok) {
+    if (result.reason === 'forbidden') redirect(`${back}?denied=1`);
+    if (result.reason === 'notfound') redirect('/leadmap/pipeline?error=notfound');
+    if (result.reason === 'already') redirect(`${back}?already=1`);
+    if (result.reason === 'invalid-transition' || result.reason === 'conflict') redirect(`${back}?error=stage-transition`);
+    redirect(`${back}?error=stage-input`);
+  }
   revalidatePath('/leadmap/pipeline');
   revalidatePath(`/leadmap/leads/${leadId}`);
+  redirect(`${back}?staged=1`);
 }
 
 /** リードを商談化し、CRM（顧客）・案件に連携する（LeadMap→本体CRMへの接続）。 */

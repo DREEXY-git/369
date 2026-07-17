@@ -15,10 +15,12 @@ on:
 permissions: {}
 
 concurrency:
-  # WIP + head SHA ごとに 1（§10）。同一 head への同一監査の重複 run は後発を残して
-  # 先発を cancel してよい（verdict は投稿コメントに残り、run の途中生成物は evidence ではないため）。
-  group: 369-padn-codex-${{ github.event.client_payload.wip_id }}-${{ github.event.client_payload.head_sha }}-${{ github.event.action }}
-  cancel-in-progress: true
+  # §10: integration audit は全体で同時 1（train は単一資源）。その他の監査は
+  # WIP + head SHA + 監査種別ごとに 1。同一 head への同一監査の重複 run は後発を残して
+  # 先発を cancel してよい（verdict は投稿コメントに残り、run の途中生成物は evidence では
+  # ないため）。integration は cancel しない（キュー化）。
+  group: ${{ github.event.action == 'padn_integration_audit' && '369-padn-integration' || format('369-padn-codex-{0}-{1}-{2}', github.event.client_payload.wip_id, github.event.client_payload.head_sha, github.event.action) }}
+  cancel-in-progress: ${{ github.event.action != 'padn_integration_audit' }}
 
 jobs:
   audit:

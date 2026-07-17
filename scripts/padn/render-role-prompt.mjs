@@ -3,6 +3,7 @@
 // head 不動確認）→ テンプレートを描画して prompt ファイルへ書き出す。
 // 1 つでも検証に失敗したら exit 1（role job はそこで停止し、write は発生しない）。
 import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { GitHubClient } from './github.mjs';
 import { validatePayload } from './validate.mjs';
 import { verifyPacket, renderTemplate } from './prompts.mjs';
@@ -19,14 +20,9 @@ function setOutput(name, value) {
 
 function setMultilineOutput(name, value) {
   if (!process.env.GITHUB_OUTPUT) return;
-  const delimiter = `PADN_EOF_${Math.abs(hashCode(String(value))).toString(36)}`;
+  // delimiter は内容と独立な乱数にする（内容由来だと出力 injection の余地が残る）
+  const delimiter = `PADN_EOF_${randomBytes(16).toString('hex')}`;
   appendFileSync(process.env.GITHUB_OUTPUT, `${name}<<${delimiter}\n${value}\n${delimiter}\n`);
-}
-
-function hashCode(s) {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  return h;
 }
 
 export async function main(env = process.env) {
@@ -40,6 +36,16 @@ export async function main(env = process.env) {
   // 1) 静的検証
   const staticCheck = validatePayload(payload, rootDir);
   if (!staticCheck.ok) fail(staticCheck.errors.join(' / '));
+
+  const isWrite = ['padn_claude_implement', 'padn_claude_remediate', 'padn_claude_test'].includes(eventType);
+  // write 系は fail-closed: packet のライブ hash 再検証を「省略可能な入力」で回避できないようにする
+  if (isWrite) {
+    if (!/^[0-9a-f]{64}$/.test(String(payload.prompt_sha256 ?? ''))) {
+      fail('write 系 event は完全長（64 hex）の prompt_sha256 が必須');
+    }
+    if (!payload.packet_comment_id) fail('write 系 event は packet_comment_id が必須（ライブ hash 再検証を省略できない）');
+    if (!payload.branch) fail('write 系 event は branch が必須');
+  }
 
   // 2) ライブ再検証（正本は GitHub）
   const repo = env.GITHUB_REPOSITORY ?? 'DREEXY-git/369';
@@ -74,7 +80,6 @@ export async function main(env = process.env) {
 
   // base drift 確認（write 系）
   const mainSha = await gh.getBranchSha('main').catch(() => null);
-  const isWrite = ['padn_claude_implement', 'padn_claude_remediate', 'padn_claude_test'].includes(eventType);
   if (isWrite && mainSha && payload.base_sha !== mainSha) {
     fail(`base drift: payload.base_sha=${payload.base_sha} だが main=${mainSha}（Director の再発行が必要）`);
   }

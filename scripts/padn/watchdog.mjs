@@ -115,7 +115,7 @@ export async function main(env = process.env) {
   const { appendFileSync } = await import('node:fs');
   const { GitHubClient } = await import('./github.mjs');
   const { buildSnapshot } = await import('./discover.mjs');
-  const { loadConfigs, contextFromEnv } = await import('./dispatcher.mjs');
+  const { loadConfigs, contextFromEnv, collectRuntimeSignals } = await import('./dispatcher.mjs');
   const { renderStepSummary, buildL2Event, buildSummaryJa, renderControlComment } = await import('./reports.mjs');
 
   const ctx = contextFromEnv(env);
@@ -128,7 +128,42 @@ export async function main(env = process.env) {
     summary = renderStepSummary({ status: 'WATCHDOG DISABLED（default-off）', notes: ['PADN_AUTONOMY_ENABLED != true'] });
   } else {
     const snapshot = await buildSnapshot(gh, configs.policy);
-    const { findings, action } = runWatchdog(snapshot, configs.policy, {}, snapshot.now);
+    // ライブシグナルの実測配線:
+    // - dispatchesToday / consecutiveFailures: 当日の repository_dispatch 起点 PADN run の実数
+    // - promptHashMismatches: 進行中レーンで完全長 packet hash を持たないもの
+    //   （宣言 hash と packet 本文の再計算突合は role job guard = render-role-prompt.mjs が行う）
+    // - scanTexts: Control Root / WIP の直近コメント本文の secret 様値スキャン
+    // ciZeroTests は CI 自体が 0 件収集を fail にする（ci.yml）ため上流で防護、
+    // gateViolations は dispatcher の human_gate_clear が dispatch 前に遮断、
+    // vaultDrift は governance workflow が検査する（各シグナル引数はテスト・将来配線用に残置）。
+    const runtime = await collectRuntimeSignals(gh, snapshot);
+    const promptHashMismatches = (snapshot.wips ?? [])
+      .filter(
+        (w) =>
+          ['CLAIMED', 'IMPLEMENTING', 'FROZEN_FOR_REVIEW'].includes(w.state) &&
+          !/^[0-9a-f]{64}$/.test(String(w.promptSha256 ?? '')),
+      )
+      .map((w) => `${w.wipId ?? w.issueNumber}: 進行中レーンに完全長 packet hash が無い`);
+    const scanTexts = [];
+    if (snapshot.controlRoot) {
+      const rootComments = await gh.listIssueComments(snapshot.controlRoot.number).catch(() => []);
+      for (const c of rootComments.slice(-30)) scanTexts.push(String(c.body ?? ''));
+    }
+    for (const wip of (snapshot.wips ?? []).slice(0, 10)) {
+      const comments = await gh.listIssueComments(wip.issueNumber).catch(() => []);
+      for (const c of comments.slice(-10)) scanTexts.push(String(c.body ?? ''));
+    }
+    const { findings, action } = runWatchdog(
+      snapshot,
+      configs.policy,
+      {
+        dispatchesToday: runtime.dispatchesToday,
+        consecutiveFailures: runtime.consecutiveFailures,
+        promptHashMismatches,
+        scanTexts,
+      },
+      snapshot.now,
+    );
     summary = renderStepSummary({
       status: action ? `WATCHDOG: ${action}` : 'WATCHDOG: OK',
       findings,

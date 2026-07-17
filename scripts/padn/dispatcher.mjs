@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { appendFileSync } from 'node:fs';
 import { GitHubClient } from './github.mjs';
 import { buildSnapshot, prForWip } from './discover.mjs';
+import { buildApprovalPacket } from './reports.mjs';
 import { normalizeEvent, actorAllowed, isForkEvent, chainDepthExceeded, isStaleEvent, isProductionDeployment } from './events.mjs';
 import { validateLeaseForWrite } from './leases.mjs';
 import { loadStateMachine } from './state.mjs';
@@ -92,14 +93,29 @@ export function evaluateWritePreconditions({ snapshot, wip, ctx, configs, rt2App
   const tierCheck = tierAllowed(tier, ctx.mode, configs.riskPolicy, { rt2Approved });
   push('risk_tier_allowed', tierCheck.allowed, `tier=${tier} mode=${ctx.mode} ${tierCheck.reason ?? ''}`);
 
-  const activeLanes = (snapshot.wips ?? []).filter((w) => ['CLAIMED', 'IMPLEMENTING'].includes(w.state)).length;
+  // 候補 WIP 自身のレーンは除外して数える（自レーンへの追加ジョブ＝padn_claude_test が
+  // 1 レーン運用で永久に起動不能になる自己カウント問題の回避）
+  const otherActive = (snapshot.wips ?? []).filter((w) => w !== wip && ['CLAIMED', 'IMPLEMENTING'].includes(w.state));
+  const activeLanes = otherActive.length;
   const capacity = Math.min(
     control.writeCapacity ?? 0,
     ctx.writeLanesVar,
     configs.policy.capacity.max_total_write_lanes_hard,
     configs.riskPolicy.modes[ctx.mode]?.max_total_write_lanes ?? 0,
   );
-  push('capacity_ok', activeLanes < capacity, `active=${activeLanes} capacity=${capacity}`);
+  push('capacity_ok', activeLanes < capacity, `active_other=${activeLanes} capacity=${capacity}`);
+
+  // tier 別レーン上限（§11: RT0 pilot 1 lane / RT1 pilot 1 lane）
+  const perTierMax = configs.riskPolicy.modes[ctx.mode]?.max_lanes_per_tier ?? {};
+  const tierCap = perTierMax[tier];
+  const activeSameTier = otherActive.filter(
+    (w) => classifyPaths(w.allowedPaths ?? [], configs.riskPolicy).tier === tier,
+  ).length;
+  push(
+    'per_tier_capacity_ok',
+    tierCap === undefined ? true : activeSameTier < tierCap,
+    `tier=${tier} active_same_tier=${activeSameTier} cap=${tierCap ?? 'n/a'}`,
+  );
 
   const reviewBacklog = (snapshot.wips ?? []).filter((w) => w.state === 'FROZEN_FOR_REVIEW').length;
   push('reviewer_capacity_ok', reviewBacklog <= policy.capacity.reviewer_backlog_max, `backlog=${reviewBacklog}`);
@@ -206,6 +222,33 @@ export function decide({ snapshot, event, ctx, configs, rt2Approvals = {}, dispa
   return { status: decisions.length ? 'DECIDED' : 'NO_ACTION', reason: null, gates, decisions, checksByWip };
 }
 
+/**
+ * ランタイムシグナルの実測（§9 budget / §16 consecutive failures のライブ配線）。
+ * 当日分の repository_dispatch 起点 PADN workflow run 数と、直近の連続失敗数を数える。
+ * API 取得失敗時は 0 に縮退する（budget はソフトレールであり、transient な API 障害で
+ * 全 dispatch を止めない。取得失敗は step summary のログで観測できる）。
+ */
+export async function collectRuntimeSignals(gh, snapshot) {
+  let dispatchesToday = 0;
+  let consecutiveFailures = 0;
+  try {
+    const today = String(snapshot.now).slice(0, 10);
+    const res = await gh.listWorkflowRuns({ event: 'repository_dispatch', created: `>=${today}`, per_page: 100 });
+    const runs = (res?.workflow_runs ?? []).filter((r) => String(r.name ?? '').startsWith('369 PADN L2'));
+    dispatchesToday = runs.length;
+    const done = runs
+      .filter((r) => r.status === 'completed')
+      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+    for (const r of done) {
+      if (r.conclusion === 'failure') consecutiveFailures += 1;
+      else break;
+    }
+  } catch {
+    // 縮退（上記コメント参照）
+  }
+  return { dispatchesToday, consecutiveFailures };
+}
+
 /** decisions を repository_dispatch として emit する（App token 必須・observe では呼ばない）。 */
 export async function emitDecisions(gh, decisions, ctx) {
   const results = [];
@@ -241,20 +284,80 @@ export async function main(env = process.env) {
     });
   } else {
     const snapshot = await buildSnapshot(gh, configs.policy);
-    // RT2 事前許可 marker の探索（WIP コメントは importWip 済みでないため必要時のみ）
+    // RT2 事前許可 marker と approval packet 冪等判定に使うため WIP コメントを保持する
     const rt2Approvals = {};
+    const wipComments = {};
     for (const wip of snapshot.wips) {
       const comments = await gh.listIssueComments(wip.issueNumber);
+      wipComments[wip.issueNumber] = comments;
       rt2Approvals[wip.issueNumber] = findRt2Approval(
         comments.map((c) => ({ user: c.user, body: c.body })),
         configs.riskPolicy,
       );
     }
-    const result = decide({ snapshot, event, ctx, configs, rt2Approvals });
+    // §9 budget のライブ実測（当日の role dispatch 数）
+    const signals = await collectRuntimeSignals(gh, snapshot);
+    const result = decide({ snapshot, event, ctx, configs, rt2Approvals, dispatchesToday: signals.dispatchesToday });
     let emitted = result.decisions.map((d) => ({ ...d, emitted: false }));
     const observing = ctx.mode === 'observe';
     if (result.status === 'DECIDED' && !observing) {
       emitted = await emitDecisions(gh, result.decisions, ctx);
+    }
+
+    // §14: WIP dispatch / Human Gate 到達 / main への push CI 完了を oversight の起動事由として
+    // padn_oversight を emit する（schedule 1日2回はこれと独立に走る）。GITHUB_TOKEN では
+    // workflow が起動しないため App token がある場合のみ。
+    const readyForGate = (snapshot.wips ?? []).filter((w) => w.state === 'READY_FOR_HUMAN_GATE');
+    const mainCiCompleted = event.type === 'ci' && event.event === 'push' && event.branch === 'main';
+    const oversightReason = emitted.some((d) => d.emitted)
+      ? 'role_dispatch'
+      : mainCiCompleted
+        ? 'main_ci_completed'
+        : null;
+    if (!observing && ctx.hasAppToken && oversightReason) {
+      await gh.repositoryDispatch('padn_oversight', {
+        reason: oversightReason,
+        chain_depth: (event.type === 'padn' ? Number(event.clientPayload?.chain_depth ?? 0) : 0) + 1,
+        dispatched_by: '369-padn-l2-dispatcher',
+      });
+    }
+
+    // §12: READY_FOR_HUMAN_GATE の WIP へ approval packet を append-only 投稿する
+    //（冪等: 同じ frozen head の packet が既にあれば投稿しない。reports enabled 時のみ）。
+    const postedPackets = [];
+    if (ctx.reportsEnabled) {
+      for (const wip of readyForGate) {
+        const head = wip.frozenHead ?? '';
+        const already = (wipComments[wip.issueNumber] ?? []).some(
+          (c) => String(c.body ?? '').includes('369-l2-approval-packet-v1') && String(c.body ?? '').includes(head),
+        );
+        if (already) continue;
+        const pr = prForWip(snapshot, wip);
+        const packet = buildApprovalPacket({
+          gateId: 'main_merge',
+          wip,
+          snapshot,
+          evidence: {
+            links: pr ? [`https://github.com/${ctx.repo}/pull/${pr.number}`] : [],
+            verdicts: [],
+            ciRun: null,
+            vercelPreview: null,
+          },
+          rollbackJa: 'merge 実施時は該当 PR の revert 1 コミットで巻き戻す（詳細は WIP packet の rollback 節）',
+          summaryJa: `${wip.wipId ?? wip.issueNumber} は review PASS 済み・fixed head ${head}。main merge の判断は人間のみが行えます。`,
+        });
+        const summaryJa = buildSummaryJa({
+          hitokoto: 'Human Gate（main merge）の判断待ちです',
+          genzaichi: `fixed head ${head}`,
+          ningen_kakunin: 'この WIP を merge するかどうかの判断',
+          tsugi: '人間の判断まで L2 はこの WIP に何もしません',
+        });
+        await gh.createIssueComment(
+          wip.issueNumber,
+          renderControlComment(`HUMAN_GATE_APPROVAL_PACKET — ${wip.wipId ?? wip.issueNumber}`, packet, summaryJa),
+        );
+        postedPackets.push(wip.issueNumber);
+      }
     }
     const flatChecks = Object.entries(result.checksByWip).flatMap(([k, checks]) =>
       checks.map((c) => ({ ...c, check: `${k} ${c.check}` })),
@@ -266,6 +369,8 @@ export async function main(env = process.env) {
       notes: [
         `event=${eventName} type=${event.type} key=${event.key}`,
         `mode=${ctx.mode} write_lanes_var=${ctx.writeLanesVar} app_token=${ctx.hasAppToken}`,
+        `dispatches_today=${signals.dispatchesToday} consecutive_failures=${signals.consecutiveFailures}`,
+        `approval_packets_posted=${JSON.stringify(postedPackets)}`,
       ],
     });
     // Control Root への報告は reports enabled かつ実 emit があった場合のみ（コメントスパム防止）

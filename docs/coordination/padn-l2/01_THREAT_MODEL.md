@@ -93,4 +93,10 @@
 - pull_request run での workflow YAML 改変そのものは検出のみ（secrets ゼロで実害を遮断）。
 - regex lint は YAML 構文の完全検証ではない（GitHub parse が最終防衛）。
 - packet が json block を含まない形式の場合、hash は宣言値一致 + head/base 検証に縮退する
-  （render-role-prompt.mjs がその旨をログに残す）。
+  （render-role-prompt.mjs がその旨をログに残す。なお write 系 event では
+  packet_comment_id と完全長 hash の両方が必須＝fail-closed で、検証の省略はできない）。
+- budget / 連続失敗の実測（collectRuntimeSignals）は API 取得失敗時に 0 へ縮退する
+  （transient 障害で全停止しないためのソフトレール設計。取得失敗は step summary で観測可能）。
+- GitHub App installation token は create-github-app-token の既定で App の全権限を持つ
+  （App 自体を 03_PERMISSION_MATRIX の最小権限で作ることが前提。step 単位の downscope は
+  今後の改善項目）。

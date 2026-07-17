@@ -53,13 +53,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/padn/render-role-prompt.mjs
 
+      # payload 由来の値は run: へ ${{ }} 直接展開せず env 経由で quote する（script injection 対策。
+      # branch は validate.mjs でも形式検証済みだが defense in depth）。
       - name: Lease branch を用意（既存 remote branch があれば継続、無ければ base_sha から作成）
+        env:
+          PADN_BRANCH: ${{ steps.packet.outputs.branch }}
+          PADN_BASE_SHA: ${{ steps.packet.outputs.base_sha }}
         run: |
-          git fetch origin "${{ steps.packet.outputs.branch }}" || true
-          if git rev-parse --verify "origin/${{ steps.packet.outputs.branch }}" >/dev/null 2>&1; then
-            git checkout -B "${{ steps.packet.outputs.branch }}" "origin/${{ steps.packet.outputs.branch }}"
+          git fetch origin "$PADN_BRANCH" || true
+          if git rev-parse --verify "origin/$PADN_BRANCH" >/dev/null 2>&1; then
+            git checkout -B "$PADN_BRANCH" "origin/$PADN_BRANCH"
           else
-            git checkout -B "${{ steps.packet.outputs.branch }}" "${{ steps.packet.outputs.base_sha }}"
+            git checkout -B "$PADN_BRANCH" "$PADN_BASE_SHA"
           fi
 
       - name: Mint GitHub App installation token
@@ -97,7 +102,9 @@ jobs:
       - name: Post-check — ALLOWED_PATHS 逸脱検査（逸脱で fail）
         env:
           PADN_ALLOWED_PATHS: ${{ steps.packet.outputs.allowed_paths }}
+          PADN_BRANCH: ${{ steps.packet.outputs.branch }}
+          PADN_BASE_SHA: ${{ steps.packet.outputs.base_sha }}
         run: |
-          git fetch origin "${{ steps.packet.outputs.branch }}" || true
-          git diff --name-only "${{ steps.packet.outputs.base_sha }}..origin/${{ steps.packet.outputs.branch }}" \
+          git fetch origin "$PADN_BRANCH" || true
+          git diff --name-only "$PADN_BASE_SHA..origin/$PADN_BRANCH" \
             | node scripts/padn/check-diff-paths.mjs

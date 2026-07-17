@@ -154,6 +154,8 @@ export function validatePayload(payload, rootDir = '.') {
   if (!Number.isInteger(payload?.wip_issue)) errors.push('wip_issue が整数ではない');
   if (!payload?.base_sha || !/^[0-9a-f]{7,40}$/.test(payload.base_sha)) errors.push('base_sha 形式不正');
   if (payload?.head_sha && !/^[0-9a-f]{7,40}$/.test(payload.head_sha)) errors.push('head_sha 形式不正');
+  // branch は shell へ渡り得るため base_sha/head_sha と同様に厳格な形式検証（injection 対策）
+  if (payload?.branch != null && !/^[A-Za-z0-9._/-]{1,255}$/.test(payload.branch)) errors.push('branch 形式不正');
   const depth = Number(payload?.chain_depth ?? NaN);
   if (!Number.isInteger(depth) || depth < 1 || depth > policy.chain.max_depth) errors.push(`chain_depth 不正: ${payload?.chain_depth}`);
   if (!payload?.idempotency_key) errors.push('idempotency_key 欠落');

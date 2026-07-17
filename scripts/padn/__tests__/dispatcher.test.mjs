@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadConfigs, contextFromEnv, evaluateWritePreconditions, decide, emitDecisions } from '../dispatcher.mjs';
+import { loadConfigs, contextFromEnv, evaluateWritePreconditions, decide, emitDecisions, collectRuntimeSignals } from '../dispatcher.mjs';
 import { buildSnapshot } from '../discover.mjs';
 import { normalizeEvent } from '../events.mjs';
 import { FakeGH, standardWorld, simpleComment } from './fixtures.mjs';
@@ -213,6 +213,101 @@ test('GITHUB_TOKEN 再帰仕様前提: App token 無しでは emit しない', a
   const emitted2 = await emitDecisions(gh, r.decisions, ctxWith({ hasAppToken: true }));
   assert.equal(gh.dispatched.length, r.decisions.length);
   assert.ok(emitted2.every((d) => d.emitted === true));
+});
+
+test('capacity: 候補 WIP 自身のレーンは数えない（1 レーン運用で padn_claude_test が到達可能）', async () => {
+  // B1 を IMPLEMENTING（唯一のアクティブレーン）まで進めた世界。writeLanesVar=1。
+  const world = standardWorld();
+  world.commentsByIssue[67].push(
+    simpleComment('2026-07-17T02:59:00Z', 'PADN_RT2_APPROVED'),
+    simpleComment('2026-07-17T03:00:00Z', 'WIP_CLAIMED'),
+    simpleComment('2026-07-17T03:01:00Z', 'IMPLEMENTATION_STARTED'),
+  );
+  const snap = await snapshotOf(world);
+  const r = decide({
+    snapshot: snap,
+    event: tick,
+    ctx: ctxWith({ writeLanesVar: 1 }),
+    configs,
+    rt2Approvals: { 67: true },
+  });
+  const testDispatch = r.decisions.filter((d) => d.payload.wip_issue === 67).map((d) => d.event_type);
+  assert.deepEqual(testDispatch, ['padn_claude_test']);
+});
+
+test('per-tier capacity: 同一 tier の他レーンが上限に達していれば write しない', async () => {
+  // rt1_pilot で RT1 レーンが既に 1 本アクティブな状態を手組み snapshot で再現
+  const mkWip = (issueNumber, wipId, state, paths) => ({
+    issueNumber,
+    wipId,
+    state,
+    reworkCount: 0,
+    frozenHead: null,
+    lease: {
+      leaseId: `LEASE-369PADN-X-${issueNumber}`,
+      revision: 1,
+      fencingToken: 'FT-369PADN-E1-B1-L1-7e50a04',
+      baseSha: '7e50a04df6dcc8043689958cbfd9be42e15e1af7',
+      branch: `claude/x-${issueNumber}`,
+      issuedAt: '2026-07-17T02:00:00Z',
+      lastCheckpointAt: '2026-07-17T02:30:00Z',
+    },
+    allowedPaths: paths,
+    promptSha256: 'c'.repeat(64),
+    packetCommentId: 1,
+  });
+  const snapshot = {
+    now: '2026-07-17T03:00:00Z',
+    ok: true,
+    controlRoot: { number: 66 },
+    control: {
+      programId: '369-PADN-V5',
+      directorEpoch: 1,
+      controlRevision: 7,
+      writeCapacity: 2,
+      activeWriteLanes: 1,
+      backpressure: false,
+      incidentFreeze: false,
+      lastDirectorActivityAt: '2026-07-17T02:51:00Z',
+    },
+    mainSha: '7e50a04df6dcc8043689958cbfd9be42e15e1af7',
+    prs: [],
+    wips: [
+      mkWip(70, 'WIP-PADN-R1A-001', 'IMPLEMENTING', ['packages/shared/src/leads.ts']),
+      mkWip(71, 'WIP-PADN-R1B-001', 'DISPATCHED', ['packages/shared/src/format.ts']),
+    ],
+    duplicateWips: [],
+  };
+  const r = evaluateWritePreconditions({ snapshot, wip: snapshot.wips[1], ctx: ctxWith(), configs });
+  const perTier = r.checks.find((c) => c.check === 'per_tier_capacity_ok');
+  assert.equal(perTier.ok, false, 'RT1 2本目が per-tier 上限で止まるはず');
+  // 別 tier（RT0 docs）なら per-tier では止まらない
+  const rt0 = mkWip(72, 'WIP-PADN-R0-001', 'DISPATCHED', ['docs/roadmap/99_x.md']);
+  const r2 = evaluateWritePreconditions({ snapshot: { ...snapshot, wips: [snapshot.wips[0], rt0] }, wip: rt0, ctx: ctxWith(), configs });
+  assert.equal(r2.checks.find((c) => c.check === 'per_tier_capacity_ok').ok, true);
+});
+
+test('collectRuntimeSignals: 当日 PADN run 数と直近連続失敗を実測（API 失敗時は 0 縮退）', async () => {
+  const world = standardWorld();
+  const gh = ghFromWorld(world);
+  gh.workflowRunsResponse = {
+    workflow_runs: [
+      { name: '369 PADN L2 Claude Role Jobs', status: 'completed', conclusion: 'failure', created_at: '2026-07-17T02:50:00Z' },
+      { name: '369 PADN L2 Codex Audit Jobs', status: 'completed', conclusion: 'failure', created_at: '2026-07-17T02:40:00Z' },
+      { name: '369 PADN L2 Codex Audit Jobs', status: 'completed', conclusion: 'success', created_at: '2026-07-17T02:00:00Z' },
+      { name: 'CI', status: 'completed', conclusion: 'failure', created_at: '2026-07-17T01:00:00Z' },
+    ],
+  };
+  const s = await collectRuntimeSignals(gh, { now: world.now });
+  assert.equal(s.dispatchesToday, 3); // CI は数えない
+  assert.equal(s.consecutiveFailures, 2);
+
+  const broken = ghFromWorld(world);
+  broken.listWorkflowRuns = async () => {
+    throw new Error('api down');
+  };
+  const s2 = await collectRuntimeSignals(broken, { now: world.now });
+  assert.deepEqual(s2, { dispatchesToday: 0, consecutiveFailures: 0 });
 });
 
 test('contextFromEnv: 既定値は最も安全側（disabled / observe / 0 lane / reports off）', () => {

@@ -41,10 +41,11 @@ jobs:
           PADN_AUTONOMY_ENABLED: ${{ vars.PADN_AUTONOMY_ENABLED }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          # snapshot は codex の作業ディレクトリ（checkout 内）に置く。read-only sandbox から
+          # runner.temp が読めない可能性があるため、prompt が参照するパスと実体を一致させる。
           node scripts/padn/export-snapshot.mjs \
-            --out "${{ runner.temp }}/padn-snapshot.json" \
+            --out ./padn-snapshot.json \
             --oversight-prompt "${{ runner.temp }}/padn-oversight-prompt.md"
-          cp "${{ runner.temp }}/padn-snapshot.json" ./padn-snapshot.json
       - name: Run H-Codex oversight (read-only)
         id: run_codex
         if: env.OPENAI_KEY_SET == 'true'

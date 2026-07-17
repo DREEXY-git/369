@@ -128,6 +128,9 @@ export class FakeGH {
   async createIssueComment(number, body) {
     this.commentsPosted.push({ number, body });
   }
+  async listWorkflowRuns() {
+    return this.workflowRunsResponse ?? { workflow_runs: [] };
+  }
 }
 
 /** B1 相当（DISPATCHED 未クレーム）＋ B2 相当（PASS 済み READY_FOR_HUMAN_GATE）の標準 snapshot 素材。 */

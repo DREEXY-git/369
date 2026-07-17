@@ -16,6 +16,9 @@ test('risk tier: 代表パスの分類', () => {
   assert.equal(classifyPaths(['packages/db/prisma/schema.prisma'], riskPolicy).tier, 'RT4');
   // RBAC は shared 配下だが RT1 の exclude → RT4
   assert.equal(classifyPaths(['packages/shared/rbac.ts'], riskPolicy).tier, 'RT4');
+  // L2 自身（scripts/padn・config/padn）は RT4＝自己書き換えの自動開始禁止（Codex R12 P1）
+  assert.equal(classifyPaths(['scripts/padn/dispatcher.mjs'], riskPolicy).tier, 'RT4');
+  assert.equal(classifyPaths(['config/padn/risk-policy.json'], riskPolicy).tier, 'RT4');
 });
 
 test('risk tier: 混在は最高 tier・未知パスは fail-closed で RT3', () => {

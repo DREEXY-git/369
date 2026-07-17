@@ -126,13 +126,14 @@ export async function buildSnapshot(gh, policy, { now = new Date().toISOString()
   }));
   if (!rootResult.ok) return snapshot;
 
+  // 信頼投稿者 = L2 report job（github-actions[bot]）+ policy の human allowlist
+  const trustedVerdictAuthors = [...new Set([...(policy.actors?.human_allowlist ?? []), 'github-actions[bot]'])];
+
   snapshot.controlRoot = { number: rootResult.issue.number, title: rootResult.issue.title };
   const rootComments = await gh.listIssueComments(rootResult.issue.number);
-  snapshot.control = parseControlState(rootResult.issue, rootComments);
+  snapshot.control = parseControlState(rootResult.issue, rootComments, { trustedControlAuthors: trustedVerdictAuthors });
 
   const wipIssues = findWipIssues(issues, policy, rootResult.issue.number);
-  // verdict の信頼投稿者 = L2 report job（github-actions[bot]）+ policy の human allowlist
-  const trustedVerdictAuthors = [...new Set([...(policy.actors?.human_allowlist ?? []), 'github-actions[bot]'])];
   for (const wi of wipIssues) {
     snapshot.wips.push(await importWip(gh, wi, { trustedVerdictAuthors }));
   }

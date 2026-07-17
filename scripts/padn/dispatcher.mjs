@@ -45,7 +45,7 @@ export function contextFromEnv(env = process.env) {
  * §9 の write 前提条件チェックリストを評価する。
  * 返り値 checks[] は監査ログとしてそのまま step summary に出す。
  */
-export function evaluateWritePreconditions({ snapshot, wip, ctx, configs, rt2Approved = false, dispatchesToday = 0 }) {
+export function evaluateWritePreconditions({ snapshot, wip, ctx, configs, rt2Approved = false, dispatchesToday = 0, reserved = { total: 0, perTier: {} } }) {
   const checks = [];
   const push = (check, ok, detail = '') => checks.push({ check, ok, detail });
   const control = snapshot.control ?? {};
@@ -94,27 +94,29 @@ export function evaluateWritePreconditions({ snapshot, wip, ctx, configs, rt2App
   push('risk_tier_allowed', tierCheck.allowed, `tier=${tier} mode=${ctx.mode} ${tierCheck.reason ?? ''}`);
 
   // 候補 WIP 自身のレーンは除外して数える（自レーンへの追加ジョブ＝padn_claude_test が
-  // 1 レーン運用で永久に起動不能になる自己カウント問題の回避）
+  // 1 レーン運用で永久に起動不能になる自己カウント問題の回避）。
+  // reserved は「同一 tick で既に選ばれた write 決定」を反映する（1 回の dispatch 内で
+  // 複数 WIP が snapshot 上 active=0 を見て同時 emit される over-commit を防ぐ — Codex R12 P1）。
   const otherActive = (snapshot.wips ?? []).filter((w) => w !== wip && ['CLAIMED', 'IMPLEMENTING'].includes(w.state));
-  const activeLanes = otherActive.length;
+  const activeLanes = otherActive.length + (reserved.total ?? 0);
   const capacity = Math.min(
     control.writeCapacity ?? 0,
     ctx.writeLanesVar,
     configs.policy.capacity.max_total_write_lanes_hard,
     configs.riskPolicy.modes[ctx.mode]?.max_total_write_lanes ?? 0,
   );
-  push('capacity_ok', activeLanes < capacity, `active_other=${activeLanes} capacity=${capacity}`);
+  push('capacity_ok', activeLanes < capacity, `active_other+reserved=${activeLanes} capacity=${capacity}`);
 
   // tier 別レーン上限（§11: RT0 pilot 1 lane / RT1 pilot 1 lane）
   const perTierMax = configs.riskPolicy.modes[ctx.mode]?.max_lanes_per_tier ?? {};
   const tierCap = perTierMax[tier];
-  const activeSameTier = otherActive.filter(
-    (w) => classifyPaths(w.allowedPaths ?? [], configs.riskPolicy).tier === tier,
-  ).length;
+  const activeSameTier =
+    otherActive.filter((w) => classifyPaths(w.allowedPaths ?? [], configs.riskPolicy).tier === tier).length +
+    (reserved.perTier?.[tier] ?? 0);
   push(
     'per_tier_capacity_ok',
     tierCap === undefined ? true : activeSameTier < tierCap,
-    `tier=${tier} active_same_tier=${activeSameTier} cap=${tierCap ?? 'n/a'}`,
+    `tier=${tier} active_same_tier+reserved=${activeSameTier} cap=${tierCap ?? 'n/a'}`,
   );
 
   const reviewBacklog = (snapshot.wips ?? []).filter((w) => w.state === 'FROZEN_FOR_REVIEW').length;
@@ -174,6 +176,9 @@ export function decide({ snapshot, event, ctx, configs, rt2Approvals = {}, dispa
   const machine = loadStateMachine(configs.stateMachine);
   const decisions = [];
   const checksByWip = {};
+  // 同一 tick 内で既に選ばれた write 決定のレーン予約（over-commit 防止 — Codex R12 P1）
+  const reserved = { total: 0, perTier: {} };
+  const reservedWips = new Set();
 
   for (const wip of snapshot.wips ?? []) {
     for (const pair of machine.dispatchablePairs()) {
@@ -197,10 +202,18 @@ export function decide({ snapshot, event, ctx, configs, rt2Approvals = {}, dispa
             configs,
             rt2Approved: rt2Approvals[wip.issueNumber] === true,
             dispatchesToday,
+            reserved,
           })
         : evaluateReviewPreconditions({ snapshot, wip, ctx, configs, dispatchesToday });
       checksByWip[`${wip.issueNumber}:${eventType}`] = evalResult.checks;
       if (!evalResult.ok) continue;
+
+      // write 決定はこの tick のレーン予約を消費する（この WIP が既に予約済みなら二重計上しない）
+      if (isWrite && !reservedWips.has(wip.issueNumber)) {
+        reserved.total += 1;
+        reserved.perTier[evalResult.tier] = (reserved.perTier[evalResult.tier] ?? 0) + 1;
+        reservedWips.add(wip.issueNumber);
+      }
 
       const head = wip.frozenHead ?? null;
       decisions.push({

@@ -62,7 +62,11 @@ export function markersIn(text) {
  * body の 369-control-root-v1 record を初期値に、コメント中の 369-control-event-v1 /
  * 369-l2-event-v1 block を時系列に適用する。
  */
-export function parseControlState(issue, comments, { directorMarkers = DIRECTOR_MARKERS } = {}) {
+export function parseControlState(
+  issue,
+  comments,
+  { directorMarkers = DIRECTOR_MARKERS, trustedControlAuthors = TRUSTED_VERDICT_AUTHORS } = {},
+) {
   const bodyBlocks = extractJsonBlocks(issue.body).filter((b) => b.schema === '369-control-root-v1');
   const state = {
     programId: bodyBlocks[0]?.program_id ?? null,
@@ -82,22 +86,29 @@ export function parseControlState(issue, comments, { directorMarkers = DIRECTOR_
   for (const c of sorted) {
     const body = decodeEntities(c.body);
     const marks = markersIn(body);
+    // 安全状態を「下げる」入力（backpressure=false / 容量引き上げ等）は信頼投稿者のみ受理する。
+    // 「上げる」入力（BACKPRESSURE_ON / INCIDENT_FREEZE / backpressure=true）は誰からでも受理
+    //（fail-safe 方向）。第三者コメントの {"backpressure": false} で凍結解除させない — Codex R12 P2。
+    const trusted = trustedControlAuthors.includes(c.user?.login ?? '');
     const blocks = extractJsonBlocks(body).filter(
       (b) => b.schema === '369-control-event-v1' || b.schema === '369-l2-event-v1',
     );
     for (const b of blocks) {
-      if (typeof b.control_revision === 'number' && b.control_revision > (state.controlRevision ?? 0)) {
+      if (typeof b.control_revision === 'number' && b.control_revision > (state.controlRevision ?? 0) && trusted) {
         state.controlRevision = b.control_revision;
       }
-      if (typeof b.director_epoch === 'number') state.directorEpoch = b.director_epoch;
-      if (typeof b.write_capacity === 'number') state.writeCapacity = b.write_capacity;
-      if (typeof b.active_write_lanes === 'number') state.activeWriteLanes = b.active_write_lanes;
-      if (typeof b.backpressure === 'boolean') state.backpressure = b.backpressure;
-      if (typeof b.base_sha === 'string') state.appMainBase = b.base_sha;
+      if (typeof b.director_epoch === 'number' && trusted) state.directorEpoch = b.director_epoch;
+      if (typeof b.write_capacity === 'number' && trusted) state.writeCapacity = b.write_capacity;
+      if (typeof b.active_write_lanes === 'number' && trusted) state.activeWriteLanes = b.active_write_lanes;
+      if (typeof b.backpressure === 'boolean') {
+        // true（凍結）は誰でも可、false（解除）は信頼投稿者のみ
+        if (b.backpressure === true || trusted) state.backpressure = b.backpressure;
+      }
+      if (typeof b.base_sha === 'string' && trusted) state.appMainBase = b.base_sha;
     }
     if (marks.includes('BACKPRESSURE_ON')) state.backpressure = true;
     if (marks.includes('INCIDENT_FREEZE')) state.incidentFreeze = true;
-    if (marks.some((mk) => directorMarkers.includes(mk))) state.lastDirectorActivityAt = c.created_at;
+    if (trusted && marks.some((mk) => directorMarkers.includes(mk))) state.lastDirectorActivityAt = c.created_at;
     state.lastEventAt = c.created_at;
     state.events.push({ at: c.created_at, markers: marks, author: c.user?.login ?? null });
   }

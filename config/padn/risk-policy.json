@@ -13,12 +13,11 @@
       ]
     },
     "RT1": {
-      "description_ja": "純粋ロジック / 分離された UI（DB・権限・外部境界に触れない）",
+      "description_ja": "純粋ロジック / 分離された UI（DB・権限・外部境界に触れない）。L2 自身（scripts/padn・config/padn・.github）は含めない＝自己書き換えの自動開始は RT4 で恒久禁止。",
       "path_patterns": [
         "packages/shared/src/**",
         "packages/shared/*.ts",
-        "apps/web/components/**",
-        "scripts/padn/**"
+        "apps/web/components/**"
       ],
       "exclude_patterns": [
         "packages/shared/rbac.ts",
@@ -65,7 +64,8 @@
         ".env*",
         "infra/**",
         "vercel*.json",
-        "config/padn/**"
+        "config/padn/**",
+        "scripts/padn/**"
       ]
     }
   },

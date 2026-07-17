@@ -14,6 +14,10 @@ test('extractJsonBlocks: HTML entity 混入や壊れた block に耐える', () 
   assert.equal(blocks[1].b, 2);
 });
 
+// fixtures の Control Root イベントは owner（DREEXY-git）が投稿するため信頼リストに含める
+// （production では discover が policy.actors.human_allowlist から合成する）
+const CONTROL_TRUSTED = { trustedControlAuthors: ['DREEXY-git', 'github-actions[bot]'] };
+
 test('control state fold: revision は単調に最新へ・Director 活動が追跡される', () => {
   const issue = controlRootIssue();
   const comments = [
@@ -21,7 +25,7 @@ test('control state fold: revision は単調に最新へ・Director 活動が追
     controlEventComment({ at: '2026-07-17T01:31:23Z', revision: 3, markers: ['PROMPT_DISPATCHED'] }),
     controlEventComment({ at: '2026-07-17T02:51:31Z', revision: 7, markers: ['QUEUE_UPDATE', 'HOLD'] }),
   ];
-  const state = parseControlState(issue, comments);
+  const state = parseControlState(issue, comments, CONTROL_TRUSTED);
   assert.equal(state.programId, '369-PADN-V5');
   assert.equal(state.controlRevision, 7);
   assert.equal(state.directorEpoch, 1);
@@ -38,12 +42,43 @@ test('control state fold: BACKPRESSURE_ON / INCIDENT_FREEZE marker を検出', (
   const issue = controlRootIssue();
   const state = parseControlState(issue, [
     controlEventComment({ at: '2026-07-17T03:00:00Z', revision: 8, markers: ['BACKPRESSURE_ON'] }),
-  ]);
+  ], CONTROL_TRUSTED);
   assert.equal(state.backpressure, true);
   const state2 = parseControlState(issue, [
     controlEventComment({ at: '2026-07-17T03:00:00Z', revision: 8, markers: ['INCIDENT_FREEZE'] }),
-  ]);
+  ], CONTROL_TRUSTED);
   assert.equal(state2.incidentFreeze, true);
+});
+
+test('control state fold: backpressure 解除は信頼投稿者のみ（Codex R12 P2）', () => {
+  const issue = controlRootIssue();
+  const raise = controlEventComment({ at: '2026-07-17T03:00:00Z', revision: 8, markers: ['BACKPRESSURE_ON'], extra: { backpressure: true } });
+  // 第三者が {"backpressure": false} を投稿しても解除されない
+  const untrustedClear = {
+    id: 1,
+    created_at: '2026-07-17T03:10:00Z',
+    user: { login: 'third-party-user' },
+    body: ['```json', JSON.stringify({ schema: '369-control-event-v1', backpressure: false }), '```'].join('\n'),
+  };
+  const stillOn = parseControlState(issue, [raise, untrustedClear], CONTROL_TRUSTED);
+  assert.equal(stillOn.backpressure, true, '第三者の解除は無視される');
+  // 信頼投稿者（owner）の解除は有効
+  const trustedClear = {
+    id: 2,
+    created_at: '2026-07-17T03:10:00Z',
+    user: { login: 'DREEXY-git' },
+    body: ['```json', JSON.stringify({ schema: '369-control-event-v1', backpressure: false }), '```'].join('\n'),
+  };
+  const cleared = parseControlState(issue, [raise, trustedClear], CONTROL_TRUSTED);
+  assert.equal(cleared.backpressure, false, '信頼投稿者の解除は有効');
+  // 第三者でも BACKPRESSURE_ON（凍結方向）は受理される（fail-safe）
+  const untrustedRaise = {
+    id: 3,
+    created_at: '2026-07-17T03:00:00Z',
+    user: { login: 'third-party-user' },
+    body: 'BACKPRESSURE_ON 相当',
+  };
+  assert.equal(parseControlState(issue, [untrustedRaise], CONTROL_TRUSTED).backpressure, true);
 });
 
 test('WIP body parse: lease table と ALLOWED_PATHS（#67 実フォーマット準拠）', () => {

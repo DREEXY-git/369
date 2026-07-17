@@ -60,6 +60,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      issues: read # observe の snapshot 構築用（secrets は引き続きゼロ）
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -101,6 +103,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: read # snapshot（open PR 列挙）用
       actions: read # §9 budget（collectRuntimeSignals）の workflow run 実測用
     steps:
       - uses: actions/checkout@v4

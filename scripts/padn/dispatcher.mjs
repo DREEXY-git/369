@@ -128,8 +128,8 @@ export function evaluateWritePreconditions({ snapshot, wip, ctx, configs, rt2App
   return { ok: checks.every((c) => c.ok), checks, tier };
 }
 
-/** read-only role job（codex 監査等）の前提条件（write より緩いが autonomy / 一意性 / freeze は必須）。 */
-export function evaluateReviewPreconditions({ snapshot, wip, ctx, configs }) {
+/** read-only role job（codex 監査等）の前提条件（write より緩いが autonomy / 一意性 / freeze / budget は必須）。 */
+export function evaluateReviewPreconditions({ snapshot, wip, ctx, configs, dispatchesToday = 0 }) {
   const checks = [];
   const push = (check, ok, detail = '') => checks.push({ check, ok, detail });
   const control = snapshot.control ?? {};
@@ -142,6 +142,12 @@ export function evaluateReviewPreconditions({ snapshot, wip, ctx, configs }) {
     const pr = prForWip(snapshot, wip);
     push('head_unmoved', !pr || !wip.frozenHead || pr.headSha === wip.frozenHead, pr ? `pr#${pr.number} head=${pr.headSha}` : 'no pr');
   }
+  // budget は read-only role job（LLM 監査）にも適用する（policy は per-day の role job 上限）
+  push(
+    'budget_ok',
+    dispatchesToday < configs.policy.budget.max_role_dispatches_per_day,
+    `today=${dispatchesToday}/${configs.policy.budget.max_role_dispatches_per_day}`,
+  );
   return { ok: checks.every((c) => c.ok), checks };
 }
 
@@ -192,7 +198,7 @@ export function decide({ snapshot, event, ctx, configs, rt2Approvals = {}, dispa
             rt2Approved: rt2Approvals[wip.issueNumber] === true,
             dispatchesToday,
           })
-        : evaluateReviewPreconditions({ snapshot, wip, ctx, configs });
+        : evaluateReviewPreconditions({ snapshot, wip, ctx, configs, dispatchesToday });
       checksByWip[`${wip.issueNumber}:${eventType}`] = evalResult.checks;
       if (!evalResult.ok) continue;
 

@@ -120,6 +120,23 @@ test('budget: 日次上限超過で write されない', async () => {
   assert.equal(r.decisions.some((d) => d.write), false);
 });
 
+test('budget: read-only レビュー dispatch にも日次上限を適用（Codex R9 P2）', async () => {
+  // B2 を FROZEN_FOR_REVIEW に巻き戻した世界（codex 3 監査が候補になる状態）
+  const world = standardWorld();
+  world.commentsByIssue[68] = world.commentsByIssue[68].slice(0, 5);
+  const snap = await snapshotOf(world);
+  const under = decide({ snapshot: snap, event: tick, ctx: ctxWith(), configs, dispatchesToday: 0 });
+  assert.ok(under.decisions.some((d) => d.event_type.startsWith('padn_codex_')), '上限内なら監査が決定される');
+  const over = decide({
+    snapshot: snap,
+    event: tick,
+    ctx: ctxWith(),
+    configs,
+    dispatchesToday: configs.policy.budget.max_role_dispatches_per_day,
+  });
+  assert.equal(over.decisions.length, 0, '上限到達後は read-only 監査も emit しない');
+});
+
 test('idempotent: 同じ snapshot × 同じイベント → 同じ決定（duplicate webhook 安全）', async () => {
   const world = standardWorld();
   world.commentsByIssue[67].push(simpleComment('2026-07-17T02:59:00Z', 'PADN_RT2_APPROVED'));

@@ -29,6 +29,8 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      issues: read # export-snapshot.mjs が Control Root / WIP の Issue とコメントを読む
+      pull-requests: read # export-snapshot.mjs が open PR を列挙する
     outputs:
       final_message: ${{ steps.run_codex.outputs.final-message }}
     env:

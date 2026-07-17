@@ -1,0 +1,146 @@
+// PADN L2 — role job の guard & prompt render。
+// repository_dispatch payload を静的検証 → GitHub 上のライブ状態と突合（packet hash 再計算・
+// head 不動確認）→ テンプレートを描画して prompt ファイルへ書き出す。
+// 1 つでも検証に失敗したら exit 1（role job はそこで停止し、write は発生しない）。
+import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+import { GitHubClient } from './github.mjs';
+import { validatePayload } from './validate.mjs';
+import { verifyPacket, renderTemplate } from './prompts.mjs';
+import { extractJsonBlocks } from './state.mjs';
+
+function fail(msg) {
+  console.error(`padn guard NG: ${msg}`);
+  process.exit(1);
+}
+
+function setOutput(name, value) {
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${String(value).replaceAll('\n', ' ')}\n`);
+}
+
+function setMultilineOutput(name, value) {
+  if (!process.env.GITHUB_OUTPUT) return;
+  const delimiter = `PADN_EOF_${Math.abs(hashCode(String(value))).toString(36)}`;
+  appendFileSync(process.env.GITHUB_OUTPUT, `${name}<<${delimiter}\n${value}\n${delimiter}\n`);
+}
+
+function hashCode(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return h;
+}
+
+export async function main(env = process.env) {
+  const rootDir = env.PADN_ROOT ?? '.';
+  const eventPath = env.GITHUB_EVENT_PATH;
+  if (!eventPath) fail('GITHUB_EVENT_PATH が無い');
+  const raw = JSON.parse(readFileSync(eventPath, 'utf8'));
+  const eventType = raw.action;
+  const payload = raw.client_payload ?? {};
+
+  // 1) 静的検証
+  const staticCheck = validatePayload(payload, rootDir);
+  if (!staticCheck.ok) fail(staticCheck.errors.join(' / '));
+
+  // 2) ライブ再検証（正本は GitHub）
+  const repo = env.GITHUB_REPOSITORY ?? 'DREEXY-git/369';
+  const gh = new GitHubClient({ token: env.GH_TOKEN || env.GITHUB_TOKEN, repo });
+  const issue = await gh.getIssue(payload.wip_issue);
+  if (!issue || issue.state !== 'open') fail(`WIP Issue #${payload.wip_issue} が open ではない`);
+
+  // packet hash 再計算: packet コメントの json block を正準直列化して宣言 hash と突合
+  if (payload.packet_comment_id && payload.prompt_sha256) {
+    const comments = await gh.listIssueComments(payload.wip_issue);
+    const packetComment = comments.find((c) => String(c.id) === String(payload.packet_comment_id));
+    if (!packetComment) fail(`packet コメント ${payload.packet_comment_id} が見つからない`);
+    const blocks = extractJsonBlocks(packetComment.body ?? '');
+    const verified = blocks.some((b) => verifyPacket(b, payload.prompt_sha256).verified);
+    const bodyHasHash = String(packetComment.body ?? '').includes(String(payload.prompt_sha256));
+    if (!verified && !bodyHasHash) fail('prompt hash がライブの packet と一致しない（PROMPT_PACKET_HASH_MISMATCH）');
+    if (!verified && bodyHasHash) {
+      // packet が json block でない形式のときは宣言値一致のみ（write role では branch head 検証も併用）
+      console.log('padn guard: packet json block での完全再計算はできず、宣言 hash の一致のみ確認');
+    }
+  } else if (payload.prompt_sha256 == null) {
+    fail('prompt_sha256 が payload に無い');
+  }
+
+  // head 不動確認（review 系 / remediate は fixed head が前提）
+  if (payload.head_sha && payload.branch) {
+    const liveSha = await gh.getBranchSha(payload.branch).catch(() => null);
+    if (liveSha && liveSha !== payload.head_sha) {
+      fail(`branch ${payload.branch} の head が payload と不一致（payload=${payload.head_sha} live=${liveSha}）— stale dispatch を破棄`);
+    }
+  }
+
+  // base drift 確認（write 系）
+  const mainSha = await gh.getBranchSha('main').catch(() => null);
+  const isWrite = ['padn_claude_implement', 'padn_claude_remediate', 'padn_claude_test'].includes(eventType);
+  if (isWrite && mainSha && payload.base_sha !== mainSha) {
+    fail(`base drift: payload.base_sha=${payload.base_sha} だが main=${mainSha}（Director の再発行が必要）`);
+  }
+
+  // 3) テンプレート描画
+  const roles = JSON.parse(readFileSync(`${rootDir}/config/padn/roles.json`, 'utf8'));
+  let templateFile = null;
+  for (const role of Object.values(roles.roles)) {
+    if (role.prompt_templates?.[eventType]) templateFile = role.prompt_templates[eventType];
+  }
+  if (!templateFile) fail(`event type ${eventType} のテンプレートが roles.json に無い`);
+  const template = readFileSync(`${rootDir}/config/padn/prompt-templates/${templateFile}`, 'utf8');
+  const allowedPathsList = (payload.allowed_paths ?? []).length
+    ? payload.allowed_paths
+    : parseAllowedPathsFromIssue(issue.body ?? '');
+  const vars = {
+    EVENT_TYPE: eventType,
+    WIP_ID: payload.wip_id,
+    WIP_ISSUE: String(payload.wip_issue),
+    CONTROL_ROOT_ISSUE: String(payload.control_root ?? ''),
+    BASE_SHA: payload.base_sha,
+    HEAD_SHA: payload.head_sha ?? payload.base_sha,
+    BRANCH: payload.branch ?? '',
+    LEASE_ID: payload.lease_id ?? '',
+    LEASE_REVISION: String(payload.lease_revision ?? ''),
+    FENCING_TOKEN: payload.fencing_token ?? '',
+    PROMPT_SHA256: payload.prompt_sha256 ?? '',
+    RISK_TIER: payload.risk_tier ?? '',
+    REWORK_COUNT: String((payload.rework_count ?? 0) + 1),
+    PACKET_URL: `https://github.com/${repo}/issues/${payload.wip_issue}#issuecomment-${payload.packet_comment_id ?? ''}`,
+    ALLOWED_PATHS: allowedPathsList.map((p) => `- \`${p}\``).join('\n') || '- （packet 本文を参照）',
+    FORBIDDEN_SUMMARY: 'packet の FORBIDDEN 一覧（WIP Issue 本文）に従う',
+    TRAIN_PRS: JSON.stringify(payload.train_prs ?? []),
+    L1_PROGRAM_ID: payload.l1_program_id ?? '369-PADN-V5',
+    CONTROL_REVISION: String(payload.control_revision ?? ''),
+    SNAPSHOT_PATH: env.PADN_SNAPSHOT_PATH ?? '',
+  };
+  const rendered = renderTemplate(template, vars);
+  const outFile = env.PADN_PROMPT_FILE ?? `${env.RUNNER_TEMP ?? '/tmp'}/padn-prompt.md`;
+  writeFileSync(outFile, rendered, 'utf8');
+
+  setOutput('prompt_file', outFile);
+  setMultilineOutput('prompt', rendered);
+  setOutput('branch', payload.branch ?? '');
+  setOutput('base_sha', payload.base_sha);
+  setOutput('head_sha', payload.head_sha ?? payload.base_sha);
+  setOutput('wip_issue', payload.wip_issue);
+  setOutput('wip_id', payload.wip_id);
+  setOutput('allowed_paths', allowedPathsList.join(','));
+  console.log(`padn guard OK: ${eventType} ${payload.wip_id} → ${outFile}`);
+}
+
+function parseAllowedPathsFromIssue(body) {
+  const sec = /##\s*ALLOWED_PATHS[^\n]*\n([\s\S]*?)(\n##|$)/.exec(body);
+  if (!sec) return [];
+  const out = [];
+  for (const line of sec[1].split('\n')) {
+    const m = /^\s*[-*]\s*`([^`]+)`/.exec(line);
+    if (m) out.push(m[1].replace(/（[^）]*）/g, '').trim());
+  }
+  return out;
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((err) => {
+    console.error(`padn guard failed: ${err.message}`);
+    process.exit(1);
+  });
+}

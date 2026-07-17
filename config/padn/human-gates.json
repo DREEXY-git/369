@@ -1,0 +1,96 @@
+{
+  "schema": "369-padn-l2-human-gates-v1",
+  "notes_ja": "AI / L2 が解除・実行できない Human Gate の正本。dispatcher と watchdog はここを参照して越境を検出する。Gate 到達時は Issue へ approval packet を作って停止する（自動実行しない）。CURRENT_STATE.md の『CI workflow の main 反映』も Human Gate（本 L2 の workflow 自体の main 反映も人間承認が必要）。",
+  "gates": [
+    {
+      "id": "main_merge",
+      "description_ja": "369 main への merge（integration train 含む）",
+      "detection": { "actions": ["merge_pull_request", "push_main"], "paths": [] }
+    },
+    {
+      "id": "vault_main_merge",
+      "description_ja": "369-vault（独立リポジトリ）main への反映",
+      "detection": { "actions": ["vault_push"], "paths": [] }
+    },
+    {
+      "id": "production",
+      "description_ja": "Production deploy / rollback / 本番 DB・queue・worker 操作",
+      "detection": { "actions": ["production_deploy", "production_rollback"], "paths": ["infra/**"] }
+    },
+    {
+      "id": "schema_migration",
+      "description_ja": "Prisma schema / migration の変更・適用",
+      "detection": { "actions": ["migrate_deploy"], "paths": ["packages/db/prisma/schema.prisma", "packages/db/prisma/migrations/**"] }
+    },
+    {
+      "id": "package_lock",
+      "description_ja": "package.json / pnpm-lock.yaml の変更",
+      "detection": { "actions": [], "paths": ["package.json", "**/package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"] }
+    },
+    {
+      "id": "secrets_env_oauth",
+      "description_ja": "Secrets / env / OAuth / GitHub App 権限の設定・変更",
+      "detection": { "actions": ["set_secret", "set_variable_secretlike"], "paths": [".env*"] }
+    },
+    {
+      "id": "external_send",
+      "description_ja": "外部送信（メール送信・外部 API への業務データ送出）",
+      "detection": { "actions": ["external_send"], "paths": [] }
+    },
+    {
+      "id": "real_llm",
+      "description_ja": "実業務データでの実 LLM 実行（CI の fake LLM は対象外。role job の LLM 実行は本 config で明示された監査/実装用途のみ）",
+      "detection": { "actions": ["real_llm_business"], "paths": [] }
+    },
+    {
+      "id": "billing_payment",
+      "description_ja": "課金・決済",
+      "detection": { "actions": ["billing", "payment"], "paths": [] }
+    },
+    {
+      "id": "rbac_abac_labels",
+      "description_ja": "RBAC / ABAC / 機密ラベル定義の変更",
+      "detection": { "actions": [], "paths": ["packages/shared/rbac.ts", "packages/shared/src/rbac*", "packages/shared/labels.ts", "packages/shared/src/labels*"] }
+    },
+    {
+      "id": "destructive_data",
+      "description_ja": "破壊的データ操作（TRUNCATE / 一括削除 / prisma migrate reset 等）",
+      "detection": { "actions": ["db_reset", "truncate", "mass_delete"], "paths": [] }
+    },
+    {
+      "id": "business_phase_close",
+      "description_ja": "Business Phase Close の宣言",
+      "detection": { "actions": ["phase_close"], "paths": [] }
+    },
+    {
+      "id": "scope_expansion",
+      "description_ja": "WIP scope expansion（ALLOWED_PATHS の拡張）",
+      "detection": { "actions": ["lease_scope_expand"], "paths": [] }
+    },
+    {
+      "id": "lane_promotion_2_to_3",
+      "description_ja": "write レーンの 2→3 本目解禁",
+      "detection": { "actions": ["lane_promotion"], "paths": [] }
+    },
+    {
+      "id": "workflow_main_reflect",
+      "description_ja": "GitHub Actions workflow（.github/**）の main 反映（CURRENT_STATE.md の Human Gate）",
+      "detection": { "actions": [], "paths": [".github/**"] }
+    }
+  ],
+  "approval_packet": {
+    "notes_ja": "Human Gate 到達時に dispatcher/reports が生成する approval packet の必須項目。",
+    "required_fields": [
+      "gate_id",
+      "wip_id",
+      "fixed_head_sha",
+      "base_sha",
+      "evidence_links",
+      "review_verdicts",
+      "ci_run",
+      "vercel_preview_status",
+      "rollback_plan_ja",
+      "summary_ja"
+    ]
+  }
+}

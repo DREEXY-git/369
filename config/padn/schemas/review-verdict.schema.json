@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "369-padn-l2-review-verdict-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "verdict", "head_sha", "findings", "summary_ja"],
+  "properties": {
+    "schema": { "const": "369-padn-l2-review-verdict-v1" },
+    "verdict": { "enum": ["PASS", "CHANGES_REQUIRED", "UNVERIFIABLE"] },
+    "head_sha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+    "base_sha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+    "wip_id": { "type": "string" },
+    "role_event_type": { "type": "string" },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "summary_ja"],
+        "properties": {
+          "severity": { "enum": ["release_blocking", "high", "medium", "low"] },
+          "file": { "type": "string" },
+          "summary_ja": { "type": "string" },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "per_member_status": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pr", "status"],
+        "properties": {
+          "pr": { "type": "integer" },
+          "head_sha": { "type": "string" },
+          "status": { "enum": ["OK", "STALE_PASS", "MISSING_PASS", "CONFLICT"] },
+          "note_ja": { "type": "string" }
+        }
+      }
+    },
+    "summary_ja": { "type": "string" }
+  }
+}

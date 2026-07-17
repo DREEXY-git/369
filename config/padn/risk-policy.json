@@ -1,0 +1,112 @@
+{
+  "schema": "369-padn-l2-risk-policy-v1",
+  "notes_ja": "Risk Tier 判定と、モード別に自動開始できる write レーンの上限。変更ファイル群のうち最も高い tier がその WIP の tier。未知パスは fail-closed で RT3 扱い（自動開始不可）。この 'RT' は docs/roadmap/08 の自動化レベル L0-L7 とは別軸（08 の実装上限 L4 は本ポリシーで変更しない）。",
+  "tiers": {
+    "RT0": {
+      "description_ja": "docs / read-only / 生成物のみ",
+      "path_patterns": [
+        "docs/**",
+        "369-vault/**",
+        "README.md",
+        "tasks/**",
+        "config/padn/prompt-templates/**"
+      ]
+    },
+    "RT1": {
+      "description_ja": "純粋ロジック / 分離された UI（DB・権限・外部境界に触れない）",
+      "path_patterns": [
+        "packages/shared/src/**",
+        "packages/shared/*.ts",
+        "apps/web/components/**",
+        "scripts/padn/**"
+      ],
+      "exclude_patterns": [
+        "packages/shared/rbac.ts",
+        "packages/shared/src/rbac*",
+        "packages/shared/labels.ts",
+        "packages/shared/src/labels*"
+      ]
+    },
+    "RT2": {
+      "description_ja": "通常のドメイン write（Server Action / 画面 / read model）",
+      "path_patterns": [
+        "apps/web/app/**",
+        "apps/web/lib/**",
+        "apps/web/tests/**",
+        "packages/ai/src/**",
+        "packages/integrations/src/**"
+      ]
+    },
+    "RT3": {
+      "description_ja": "finance / PII / worker / queue / 高整合性領域",
+      "path_patterns": [
+        "apps/worker/**",
+        "packages/db/src/**",
+        "apps/web/lib/domains/finance/**",
+        "apps/web/app/(app)/finance/**",
+        "apps/web/app/(app)/hr/**",
+        "packages/db/prisma/seed.ts"
+      ]
+    },
+    "RT4": {
+      "description_ja": "schema / CI / Production / billing / 外部送信 / セキュリティポリシー（自動開始 恒久禁止）",
+      "path_patterns": [
+        ".github/**",
+        "packages/db/prisma/schema.prisma",
+        "packages/db/prisma/migrations/**",
+        "package.json",
+        "**/package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "packages/shared/rbac.ts",
+        "packages/shared/src/rbac*",
+        "packages/shared/labels.ts",
+        "packages/shared/src/labels*",
+        ".env*",
+        "infra/**",
+        "vercel*.json",
+        "config/padn/**"
+      ]
+    }
+  },
+  "unknown_path_tier": "RT3",
+  "tier_order": ["RT0", "RT1", "RT2", "RT3", "RT4"],
+  "modes": {
+    "observe": {
+      "description_ja": "観測のみ。write レーン 0。role job の write 系 dispatch は一切行わない。",
+      "auto_start_tiers": [],
+      "max_lanes_per_tier": {},
+      "max_total_write_lanes": 0
+    },
+    "rt0_pilot": {
+      "description_ja": "RT0（docs 等）のみ 1 レーン。",
+      "auto_start_tiers": ["RT0"],
+      "max_lanes_per_tier": { "RT0": 1 },
+      "max_total_write_lanes": 1
+    },
+    "rt1_pilot": {
+      "description_ja": "RT0 + RT1 を各 1 レーンまで。",
+      "auto_start_tiers": ["RT0", "RT1"],
+      "max_lanes_per_tier": { "RT0": 1, "RT1": 1 },
+      "max_total_write_lanes": 2
+    }
+  },
+  "rt2_preapproval": {
+    "description_ja": "RT2 は人間が WIP 単位で事前許可した場合のみ自動開始できる。許可は対象 WIP Issue への人間オーナーによるコメントで、下記 marker を含むこと。",
+    "marker": "PADN_RT2_APPROVED",
+    "approver_logins": ["DREEXY-git"]
+  },
+  "never_auto_start_tiers": ["RT3", "RT4"],
+  "read_only_event_types_exempt": {
+    "notes_ja": "read-only の role job（codex 監査 / oversight / governance / integration audit）は write レーンを消費しないため、mode の write 制限とは独立に起動できる（autonomy enabled が前提）。",
+    "event_types": [
+      "padn_codex_arch",
+      "padn_codex_security",
+      "padn_codex_evidence",
+      "padn_integration_audit",
+      "padn_governance_sync",
+      "padn_oversight",
+      "padn_dispatch"
+    ]
+  }
+}

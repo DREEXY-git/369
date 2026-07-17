@@ -1,0 +1,103 @@
+# 369 PADN L2 — Claude 役割ジョブ（B 実装 / B rework / D テスト作成）
+#
+# 起動経路は repository_dispatch のみ（dispatcher が App token で送る。§6 internal chaining）。
+# default branch の workflow 定義で実行されるため untrusted PR 定義の混入はない。
+#
+# ガード（§9 の defense in depth）:
+#   1. dispatcher 側で §9 全条件を検証済み
+#   2. 本 workflow の guard step が payload を静的検証 + ライブ再検証（packet hash / head / base drift）
+#   3. 実行後に ALLOWED_PATHS 逸脱を機械検査（逸脱で job fail → watchdog 検出対象）
+#
+# Human Gate 越境禁止: main への merge / schema / package / secrets / 外部送信は行わない。
+# 成果は lease で指定された branch への push と Draft PR 更新のみ。
+name: 369 PADN L2 Claude Role Jobs
+
+on:
+  repository_dispatch:
+    types: [padn_claude_implement, padn_claude_remediate, padn_claude_test]
+
+permissions: {}
+
+concurrency:
+  # WIP ごとに同時 1（§10）。評価中の run を消さないため cancel しない。
+  group: 369-padn-claude-${{ github.event.client_payload.wip_id }}
+  cancel-in-progress: false
+
+jobs:
+  role:
+    if: >-
+      github.repository == 'DREEXY-git/369' &&
+      vars.PADN_AUTONOMY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Guard — payload 静的検証
+        run: node scripts/padn/validate.mjs --payload "$GITHUB_EVENT_PATH"
+
+      - name: Guard — ライブ再検証 + prompt render
+        id: packet
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/padn/render-role-prompt.mjs
+
+      - name: Lease branch を用意（既存 remote branch があれば継続、無ければ base_sha から作成）
+        run: |
+          git fetch origin "${{ steps.packet.outputs.branch }}" || true
+          if git rev-parse --verify "origin/${{ steps.packet.outputs.branch }}" >/dev/null 2>&1; then
+            git checkout -B "${{ steps.packet.outputs.branch }}" "origin/${{ steps.packet.outputs.branch }}"
+          else
+            git checkout -B "${{ steps.packet.outputs.branch }}" "${{ steps.packet.outputs.base_sha }}"
+          fi
+
+      - name: Mint GitHub App installation token
+        id: app_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.PADN_GITHUB_APP_ID }}
+          private-key: ${{ secrets.PADN_GITHUB_APP_PRIVATE_KEY }}
+
+      # 公式 action の現行 stable は v1 系（実装時点 v1.0.176 / 2026-07-17 確認）。
+      # prompt 指定で automation mode になる。tool 制限と turn 上限は claude_args で行う。
+      - name: Run Claude role job (automation mode)
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ steps.app_token.outputs.token }}
+          prompt: ${{ steps.packet.outputs.prompt }}
+          settings: |
+            {
+              "permissions": {
+                "deny": [
+                  "Bash(git push --force*)",
+                  "Bash(gh pr merge*)",
+                  "Bash(pnpm db:migrate*)",
+                  "Bash(pnpm db:reset*)",
+                  "WebFetch",
+                  "WebSearch"
+                ]
+              }
+            }
+          claude_args: |
+            --max-turns 60
+            --allowedTools "Edit,Write,Read,Glob,Grep,Bash(pnpm test),Bash(pnpm typecheck),Bash(pnpm lint),Bash(pnpm db:generate),Bash(git add:*),Bash(git commit:*),Bash(git push origin HEAD:*),Bash(git status),Bash(git diff:*),Bash(git log:*)"
+
+      - name: Post-check — ALLOWED_PATHS 逸脱検査（逸脱で fail）
+        env:
+          PADN_ALLOWED_PATHS: ${{ steps.packet.outputs.allowed_paths }}
+        run: |
+          git fetch origin "${{ steps.packet.outputs.branch }}" || true
+          git diff --name-only "${{ steps.packet.outputs.base_sha }}..origin/${{ steps.packet.outputs.branch }}" \
+            | node scripts/padn/check-diff-paths.mjs

@@ -155,6 +155,8 @@
 - [[完全復旧と4軸ロードマップv61]] — 「4機能が消えた」の正体は配信系譜（コードは統合ブランチに存在・利用者画面は main を配信）と判明：復旧ブランチで秘密マスク3経路・クラッシュ残骸の二重実行誤判定・AI社員と3Dオフィスの人物正本を赤テスト先行で修正・NAV 静的契約67＋build識別バッジ・4軸Phase＋AI社員開発環境/Salesforce/MoneyForward台帳を証拠段階と方式で正本化（main/本番は人間GO後のみ・audit176/roadmap80/PR #14）。
 - [[三系統前進v56]] — v5.6 で三系統を同時前進：Evidence ID を EVID- 接頭辞に補正（正式 Function ID と混同しない）・C21 SEO/Content v0（未根拠クレームは AI が生成しない・注入で生成中止・CI 99 green）・Agent Control Plane v0（AI 実行の遷移許可表・巻き戻し禁止・stale を働いていると見せない・schema 変更なし・CI 100 green・スクリーンショット artifact 開始）・Work Evidence Cockpit v0（成果は証拠5区分のみ・削減時間は baseline なしでは「計測なし」・PR #6 新規・CI 103 green）・C22 Referral は Gate 設計のみ（roadmap72-76/audit171-174）。
 
+- [[PADNL2イベント駆動オーケストレータ設計]] — チャット手動だった PADN 役割ジョブ（実装・監査・監督）を GitHub イベントで自動起動する L2 オーケストレータの Draft PR 提案：merge しても default-off（人間が変数を設定するまで完全停止）・Lease/fencing/prompt hash/fixed SHA の L1 規律を継承・Human Gate はツール権限レベルで越境不能・自動化レベル L0-L7 とは別軸で AI 権限は不変（369-PADN-L2-AUTONOMY-V11・未採用・採用は人間 Gate）。
+
 ## 🔗 コード側の正（source of truth）
 
 - 現在地: `369` リポジトリの `tasks/CURRENT_STATE.md`＋git refs。

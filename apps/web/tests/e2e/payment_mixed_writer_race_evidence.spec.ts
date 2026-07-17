@@ -91,16 +91,14 @@ test.afterAll(async () => {
 });
 
 test('required_tests 6（event 層）: 同一 identity 成分でも別 tenant の emit は独立に新規作成され、他 tenant の行は不変', async () => {
-  const T1 = 'tenant-padn-phasea2-mix-ev-1';
-  const T2 = 'tenant-padn-phasea2-mix-ev-2';
-  // 再実行/repeat-each 安全: 専用 tenant 文字列の残骸を先に掃除（DomainEvent.tenantId はスカラ・FK 無し）。
-  for (const tn of [T1, T2]) {
-    const old = await prisma.domainEvent.findMany({ where: { tenantId: tn }, select: { id: true } });
-    await prisma.outboxMessage.deleteMany({ where: { tenantId: tn, eventId: { in: old.map((e) => e.id) } } });
-    await prisma.domainEvent.deleteMany({ where: { tenantId: tn } });
-  }
+  // 決定論要件（rev2 rework 1: CI repeat gate の実測 fail への修正）: fixture identity を repeat-each の
+  // コピー・並列 worker から**完全に独立**させる。tenant 文字列に呼出しごとの一意 suffix（uuid）を付与し、
+  // 全 count assert / cleanup をこの一意 identity にスコープする（固定 tenant の共有 fixture を排除）。
+  const run = randomUUID().replace(/-/g, '').slice(0, 12);
+  const T1 = `tenant-padn-phasea2-mix-ev-1-${run}`;
+  const T2 = `tenant-padn-phasea2-mix-ev-2-${run}`;
   const token = mkKey();
-  const aggregateId = `inv-mix-ev-${process.pid}-${Date.now()}`;
+  const aggregateId = `inv-mix-ev-${run}`;
   try {
     // T1 に canonical 行（Phase B 形状・非空 dedupe）を seed。
     const t1Key = makeCanonicalIdempotencyKey({ tenantId: T1, eventType: 'PAYMENT_RECEIVED', aggregateId, dedupe: token });
@@ -342,15 +340,12 @@ test('required_tests 7（flow 層）: Phase A / 改訂 Phase B replica の mixed
 
 test('required_tests 7（event 層）: 未 commit の canonical insert と emit の直接競合が advisory barrier で直列化され DomainEvent/Outbox 各 1 件（観測ゲート）', async () => {
   test.setTimeout(120000);
-  const T = 'tenant-padn-phasea2-mix-ev-race';
-  // 再実行安全: 専用 tenant の残骸を掃除。
-  {
-    const old = await prisma.domainEvent.findMany({ where: { tenantId: T }, select: { id: true } });
-    await prisma.outboxMessage.deleteMany({ where: { tenantId: T, eventId: { in: old.map((e) => e.id) } } });
-    await prisma.domainEvent.deleteMany({ where: { tenantId: T } });
-  }
+  // 決定論要件（rev2 rework 1）: tenant 文字列を呼出しごとに一意化し、repeat-each コピー・並列 worker 間で
+  // fixture を共有しない（tenant 全域 cleanup も不要になる＝他コピーの行を消さない）。
+  const run = randomUUID().replace(/-/g, '').slice(0, 12);
+  const T = `tenant-padn-phasea2-mix-ev-race-${run}`;
   const token = mkKey();
-  const aggregateId = `inv-ev-race-${process.pid}-${Date.now()}`;
+  const aggregateId = `inv-ev-race-${run}`;
   const identity = { tenantId: T, eventType: 'PAYMENT_RECEIVED' as const, aggregateId, dedupe: token };
   const canonicalKey = makeCanonicalIdempotencyKey(identity);
   const lockMaterial = makeEventIdentityLockMaterial(identity);

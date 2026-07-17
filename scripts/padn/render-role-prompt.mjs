@@ -7,7 +7,41 @@ import { randomBytes } from 'node:crypto';
 import { GitHubClient } from './github.mjs';
 import { validatePayload } from './validate.mjs';
 import { verifyPacket, renderTemplate } from './prompts.mjs';
-import { extractJsonBlocks } from './state.mjs';
+import { extractJsonBlocks, foldWipState } from './state.mjs';
+
+/** packet コメント本文に対する検証結果（正準 JSON block の再計算一致 / 散文中の宣言値一致）。 */
+export function packetVerification(commentBody, declaredHash) {
+  const blocks = extractJsonBlocks(String(commentBody ?? ''));
+  const verified = blocks.some((b) => verifyPacket(b, declaredHash).verified);
+  const prose = String(commentBody ?? '').includes(String(declaredHash));
+  return { verified, prose };
+}
+
+/**
+ * packet 認証の合否ポリシー（Codex review P1）:
+ * write 系は正準 JSON block の再計算一致（verified）が必須。散文中に hash 文字列が
+ * あるだけでは通さない（改竄された block + 据え置きの散文 hash を弾く）。
+ * read-only 系は宣言値一致まで許容（degraded として記録）。
+ */
+export function packetAuthOk(isWrite, { verified, prose }) {
+  if (verified) return { ok: true, degraded: false };
+  if (!isWrite && prose) return { ok: true, degraded: true };
+  return { ok: false, degraded: false };
+}
+
+/** stale/重複 dispatch 判定（Codex review P2）: event type ごとに許容されるライブ状態。 */
+export const EXPECTED_LIVE_STATE = {
+  padn_claude_implement: ['DISPATCHED'],
+  padn_claude_remediate: ['CHANGES_REQUESTED'],
+  padn_claude_test: ['IMPLEMENTING'],
+};
+
+/** guard 通過時に投稿し、状態を進めて以後の重複 emit を止める claim marker。 */
+export const CLAIM_MARKERS = {
+  padn_claude_implement: 'WIP_CLAIMED / IMPLEMENTATION_STARTED',
+  padn_claude_remediate: 'REWORK_STARTED',
+  padn_claude_test: 'TEST_JOB_STARTED',
+};
 
 function fail(msg) {
   console.error(`padn guard NG: ${msg}`);
@@ -54,20 +88,40 @@ export async function main(env = process.env) {
   if (!issue || issue.state !== 'open') fail(`WIP Issue #${payload.wip_issue} が open ではない`);
 
   // packet hash 再計算: packet コメントの json block を正準直列化して宣言 hash と突合
+  let liveComments = null;
   if (payload.packet_comment_id && payload.prompt_sha256) {
-    const comments = await gh.listIssueComments(payload.wip_issue);
-    const packetComment = comments.find((c) => String(c.id) === String(payload.packet_comment_id));
+    liveComments = await gh.listIssueComments(payload.wip_issue);
+    const packetComment = liveComments.find((c) => String(c.id) === String(payload.packet_comment_id));
     if (!packetComment) fail(`packet コメント ${payload.packet_comment_id} が見つからない`);
-    const blocks = extractJsonBlocks(packetComment.body ?? '');
-    const verified = blocks.some((b) => verifyPacket(b, payload.prompt_sha256).verified);
-    const bodyHasHash = String(packetComment.body ?? '').includes(String(payload.prompt_sha256));
-    if (!verified && !bodyHasHash) fail('prompt hash がライブの packet と一致しない（PROMPT_PACKET_HASH_MISMATCH）');
-    if (!verified && bodyHasHash) {
-      // packet が json block でない形式のときは宣言値一致のみ（write role では branch head 検証も併用）
-      console.log('padn guard: packet json block での完全再計算はできず、宣言 hash の一致のみ確認');
+    const auth = packetAuthOk(isWrite, packetVerification(packetComment.body, payload.prompt_sha256));
+    if (!auth.ok) {
+      fail(
+        isWrite
+          ? 'write 系は正準 JSON block の再計算一致が必須（PROMPT_PACKET_HASH_MISMATCH — 散文中の hash 文字列一致では開始しない）'
+          : 'prompt hash がライブの packet と一致しない（PROMPT_PACKET_HASH_MISMATCH）',
+      );
+    }
+    if (auth.degraded) {
+      console.log('padn guard: packet json block での完全再計算はできず、宣言 hash の一致のみ確認（read-only role のため許容）');
     }
   } else if (payload.prompt_sha256 == null) {
     fail('prompt_sha256 が payload に無い');
+  }
+
+  // ライブ WIP 状態の再検査（stale/重複 dispatch の破棄）: dispatcher の 30 分 tick が同じ
+  // イベントを複数 queue しても、状態が既に先へ進んでいれば clean skip する（run は成功扱い）。
+  if (isWrite) {
+    const fold = foldWipState(liveComments ?? []);
+    const expected = EXPECTED_LIVE_STATE[eventType] ?? [];
+    const staleDuplicate =
+      !expected.includes(fold.state) || (eventType === 'padn_claude_test' && fold.testJobStarted);
+    if (staleDuplicate) {
+      console.log(
+        `padn guard SKIP: live state=${fold.state} testJobStarted=${fold.testJobStarted} は ${eventType} の対象外（stale/duplicate dispatch を破棄）`,
+      );
+      setOutput('proceed', 'false');
+      return;
+    }
   }
 
   // head 不動確認（review 系 / remediate は fixed head が前提）
@@ -83,6 +137,36 @@ export async function main(env = process.env) {
   if (isWrite && mainSha && payload.base_sha !== mainSha) {
     fail(`base drift: payload.base_sha=${payload.base_sha} だが main=${mainSha}（Director の再発行が必要）`);
   }
+
+  // 全検証を通過した write 系のみ claim marker を投稿し、WIP 状態を進める（以後の tick は
+  // 重複 emit しない）。protocol 上の状態遷移イベントであり PADN_REPORTS_ENABLED とは独立。
+  // GITHUB_TOKEN 投稿のため新しい workflow は起動しない（ループなし）。
+  if (isWrite) {
+    await gh.createIssueComment(
+      payload.wip_issue,
+      [
+        `## ${CLAIM_MARKERS[eventType]} — L2 role job（${eventType}）`,
+        '',
+        `- packet hash 再計算一致を確認済み / lease \`${payload.lease_id}\` rev ${payload.lease_revision} / fencing \`${payload.fencing_token}\``,
+        '',
+        '```json',
+        JSON.stringify(
+          {
+            schema: '369-l2-event-v1',
+            program_id: '369-PADN-L2-AUTONOMY-V11',
+            event_type: `L2_${eventType.toUpperCase()}_STARTED`,
+            wip_id: payload.wip_id,
+            base_sha: payload.base_sha,
+            idempotency_key: payload.idempotency_key,
+          },
+          null,
+          2,
+        ),
+        '```',
+      ].join('\n'),
+    );
+  }
+  setOutput('proceed', 'true');
 
   // 3) テンプレート描画
   const roles = JSON.parse(readFileSync(`${rootDir}/config/padn/roles.json`, 'utf8'));

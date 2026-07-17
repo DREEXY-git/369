@@ -56,9 +56,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/padn/render-role-prompt.mjs
 
+      # 以降の step は guard が proceed=true を出した場合のみ実行（stale/duplicate dispatch は
+      # guard が clean skip し、run は成功で終わる — Codex review P2 対応）。
       # payload 由来の値は run: へ ${{ }} 直接展開せず env 経由で quote する（script injection 対策。
       # branch は validate.mjs でも形式検証済みだが defense in depth）。
       - name: Lease branch を用意（既存 remote branch があれば継続、無ければ base_sha から作成）
+        if: steps.packet.outputs.proceed == 'true'
         env:
           PADN_BRANCH: ${{ steps.packet.outputs.branch }}
           PADN_BASE_SHA: ${{ steps.packet.outputs.base_sha }}
@@ -72,6 +75,7 @@ jobs:
 
       - name: Mint GitHub App installation token
         id: app_token
+        if: steps.packet.outputs.proceed == 'true'
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.PADN_GITHUB_APP_ID }}
@@ -80,6 +84,7 @@ jobs:
       # 公式 action の現行 stable は v1 系（実装時点 v1.0.176 / 2026-07-17 確認）。
       # prompt 指定で automation mode になる。tool 制限と turn 上限は claude_args で行う。
       - name: Run Claude role job (automation mode)
+        if: steps.packet.outputs.proceed == 'true'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -103,6 +108,7 @@ jobs:
             --allowedTools "Edit,Write,Read,Glob,Grep,Bash(pnpm test),Bash(pnpm typecheck),Bash(pnpm lint),Bash(pnpm db:generate),Bash(git add:*),Bash(git commit:*),Bash(git push origin HEAD:*),Bash(git status),Bash(git diff:*),Bash(git log:*)"
 
       - name: Post-check — ALLOWED_PATHS 逸脱検査（逸脱で fail）
+        if: steps.packet.outputs.proceed == 'true'
         env:
           PADN_ALLOWED_PATHS: ${{ steps.packet.outputs.allowed_paths }}
           PADN_BRANCH: ${{ steps.packet.outputs.branch }}

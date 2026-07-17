@@ -173,6 +173,9 @@ export function decide({ snapshot, event, ctx, configs, rt2Approvals = {}, dispa
     for (const pair of machine.dispatchablePairs()) {
       if (pair.state !== wip.state) continue;
       const eventType = pair.event_type;
+      // padn_claude_test は 1 WIP につき 1 回（TEST_JOB_STARTED marker で冪等化。
+      // IMPLEMENTING が長時間続いても 30 分 tick ごとに重複 emit しない）
+      if (eventType === 'padn_claude_test' && wip.testJobStarted) continue;
       const isWrite = WRITE_EVENT_TYPES.includes(eventType);
       const evalResult = isWrite
         ? evaluateWritePreconditions({

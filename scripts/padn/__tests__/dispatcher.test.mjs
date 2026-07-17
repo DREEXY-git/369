@@ -235,6 +235,25 @@ test('capacity: 候補 WIP 自身のレーンは数えない（1 レーン運用
   assert.deepEqual(testDispatch, ['padn_claude_test']);
 });
 
+test('冪等: TEST_JOB_STARTED marker があれば padn_claude_test を再 emit しない', async () => {
+  const world = standardWorld();
+  world.commentsByIssue[67].push(
+    simpleComment('2026-07-17T02:59:00Z', 'PADN_RT2_APPROVED'),
+    simpleComment('2026-07-17T03:00:00Z', 'WIP_CLAIMED'),
+    simpleComment('2026-07-17T03:01:00Z', 'IMPLEMENTATION_STARTED'),
+    simpleComment('2026-07-17T03:02:00Z', 'TEST_JOB_STARTED — L2 role job'),
+  );
+  const snap = await snapshotOf(world);
+  const r = decide({
+    snapshot: snap,
+    event: tick,
+    ctx: ctxWith({ writeLanesVar: 1 }),
+    configs,
+    rt2Approvals: { 67: true },
+  });
+  assert.equal(r.decisions.some((d) => d.event_type === 'padn_claude_test'), false);
+});
+
 test('per-tier capacity: 同一 tier の他レーンが上限に達していれば write しない', async () => {
   // rt1_pilot で RT1 レーンが既に 1 本アクティブな状態を手組み snapshot で再現
   const mkWip = (issueNumber, wipId, state, paths) => ({

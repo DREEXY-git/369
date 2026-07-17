@@ -22,6 +22,8 @@ const MARKERS = [
   'QUEUE_UPDATE',
   'POST_MERGE_VERIFIED',
   'TEST_EVIDENCE_ADDED',
+  'REWORK_STARTED',
+  'TEST_JOB_STARTED',
 ];
 
 const DIRECTOR_MARKERS = ['PROMPT_DISPATCHED', 'QUEUE_UPDATE', 'HEARTBEAT', 'READY_FOR_HUMAN_GATE', 'LEASE_GRANTED', 'CHECKPOINT', 'SESSION_ONLINE', 'HOLD'];
@@ -148,6 +150,7 @@ export function foldWipState(comments) {
   let lastCheckpointAt = null;
   let claimedAt = null;
   let dispatchedAt = null;
+  let testJobStarted = false;
   const sorted = [...comments].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
   for (const c of sorted) {
     const body = decodeEntities(c.body);
@@ -161,6 +164,8 @@ export function foldWipState(comments) {
       claimedAt = c.created_at;
     }
     if (marks.includes('IMPLEMENTATION_STARTED')) state = 'IMPLEMENTING';
+    if (marks.includes('REWORK_STARTED')) state = 'IMPLEMENTING';
+    if (marks.includes('TEST_JOB_STARTED')) testJobStarted = true;
     if (marks.includes('CHECKPOINT')) lastCheckpointAt = c.created_at;
     if (marks.includes('IMPLEMENTATION_FREEZE')) {
       state = 'FROZEN_FOR_REVIEW';
@@ -183,7 +188,7 @@ export function foldWipState(comments) {
       if (!['CLOSED', 'POST_MERGE_VERIFIED'].includes(state)) state = 'HOLD';
     }
   }
-  return { state, reworkCount, frozenHead, lastCheckpointAt, claimedAt, dispatchedAt };
+  return { state, reworkCount, frozenHead, lastCheckpointAt, claimedAt, dispatchedAt, testJobStarted };
 }
 
 /** state-machine.json を実行可能な形にする。 */

@@ -25,4 +25,4 @@
 
 1. 最新 verdict の finding を列挙し、それぞれに対する修正方針を PR コメントではなくコード＋テストで示す。
 2. `pnpm test` / `pnpm typecheck` / `pnpm lint` を通す。
-3. 新しい fixed head SHA を明記して Issue #{{WIP_ISSUE}} に REWORK 完了コメント（IMPLEMENTATION_FREEZE 再宣言・人間向け要約 + `369-l2-event-v1` JSON）を残す。
+3. 修正を commit する（push と IMPLEMENTATION_FREEZE の再宣言は L2 workflow が確定 head で自動投稿する。あなたは commit まで行えばよい）。進捗要約のコメントは任意。

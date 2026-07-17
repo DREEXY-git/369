@@ -172,6 +172,11 @@ export function decide({ snapshot, event, ctx, configs, rt2Approvals = {}, dispa
   if (!snapshot.ok) return reject('HOLD', snapshot.reason ?? 'control root 不明');
   if (snapshot.control?.incidentFreeze) return reject('FROZEN', 'INCIDENT_FREEZE 中は新規 dispatch しない');
   if (snapshot.control?.backpressure) return reject('BACKPRESSURE', 'BACKPRESSURE_ON 中は新規 dispatch しない');
+  // 重複 WIP / 同一 lease branch の二重リースは fail-closed（lease/fencing 分離の破壊を防ぐ —
+  // Codex R14 P1）。watchdog 検出だけに委ねず dispatcher 自身も新規起動を止める。
+  if ((snapshot.duplicateWips ?? []).length > 0) {
+    return reject('FROZEN', `duplicate WIP/lease branch を検出（fail-closed）: ${JSON.stringify(snapshot.duplicateWips)}`);
+  }
 
   const machine = loadStateMachine(configs.stateMachine);
   const decisions = [];
@@ -196,6 +201,9 @@ export function decide({ snapshot, event, ctx, configs, rt2Approvals = {}, dispa
       // codex レビューレーンも同一サイクルで verdict 済みなら再 emit しない
       //（quorum の残りレーン待ちの間、PASS 済みレーンへ重複 LLM 監査を積まない）
       if (REVIEW_EVENT_TYPES.includes(eventType) && wip.verdictsByLane?.[eventType] !== undefined) continue;
+      // rework 上限を dispatcher でも fail-closed 執行（3 回目以降の remediate は自動起動しない。
+      // REPLAN_REQUIRED は人間/Director の判断事項 — Codex R14 P2）。
+      if (eventType === 'padn_claude_remediate' && (wip.reworkCount ?? 0) > (policy.rework_max ?? 2)) continue;
       const isWrite = WRITE_EVENT_TYPES.includes(eventType);
       // budget は同一 tick で選んだ分も含めて数える
       const effectiveDispatchesToday = dispatchesToday + reservedDispatches;

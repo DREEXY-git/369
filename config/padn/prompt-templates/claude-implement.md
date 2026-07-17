@@ -26,6 +26,6 @@
 1. Issue #{{WIP_ISSUE}} の正式 packet 本文を読み、受入条件を確認する。
 2. BASE_SHA から作業し、ALLOWED_PATHS 内のみ変更する。
 3. `pnpm test` / `pnpm typecheck` / `pnpm lint` を通す。
-4. 変更は BRANCH に commit し、Draft PR のみ（既存 Draft PR があればそれを更新）。
-5. 完了時は fixed head SHA を明記して Issue #{{WIP_ISSUE}} に IMPLEMENTATION_FREEZE コメント（人間向け要約 + `369-l2-event-v1` JSON）を残す。
+4. 変更は BRANCH に commit する（push と Draft PR 作成は L2 workflow が管理する。あなたは commit まで行えばよい）。
+5. 進捗要約を Issue #{{WIP_ISSUE}} にコメントしてよいが、**IMPLEMENTATION_FREEZE marker は L2 workflow が push 後に確定 head で自動投稿する**（あなたが freeze marker を投稿する必要はない）。
 6. 受入条件を満たせない・ALLOWED_PATHS 外の変更が必要と判明した場合は、変更せずに HOLD コメントを残して終了する。

@@ -38,10 +38,10 @@ export function findWipIssues(issues, policy, controlRootNumber) {
 }
 
 /** 1 つの WIP Issue を import（本文 lease + コメント fold + packet hash）。 */
-export async function importWip(gh, issue) {
+export async function importWip(gh, issue, { trustedVerdictAuthors } = {}) {
   const comments = await gh.listIssueComments(issue.number);
   const body = parseWipBody(issue.body ?? '');
-  const fold = foldWipState(comments);
+  const fold = foldWipState(comments, trustedVerdictAuthors ? { trustedVerdictAuthors } : {});
   // PROMPT_DISPATCHED コメントの packet（json block）から prompt_sha256 と packet 位置を拾う
   let promptSha256 = null;
   let packetCommentId = null;
@@ -131,8 +131,10 @@ export async function buildSnapshot(gh, policy, { now = new Date().toISOString()
   snapshot.control = parseControlState(rootResult.issue, rootComments);
 
   const wipIssues = findWipIssues(issues, policy, rootResult.issue.number);
+  // verdict の信頼投稿者 = L2 report job（github-actions[bot]）+ policy の human allowlist
+  const trustedVerdictAuthors = [...new Set([...(policy.actors?.human_allowlist ?? []), 'github-actions[bot]'])];
   for (const wi of wipIssues) {
-    snapshot.wips.push(await importWip(gh, wi));
+    snapshot.wips.push(await importWip(gh, wi, { trustedVerdictAuthors }));
   }
   // 重複 WIP（同じ wipId / 同じ branch）を検出して snapshot に記録（作成はしない）
   const seen = new Map();

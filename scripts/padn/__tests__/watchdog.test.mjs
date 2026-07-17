@@ -85,15 +85,20 @@ test('シグナル系: hash mismatch / CI 0 tests / 連続失敗 / budget / gate
 
 test('rework > 2 と review backlog 超過を検出', async () => {
   const world = standardWorld();
-  // B2 に CHANGES_REQUIRED を 3 回注入
+  // 認証済み CHANGES_REQUIRED verdict（head 一致）を 3 サイクル注入
+  const changesVerdict = (at) =>
+    simpleComment(
+      at,
+      ['## CODEX_VERDICT — padn_codex_arch', '```json', JSON.stringify({ schema: '369-padn-l2-review-verdict-v1', verdict: 'CHANGES_REQUIRED', head_sha: world.B2_HEAD, role_event_type: 'padn_codex_arch', findings: [], summary_ja: 'x' }), '```'].join('\n'),
+    );
   world.commentsByIssue[68].splice(
     5,
     2,
-    simpleComment('2026-07-17T01:20:00Z', 'CHANGES_REQUIRED r1'),
+    changesVerdict('2026-07-17T01:20:00Z'),
     simpleComment('2026-07-17T01:30:00Z', 'IMPLEMENTATION_FREEZE — fixed head ' + world.B2_HEAD),
-    simpleComment('2026-07-17T01:40:00Z', 'CHANGES_REQUIRED r2'),
+    changesVerdict('2026-07-17T01:40:00Z'),
     simpleComment('2026-07-17T01:50:00Z', 'IMPLEMENTATION_FREEZE — fixed head ' + world.B2_HEAD),
-    simpleComment('2026-07-17T02:00:00Z', 'CHANGES_REQUIRED r3'),
+    changesVerdict('2026-07-17T02:00:00Z'),
   );
   const snap = await snapshotOf(world);
   const { findings } = runWatchdog(snap, policy, {}, snap.now);

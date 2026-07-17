@@ -148,8 +148,18 @@ export function parseWipBody(body) {
  */
 export const REQUIRED_REVIEW_LANES = ['padn_codex_arch', 'padn_codex_security', 'padn_codex_evidence'];
 
+/**
+ * verdict block を信頼できる投稿者。L2 の codex report job は GITHUB_TOKEN で投稿するため
+ * github-actions[bot]。呼び出し側（discover）は policy の human allowlist を追加で渡す。
+ * 第三者コメントに貼られた schema 偽装 block は quorum に数えない。
+ */
+export const TRUSTED_VERDICT_AUTHORS = ['github-actions[bot]'];
+
 /** WIP コメント列から現在状態を fold する。 */
-export function foldWipState(comments, { requiredReviewLanes = REQUIRED_REVIEW_LANES } = {}) {
+export function foldWipState(
+  comments,
+  { requiredReviewLanes = REQUIRED_REVIEW_LANES, trustedVerdictAuthors = TRUSTED_VERDICT_AUTHORS } = {},
+) {
   let state = 'PROPOSED';
   let reworkCount = 0;
   let frozenHead = null;
@@ -186,26 +196,34 @@ export function foldWipState(comments, { requiredReviewLanes = REQUIRED_REVIEW_L
       if (sha) frozenHead = sha[1];
       verdictsByLane = {}; // 新 freeze サイクル: 旧 verdict は無効
     }
-    if (marks.includes('CHANGES_REQUIRED')) {
-      // rework は「レビューサイクルごとに 1 回」数える。複数レーンが同一 freeze cycle で
-      // CHANGES_REQUIRED を返してもカウントは 1（レーン数分インフレさせない — Codex R6 P2）。
-      if (state !== 'CHANGES_REQUESTED') reworkCount += 1;
-      state = 'CHANGES_REQUESTED';
-      verdictsByLane = {};
-    }
     // role 別 verdict の収集（L2 の codex report job が投稿する
     // 369-padn-l2-review-verdict-v1 block）。fail-closed:
-    // frozenHead と block の head_sha が両方存在し prefix 一致する verdict のみ計上する
-    //（head_sha 欠落の schema 偽装 block は数えない — Codex review R5 P1）。
-    for (const b of extractJsonBlocks(body)) {
-      if (b.schema !== '369-padn-l2-review-verdict-v1') continue;
-      const lane = b.role_event_type ?? (/CODEX_VERDICT — (padn_[a-z_]+)/.exec(body)?.[1] ?? null);
-      if (!lane) continue;
-      if (!frozenHead || !b.head_sha) continue;
-      const headMatch =
-        String(frozenHead).startsWith(String(b.head_sha)) || String(b.head_sha).startsWith(String(frozenHead));
-      if (!headMatch) continue;
-      verdictsByLane[lane] = b.verdict;
+    // - frozenHead と block の head_sha が両方存在し prefix 一致する verdict のみ計上
+    //   （head_sha 欠落の schema 偽装 block は数えない — Codex R5 P1）
+    // - 投稿者が信頼リスト（report job / policy allowlist）に無いコメントの block は無視
+    //   （第三者の貼り付けで quorum を偽装できない — Codex R10 P2）
+    const commentAuthor = c.user?.login ?? '';
+    const changesLanes = [];
+    if (trustedVerdictAuthors.includes(commentAuthor)) {
+      for (const b of extractJsonBlocks(body)) {
+        if (b.schema !== '369-padn-l2-review-verdict-v1') continue;
+        const lane = b.role_event_type ?? (/CODEX_VERDICT — (padn_[a-z_]+)/.exec(body)?.[1] ?? null);
+        if (!lane) continue;
+        if (!frozenHead || !b.head_sha) continue;
+        const headMatch =
+          String(frozenHead).startsWith(String(b.head_sha)) || String(b.head_sha).startsWith(String(frozenHead));
+        if (!headMatch) continue;
+        verdictsByLane[lane] = b.verdict;
+        if (b.verdict === 'CHANGES_REQUIRED') changesLanes.push(lane);
+      }
+    }
+    // CHANGES_REQUESTED への遷移は「current head の認証済み CHANGES_REQUIRED verdict」のみ
+    //（素の CHANGES_REQUIRED 文字列や stale verdict では rework サイクルを起動しない —
+    //  Codex R10 P1）。rework は遷移エッジでのみ +1（サイクルごと 1 回）。
+    if (changesLanes.length > 0 && ['FROZEN_FOR_REVIEW', 'REVIEW_PASSED'].includes(state)) {
+      reworkCount += 1;
+      state = 'CHANGES_REQUESTED';
+      verdictsByLane = {};
     }
     // FROZEN_FOR_REVIEW → REVIEW_PASSED は「必須監査レーン全てが current head で PASS」のみ。
     // 素の REVIEW_PASS 文字列による集約迂回路は持たない（偶発的なテキスト言及や偽装 marker で

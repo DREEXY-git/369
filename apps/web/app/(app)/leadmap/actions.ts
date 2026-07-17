@@ -281,23 +281,26 @@ export async function classifyReplyAction(formData: FormData) {
 
 /** リードの手動ステージ変更。業務ロジックは lib/domains/crm/lead-stage.ts（V90 P3-CRM STAGE_MUTATION:
  *  対象取得前の leadmap:update ＋ role 由来 human-only（sessionIsAi===false 厳密）fail-closed、
- *  leadId/stage の runtime 検証＋許容遷移の明示、Lead CAS＋StageHistory＋Audit の単一 transaction）。 */
+ *  leadId/stage/expectedStage の runtime 検証＋許容遷移の明示、Lead CAS＋StageHistory＋Audit の単一 transaction。
+ *  R4: 画面表示時の開始 stage（expectedStage）を貫通し、表示後に他の変更が確定していたら stale-conflict）。 */
 export async function updateLeadStageAction(formData: FormData) {
   const user = await requireUser();
   const leadId = String(formData.get('leadId') ?? '');
   const stage = String(formData.get('stage') ?? '');
+  const expectedStage = String(formData.get('expectedStage') ?? '');
   const back = leadId && leadId.length <= 64 ? `/leadmap/leads/${encodeURIComponent(leadId)}` : '/leadmap/pipeline';
   // Action 層でも DB 接触前に fail-closed（domain と二重防御）。
   if (user.isAi !== false || !hasPermission(user, 'leadmap', 'update')) redirect(`${back}?denied=1`);
 
   const result = await updateLeadStage(
     { tenantId: user.tenantId, userId: user.userId, roles: user.roles, sessionIsAi: user.isAi },
-    { leadId, stage },
+    { leadId, stage, expectedStage },
   );
   if (!result.ok) {
     if (result.reason === 'forbidden') redirect(`${back}?denied=1`);
     if (result.reason === 'notfound') redirect('/leadmap/pipeline?error=notfound');
     if (result.reason === 'already') redirect(`${back}?already=1`);
+    if (result.reason === 'stale-conflict') redirect(`${back}?error=stage-stale`);
     if (result.reason === 'invalid-transition' || result.reason === 'conflict') redirect(`${back}?error=stage-transition`);
     redirect(`${back}?error=stage-input`);
   }

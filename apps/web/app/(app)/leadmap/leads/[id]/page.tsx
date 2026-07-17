@@ -80,6 +80,9 @@ export default async function LeadDetailPage({ params, searchParams }: { params:
       {sp.error === 'stage-transition' ? (
         <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">⚠️ 現在のステージからその変更は許可されていません（最新の状態を確認してください）。</div>
       ) : null}
+      {sp.error === 'stage-stale' ? (
+        <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">⚠️ 画面を表示した後にステージが変更されています。変更は行われませんでした。最新の状態を確認してから、もう一度選択してください。</div>
+      ) : null}
       {sp.error === 'stage-input' ? (
         <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">⚠️ ステージ変更の入力が不正です。</div>
       ) : null}
@@ -105,6 +108,9 @@ export default async function LeadDetailPage({ params, searchParams }: { params:
               {canMutateStage && stageTargets.length > 0 ? (
                 <form action={updateLeadStageAction} className="mt-3 flex flex-wrap items-end gap-2 border-t pt-3">
                   <input type="hidden" name="leadId" value={lead.id} />
+                  {/* R4: 画面表示時点の開始ステージを送信し、表示後に他の変更が確定した場合は
+                      domain が stale-conflict（書き込み0）で拒否する（最新 stage への再解釈をしない）。 */}
+                  <input type="hidden" name="expectedStage" value={lead.stage} />
                   <div>
                     <label className="mb-1 block text-xs" htmlFor="stage-select">ステージを変更（手動）</label>
                     <Select id="stage-select" name="stage" required>

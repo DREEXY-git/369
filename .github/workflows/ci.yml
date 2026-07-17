@@ -240,6 +240,26 @@ jobs:
       - name: Meeting atomicity flake repeat gate (--repeat-each=5 --retries=0)
         run: pnpm --filter @hokko/web exec playwright test meeting_atomicity_evidence --repeat-each=5 --retries=0
 
+      # 369-PADN-V5 修正版 Phase A2（required_tests 9）: 入金/イベント identity 4 spec の**件数固定 gate**。
+      # JSON reporter の stats を機械検証し expected==12（3+3+4+2）・skipped==0・unexpected==0・flaky==0 を
+      # 強制する（テスト削除/rename/収集漏れ/skip 化のいずれも件数不一致で CI fail＝silent green の構造的禁止）。
+      # 位置は meeting repeat gate と同じく「Run E2E の前」（full E2E を最後の Playwright 実行に保ち、
+      # R4 の成功時 artifact 保全制約を非弱体化）。retries=0・実 PG service・外部送信/実LLMなし。
+      - name: PADN A2 payment/event identity count gate (12 expected, retries=0, skip=0)
+        run: |
+          PLAYWRIGHT_JSON_OUTPUT_NAME=padn-a2-gate.json pnpm --filter @hokko/web exec playwright test \
+            payment_event_identity_phase_a2 payment_rollback_roundtrip payment_mixed_writer_race domain_event_fnv_collision \
+            --retries=0 --reporter=json
+          node -e "const s=require('./apps/web/padn-a2-gate.json').stats; console.log('padn-a2-gate stats:', JSON.stringify(s)); if(!(s.expected===12&&s.skipped===0&&s.unexpected===0&&s.flaky===0)){console.error('::error::PADN A2 count gate failed: expected 12/skipped 0/unexpected 0/flaky 0 required'); process.exit(1);}"
+
+      # 決定論反復 gate（required_tests 9 後段）: mixed-writer race spec（観測ゲート方式）を --repeat-each=3 で
+      # 反復し、4 tests × 3 = 12 expected・skip/flaky/unexpected 0 を機械検証する（race の決定論性を反復で担保）。
+      - name: PADN A2 mixed-writer race determinism gate (--repeat-each=3, 12 expected)
+        run: |
+          PLAYWRIGHT_JSON_OUTPUT_NAME=padn-a2-repeat-gate.json pnpm --filter @hokko/web exec playwright test \
+            payment_mixed_writer_race --repeat-each=3 --retries=0 --reporter=json
+          node -e "const s=require('./apps/web/padn-a2-repeat-gate.json').stats; console.log('padn-a2-repeat-gate stats:', JSON.stringify(s)); if(!(s.expected===12&&s.skipped===0&&s.unexpected===0&&s.flaky===0)){console.error('::error::PADN A2 repeat gate failed: expected 12(4x3)/skipped 0/unexpected 0/flaky 0 required'); process.exit(1);}"
+
       - name: Run E2E (playwright)
         run: pnpm --filter @hokko/web exec playwright test
 

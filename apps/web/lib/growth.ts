@@ -20,8 +20,9 @@ export interface EmitGrowthInput {
   timeSavingMinutes?: number;
   metric?: Record<string, unknown>;
   payload?: Record<string, unknown>;
-  /** 併せて DomainEvent を発火し、Outbox/Webhook に流す。 */
-  alsoDomainEvent?: { domainType: DomainEventType; aggregateType: string; aggregateId: string };
+  /** 併せて DomainEvent を発火し、Outbox/Webhook に流す。dedupe は identity 契約値を透過する
+   *  （修正版 Phase A: call site が契約 dedupe を表現できないと PA-BLK-1 が再発するため）。 */
+  alsoDomainEvent?: { domainType: DomainEventType; aggregateType: string; aggregateId: string; dedupe?: string };
 }
 
 export async function emitGrowthEvent(
@@ -37,6 +38,7 @@ export async function emitGrowthEvent(
       actorId: input.actorId,
       actorType: input.actorType,
       payload: { growthType: input.type, ...(input.payload ?? {}) },
+      dedupe: input.alsoDomainEvent.dedupe,
     });
     domainEventId = r.eventId;
   }

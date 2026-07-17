@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   makeIdempotencyKey,
+  makeLegacyIdempotencyKey,
   makeCanonicalIdempotencyKey,
+  makeEventIdentityLockMaterial,
+  EVENT_IDENTITY_LOCK_NS,
+  EventIdentityCollisionError,
   classifyIdempotencyKey,
   idempotencyKeyMatchesIdentity,
   isDomainEventType,
@@ -116,6 +120,75 @@ describe('events', () => {
     // unknown 形式の文字列は同値扱いしない
     expect(idempotencyKeyMatchesIdentity('garbage', identity)).toBe(false);
     expect(idempotencyKeyMatchesIdentity('', identity)).toBe(false);
+  });
+
+  it('makeLegacyIdempotencyKey is a permanent byte-identical alias of makeIdempotencyKey', () => {
+    // 修正版 Phase A: 「makeIdempotencyKey がどの encoding か」の名前ドリフト排除のための常設明示名。
+    expect(makeLegacyIdempotencyKey).toBe(makeIdempotencyKey);
+    const identity = { tenantId: 't1', eventType: 'PAYMENT_RECEIVED', aggregateId: 'inv-1', dedupe: 'd1' };
+    expect(makeLegacyIdempotencyKey(identity)).toBe(makeIdempotencyKey(identity));
+  });
+
+  it('canonical key golden pin: PR #57 real-path shapes with non-empty dedupe (byte frozen)', () => {
+    // PAYMENT_RECEIVED = 入金 request 単位（dedupe=requestKey）・RECEIVABLE_COLLECTED = invoice 安定 dedupe。
+    // cda7188（PR #57 payments.ts）の canonical writer と byte 互換であることを全文比較で pin する。
+    expect(
+      makeCanonicalIdempotencyKey({
+        tenantId: 'tenant-a',
+        eventType: 'PAYMENT_RECEIVED',
+        aggregateId: 'inv-1',
+        dedupe: 'cabcdef0123456789abcdef01',
+      }),
+    ).toBe('PAYMENT_RECEIVED:tenant-a:inv-1:cabcdef0123456789abcdef01');
+    expect(
+      makeCanonicalIdempotencyKey({
+        tenantId: 'tenant-a',
+        eventType: 'RECEIVABLE_COLLECTED',
+        aggregateId: 'inv-1',
+        dedupe: 'receivable-collected',
+      }),
+    ).toBe('RECEIVABLE_COLLECTED:tenant-a:inv-1:receivable-collected');
+  });
+
+  it('event identity lock material is namespaced canonical key (frozen for Phase B)', () => {
+    expect(EVENT_IDENTITY_LOCK_NS).toBe('domain_event_identity:v1:');
+    const identity = { tenantId: 't1', eventType: 'PAYMENT_RECEIVED', aggregateId: 'inv-1', dedupe: 'd1' };
+    expect(makeEventIdentityLockMaterial(identity)).toBe(
+      `domain_event_identity:v1:${makeCanonicalIdempotencyKey(identity)}`,
+    );
+    expect(makeEventIdentityLockMaterial(identity)).toBe('domain_event_identity:v1:PAYMENT_RECEIVED:t1:inv-1:d1');
+    // 同一 identity → 同一 material（決定的）・dedupe 相違 → 別 material。
+    expect(makeEventIdentityLockMaterial(identity)).toBe(makeEventIdentityLockMaterial({ ...identity }));
+    expect(makeEventIdentityLockMaterial({ ...identity, dedupe: 'd2' })).not.toBe(
+      makeEventIdentityLockMaterial(identity),
+    );
+  });
+
+  it('FNV collision pin: the measured colliding pair is real (design_verdict_D fnv_collision)', () => {
+    // 実測衝突ペア（tenant 固定でのみ成立・spec 側 fixture と同一値）。legacy encoding が変わると
+    // ここが fail し、衝突試験（domain_event_fnv_collision_evidence.spec.ts）の前提が壊れたことを検出する。
+    const T = 'tenant-padn-phasea2-fnv';
+    expect(
+      makeIdempotencyKey({ tenantId: T, eventType: 'PAYMENT_RECEIVED', aggregateId: 'cos548t95wxp466fnpjhju38e', dedupe: '' }),
+    ).toBe('PAYMENT_RECEIVED:8dbc05a9');
+    expect(
+      makeIdempotencyKey({ tenantId: T, eventType: 'PAYMENT_RECEIVED', aggregateId: 'cwkr44pwctu472mwavgtao6ix', dedupe: '' }),
+    ).toBe('PAYMENT_RECEIVED:8dbc05a9');
+  });
+
+  it('EventIdentityCollisionError carries identity fields (typed fail-closed)', () => {
+    const err = new EventIdentityCollisionError({
+      tenantId: 't1',
+      eventType: 'PAYMENT_RECEIVED',
+      aggregateId: 'inv-1',
+      legacyKey: 'PAYMENT_RECEIVED:8dbc05a9',
+    });
+    expect(err).toBeInstanceOf(Error);
+    expect(err.name).toBe('EventIdentityCollisionError');
+    expect(err.tenantId).toBe('t1');
+    expect(err.eventType).toBe('PAYMENT_RECEIVED');
+    expect(err.aggregateId).toBe('inv-1');
+    expect(err.legacyKey).toBe('PAYMENT_RECEIVED:8dbc05a9');
   });
 
   it('retry backoff grows and is capped', () => {

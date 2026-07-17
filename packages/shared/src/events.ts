@@ -120,6 +120,14 @@ function fnv1a(s: string): string {
 }
 
 /**
+ * **legacy 冪等キーの明示名**（常設・修正版 Phase A / PA-BLK-1）。
+ * makeIdempotencyKey と byte 同一の実装であり、「makeIdempotencyKey がどの encoding か」が
+ * build ごとに変わる名前ドリフトを排除するための恒久 alias。以後どの phase でも改名・意味変更しない。
+ * Phase A の writer はこの legacy encoding で保存する（Phase B が canonical へ切替えるまで不変）。
+ */
+export const makeLegacyIdempotencyKey = makeIdempotencyKey;
+
+/**
  * **canonical 冪等キー**（Phase A・dual-reader 先行導入 / WIP-PADN-PHASEA-001・blocker B2）。
  *
  * PR #57（claude/q2c-payment-void-race-fix-v1）は writer を本形式へ切替える:
@@ -140,6 +148,52 @@ export function makeCanonicalIdempotencyKey(input: {
 }): string {
   const enc = (s: string) => encodeURIComponent(s);
   return `${input.eventType}:${enc(input.tenantId)}:${enc(input.aggregateId)}:${enc(input.dedupe ?? '')}`;
+}
+
+/**
+ * DomainEvent identity 単位の advisory lock 名前空間（修正版 Phase A / PA-BLK-3・凍結）。
+ * repo 内に他の advisory lock 利用は無い（設計監査 C で grep 確認済み）＝名前空間衝突なし。
+ * Phase B も**同一定数・同一関数**（makeEventIdentityLockMaterial）を import し独自生成しない。
+ */
+export const EVENT_IDENTITY_LOCK_NS = 'domain_event_identity:v1:';
+
+/**
+ * advisory lock の lockMaterial（文字列）。bigint 化は **PostgreSQL 側**の
+ * `hashtextextended(lockMaterial, 0)` が唯一の実装点（JS 側では一切ハッシュしない）。
+ * これにより Phase A/B のクライアント実装差・ランタイム差による hash drift が構造的に不可能。
+ * 64bit hash 衝突の影響は「無関係 identity の直列化（待ち増）」のみで、同一性判定は lock ではなく
+ * post-lock の exact 再検索＋列検証が行うため誤 dedupe は起きない（衝突は安全側）。
+ */
+export function makeEventIdentityLockMaterial(input: {
+  tenantId: string;
+  eventType: string;
+  aggregateId: string;
+  dedupe?: string;
+}): string {
+  return EVENT_IDENTITY_LOCK_NS + makeCanonicalIdempotencyKey(input);
+}
+
+/**
+ * legacy FNV キーの真の衝突（別 identity が同一 legacy キーを占有）による書込不能の typed error
+ * （修正版 Phase A / PA-BLK-4・ID-3 fail-closed）。
+ * 他人の行 ID を返さない・キーを変形して書かない・黙って落とさない。復旧経路は Phase B の
+ * canonical writer（無衝突 encoding）で当該 identity が書けること（runbook 記載）。
+ */
+export class EventIdentityCollisionError extends Error {
+  readonly tenantId: string;
+  readonly eventType: string;
+  readonly aggregateId: string;
+  readonly legacyKey: string;
+  constructor(input: { tenantId: string; eventType: string; aggregateId: string; legacyKey: string }) {
+    super(
+      `DomainEvent legacy idempotency key collision (fail-closed): key=${input.legacyKey} eventType=${input.eventType} aggregateId=${input.aggregateId}`,
+    );
+    this.name = 'EventIdentityCollisionError';
+    this.tenantId = input.tenantId;
+    this.eventType = input.eventType;
+    this.aggregateId = input.aggregateId;
+    this.legacyKey = input.legacyKey;
+  }
 }
 
 export type IdempotencyKeyFormat = 'canonical' | 'legacy' | 'unknown';

@@ -124,10 +124,15 @@ export async function main(env = process.env) {
     }
   }
 
-  // head 不動確認（review 系 / remediate は fixed head が前提）
+  // head 不動確認（review 系 / remediate は fixed head が前提）。
+  // branch が存在しない（削除/未取得）場合も fail-closed: silent pass すると claude workflow の
+  // fallback が base_sha から新規作成し、凍結済み変更を失った rework が走ってしまう。
   if (payload.head_sha && payload.branch) {
     const liveSha = await gh.getBranchSha(payload.branch).catch(() => null);
-    if (liveSha && liveSha !== payload.head_sha) {
+    if (!liveSha) {
+      fail(`branch ${payload.branch} が存在しない/取得不能（fixed head ${payload.head_sha} 前提の dispatch は stale として破棄）`);
+    }
+    if (liveSha !== payload.head_sha) {
       fail(`branch ${payload.branch} の head が payload と不一致（payload=${payload.head_sha} live=${liveSha}）— stale dispatch を破棄`);
     }
   }

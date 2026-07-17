@@ -30,6 +30,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      actions: read # collectRuntimeSignals の workflow run 実測（private repo では明示付与が必須）
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

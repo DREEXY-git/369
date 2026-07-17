@@ -254,6 +254,27 @@ test('冪等: TEST_JOB_STARTED marker があれば padn_claude_test を再 emit 
   assert.equal(r.decisions.some((d) => d.event_type === 'padn_claude_test'), false);
 });
 
+test('冪等: verdict 済み codex レビューレーンは quorum 待ち中に再 emit しない（Codex R8 P2）', async () => {
+  const HEAD = 'deadbeefcafe00112233445566778899aabbccdd';
+  const verdict = (at, lane) =>
+    simpleComment(
+      at,
+      ['## CODEX_VERDICT — ' + lane, '```json', JSON.stringify({ schema: '369-padn-l2-review-verdict-v1', verdict: 'PASS', head_sha: HEAD, role_event_type: lane, findings: [], summary_ja: 'x' }), '```'].join('\n'),
+    );
+  const world = standardWorld();
+  world.commentsByIssue[67].push(
+    simpleComment('2026-07-17T03:00:00Z', 'WIP_CLAIMED'),
+    simpleComment('2026-07-17T03:01:00Z', 'IMPLEMENTATION_STARTED'),
+    simpleComment('2026-07-17T03:10:00Z', `IMPLEMENTATION_FREEZE — fixed head ${HEAD}`),
+    verdict('2026-07-17T03:20:00Z', 'padn_codex_arch'), // arch のみ PASS 済み
+  );
+  world.branchShas['claude/padn-b1-contract-child-tenant-v1'] = HEAD;
+  const snap = await snapshotOf(world);
+  const r = decide({ snapshot: snap, event: tick, ctx: ctxWith(), configs });
+  const types = r.decisions.filter((d) => d.payload.wip_issue === 67).map((d) => d.event_type).sort();
+  assert.deepEqual(types, ['padn_codex_evidence', 'padn_codex_security'], 'arch は再 emit されない');
+});
+
 test('冪等: integration audit は同一サイクル・同一 head で 1 回だけ emit（Codex R7 P2）', async () => {
   const HEAD = 'deadbeefcafe00112233445566778899aabbccdd';
   const verdict = (at, lane) =>

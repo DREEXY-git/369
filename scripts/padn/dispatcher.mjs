@@ -179,6 +179,9 @@ export function decide({ snapshot, event, ctx, configs, rt2Approvals = {}, dispa
       // padn_integration_audit は同一サイクル・同一 head の verdict が既にあれば再 emit しない
       //（REVIEW_PASSED は人間判断まで滞留するため tick ごとの重複を防ぐ）
       if (eventType === 'padn_integration_audit' && wip.integrationAuditDone) continue;
+      // codex レビューレーンも同一サイクルで verdict 済みなら再 emit しない
+      //（quorum の残りレーン待ちの間、PASS 済みレーンへ重複 LLM 監査を積まない）
+      if (REVIEW_EVENT_TYPES.includes(eventType) && wip.verdictsByLane?.[eventType] !== undefined) continue;
       const isWrite = WRITE_EVENT_TYPES.includes(eventType);
       const evalResult = isWrite
         ? evaluateWritePreconditions({

@@ -124,6 +124,16 @@ jobs:
           PADN_BRANCH: ${{ steps.packet.outputs.branch }}
           APP_TOKEN: ${{ steps.app_token.outputs.token }}
         run: |
+          # defense in depth（validate.mjs の branch policy 検証に加え）: 保護 ref への push を
+          # workflow 側でも明示拒否し、lease branch prefix を要求する（Codex R13 P1）。
+          case "$PADN_BRANCH" in
+            main|master|release|release/*|release-*|production|production/*|gh-pages)
+              echo "::error::protected ref への push は禁止: $PADN_BRANCH"; exit 1;;
+          esac
+          case "$PADN_BRANCH" in
+            claude/*) : ;;
+            *) echo "::error::lease branch は claude/ prefix 必須: $PADN_BRANCH"; exit 1;;
+          esac
           # App token で push する（GITHUB_TOKEN の push は CI を再帰防止仕様で起動しないため）。
           # 宛先は lease branch の refs/heads のみに固定。
           git push "https://x-access-token:${APP_TOKEN}@github.com/${{ github.repository }}.git" \

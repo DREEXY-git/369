@@ -59,6 +59,11 @@
     "title_marker": "[WIP]",
     "notes_ja": "L2 は WIP Issue を新規作成しない。既存 WIP の import のみ。"
   },
+  "lease_branch": {
+    "allowed_prefixes": ["claude/"],
+    "protected_refs": ["main", "master", "release", "production", "gh-pages"],
+    "notes_ja": "role job が push する lease branch は allowed_prefixes のいずれかで始まり、protected_refs（およびそれらへの前方一致 release*/production* 等）に一致してはならない。main 等の保護 ref への直接 push を構造的に禁止する（Draft PR / Human Gate 経路の迂回防止）。"
+  },
   "reports": {
     "enabled_default": false,
     "throttle_minutes": 60,

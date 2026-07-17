@@ -164,6 +164,18 @@ export function validatePayload(payload, rootDir = '.') {
   if (payload?.head_sha && !/^[0-9a-f]{7,40}$/.test(payload.head_sha)) errors.push('head_sha 形式不正');
   // branch は shell へ渡り得るため base_sha/head_sha と同様に厳格な形式検証（injection 対策）
   if (payload?.branch != null && !/^[A-Za-z0-9._/-]{1,255}$/.test(payload.branch)) errors.push('branch 形式不正');
+  // lease branch が protected ref（main 等）でなく allowed prefix で始まることを強制
+  //（保護 ref への直接 push による Draft PR / Human Gate 迂回の防止 — Codex R13 P1）
+  if (payload?.branch) {
+    const lb = policy.lease_branch ?? {};
+    const branch = String(payload.branch);
+    const protectedHit = (lb.protected_refs ?? []).some((r) => branch === r || branch.startsWith(`${r}/`) || branch.startsWith(`${r}-`));
+    if (protectedHit) errors.push(`branch が protected ref: ${branch}（保護 ref への push 禁止）`);
+    const prefixes = lb.allowed_prefixes ?? [];
+    if (prefixes.length > 0 && !prefixes.some((p) => branch.startsWith(p))) {
+      errors.push(`branch が allowed prefix (${prefixes.join('|')}) で始まらない: ${branch}`);
+    }
+  }
   const depth = Number(payload?.chain_depth ?? NaN);
   if (!Number.isInteger(depth) || depth < 1 || depth > policy.chain.max_depth) errors.push(`chain_depth 不正: ${payload?.chain_depth}`);
   if (!payload?.idempotency_key) errors.push('idempotency_key 欠落');

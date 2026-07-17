@@ -68,4 +68,9 @@ test('payload 検証: branch は shell injection 可能な文字を拒否する'
     const r = validatePayload({ ...base, branch: evil }, ROOT);
     assert.equal(r.ok, false, `branch ${JSON.stringify(evil)} が拒否されなかった`);
   }
+  // protected ref / allowed prefix 外は拒否（Codex R13 P1）
+  for (const bad of ['main', 'master', 'release', 'release/1.0', 'production', 'gh-pages', 'codex/x', 'feature/x']) {
+    assert.equal(validatePayload({ ...base, branch: bad }, ROOT).ok, false, `branch ${bad} が拒否されなかった`);
+  }
+  assert.equal(validatePayload({ ...base, branch: 'claude/padn-b1-contract-child-tenant-v1' }, ROOT).ok, true);
 });

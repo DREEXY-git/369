@@ -179,6 +179,9 @@ export function decide({ snapshot, event, ctx, configs, rt2Approvals = {}, dispa
   // 同一 tick 内で既に選ばれた write 決定のレーン予約（over-commit 防止 — Codex R12 P1）
   const reserved = { total: 0, perTier: {} };
   const reservedWips = new Set();
+  // 同一 tick 内で既に選ばれた全 dispatch（write + read-only）の予約数。日次 budget に加算する
+  //（tick 内で複数の role job が同じ dispatchesToday を見て上限を超える over-shoot 防止 — Codex R13 P2）
+  let reservedDispatches = 0;
 
   for (const wip of snapshot.wips ?? []) {
     for (const pair of machine.dispatchablePairs()) {
@@ -194,6 +197,8 @@ export function decide({ snapshot, event, ctx, configs, rt2Approvals = {}, dispa
       //（quorum の残りレーン待ちの間、PASS 済みレーンへ重複 LLM 監査を積まない）
       if (REVIEW_EVENT_TYPES.includes(eventType) && wip.verdictsByLane?.[eventType] !== undefined) continue;
       const isWrite = WRITE_EVENT_TYPES.includes(eventType);
+      // budget は同一 tick で選んだ分も含めて数える
+      const effectiveDispatchesToday = dispatchesToday + reservedDispatches;
       const evalResult = isWrite
         ? evaluateWritePreconditions({
             snapshot,
@@ -201,12 +206,15 @@ export function decide({ snapshot, event, ctx, configs, rt2Approvals = {}, dispa
             ctx,
             configs,
             rt2Approved: rt2Approvals[wip.issueNumber] === true,
-            dispatchesToday,
+            dispatchesToday: effectiveDispatchesToday,
             reserved,
           })
-        : evaluateReviewPreconditions({ snapshot, wip, ctx, configs, dispatchesToday });
+        : evaluateReviewPreconditions({ snapshot, wip, ctx, configs, dispatchesToday: effectiveDispatchesToday });
       checksByWip[`${wip.issueNumber}:${eventType}`] = evalResult.checks;
       if (!evalResult.ok) continue;
+
+      // この決定は当日の role dispatch を 1 消費する（budget 予約）
+      reservedDispatches += 1;
 
       // write 決定はこの tick のレーン予約を消費する（この WIP が既に予約済みなら二重計上しない）
       if (isWrite && !reservedWips.has(wip.issueNumber)) {

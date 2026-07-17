@@ -83,6 +83,7 @@ export async function importWip(gh, issue) {
     claimedAt: fold.claimedAt,
     dispatchedAt: fold.dispatchedAt,
     testJobStarted: fold.testJobStarted,
+    integrationAuditDone: fold.integrationAuditDone,
     lease,
     allowedPaths: body.allowedPaths,
     promptSha256,

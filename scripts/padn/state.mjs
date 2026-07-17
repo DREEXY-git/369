@@ -223,7 +223,20 @@ export function foldWipState(comments, { requiredReviewLanes = REQUIRED_REVIEW_L
       if (!['CLOSED', 'POST_MERGE_VERIFIED'].includes(state)) state = 'HOLD';
     }
   }
-  return { state, reworkCount, frozenHead, lastCheckpointAt, claimedAt, dispatchedAt, testJobStarted, verdictsByLane };
+  // integration audit は「同一 freeze サイクル・同一 head の verdict が既にあるか」で冪等化する
+  //（REVIEW_PASSED 滞留中の tick ごとの重複 emit を防ぐ。verdictsByLane は cycle でリセット済み）。
+  const integrationAuditDone = verdictsByLane['padn_integration_audit'] !== undefined;
+  return {
+    state,
+    reworkCount,
+    frozenHead,
+    lastCheckpointAt,
+    claimedAt,
+    dispatchedAt,
+    testJobStarted,
+    verdictsByLane,
+    integrationAuditDone,
+  };
 }
 
 /** state-machine.json を実行可能な形にする。 */

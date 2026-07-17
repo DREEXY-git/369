@@ -176,6 +176,9 @@ export function decide({ snapshot, event, ctx, configs, rt2Approvals = {}, dispa
       // padn_claude_test は 1 WIP につき 1 回（TEST_JOB_STARTED marker で冪等化。
       // IMPLEMENTING が長時間続いても 30 分 tick ごとに重複 emit しない）
       if (eventType === 'padn_claude_test' && wip.testJobStarted) continue;
+      // padn_integration_audit は同一サイクル・同一 head の verdict が既にあれば再 emit しない
+      //（REVIEW_PASSED は人間判断まで滞留するため tick ごとの重複を防ぐ）
+      if (eventType === 'padn_integration_audit' && wip.integrationAuditDone) continue;
       const isWrite = WRITE_EVENT_TYPES.includes(eventType);
       const evalResult = isWrite
         ? evaluateWritePreconditions({

@@ -254,6 +254,41 @@ test('冪等: TEST_JOB_STARTED marker があれば padn_claude_test を再 emit 
   assert.equal(r.decisions.some((d) => d.event_type === 'padn_claude_test'), false);
 });
 
+test('冪等: integration audit は同一サイクル・同一 head で 1 回だけ emit（Codex R7 P2）', async () => {
+  const HEAD = 'deadbeefcafe00112233445566778899aabbccdd';
+  const verdict = (at, lane) =>
+    simpleComment(
+      at,
+      ['## CODEX_VERDICT — ' + lane, '```json', JSON.stringify({ schema: '369-padn-l2-review-verdict-v1', verdict: 'PASS', head_sha: HEAD, role_event_type: lane, findings: [], summary_ja: 'x' }), '```'].join('\n'),
+    );
+  const mkWorld = () => {
+    const world = standardWorld();
+    world.commentsByIssue[67].push(
+      simpleComment('2026-07-17T03:00:00Z', 'WIP_CLAIMED'),
+      simpleComment('2026-07-17T03:01:00Z', 'IMPLEMENTATION_STARTED'),
+      simpleComment('2026-07-17T03:10:00Z', `IMPLEMENTATION_FREEZE — fixed head ${HEAD}`),
+      verdict('2026-07-17T03:20:00Z', 'padn_codex_arch'),
+      verdict('2026-07-17T03:21:00Z', 'padn_codex_security'),
+      verdict('2026-07-17T03:22:00Z', 'padn_codex_evidence'),
+    );
+    world.branchShas['claude/padn-b1-contract-child-tenant-v1'] = HEAD;
+    return world;
+  };
+  // 3 レーン PASS → REVIEW_PASSED → integration audit が 1 回決定される
+  const snap1 = await snapshotOf(mkWorld());
+  const r1 = decide({ snapshot: snap1, event: tick, ctx: ctxWith(), configs });
+  assert.deepEqual(
+    r1.decisions.filter((d) => d.payload.wip_issue === 67).map((d) => d.event_type),
+    ['padn_integration_audit'],
+  );
+  // integration verdict が投稿済みなら再 emit しない
+  const world2 = mkWorld();
+  world2.commentsByIssue[67].push(verdict('2026-07-17T03:30:00Z', 'padn_integration_audit'));
+  const snap2 = await snapshotOf(world2);
+  const r2 = decide({ snapshot: snap2, event: tick, ctx: ctxWith(), configs });
+  assert.equal(r2.decisions.some((d) => d.event_type === 'padn_integration_audit'), false);
+});
+
 test('per-tier capacity: 同一 tier の他レーンが上限に達していれば write しない', async () => {
   // rt1_pilot で RT1 レーンが既に 1 本アクティブな状態を手組み snapshot で再現
   const mkWip = (issueNumber, wipId, state, paths) => ({

@@ -192,7 +192,9 @@ export async function main(env = process.env) {
     FENCING_TOKEN: payload.fencing_token ?? '',
     PROMPT_SHA256: payload.prompt_sha256 ?? '',
     RISK_TIER: payload.risk_tier ?? '',
-    REWORK_COUNT: String((payload.rework_count ?? 0) + 1),
+    // fold は CHANGES_REQUESTED への遷移時に既に +1 済み（= 1 が「1回目の rework」）。
+    // ここで加算すると 2 回目の正当な rework が「3回目」と誤表示され早期 REPLAN を誘発する。
+    REWORK_COUNT: String(payload.rework_count ?? 1),
     PACKET_URL: `https://github.com/${repo}/issues/${payload.wip_issue}#issuecomment-${payload.packet_comment_id ?? ''}`,
     ALLOWED_PATHS: allowedPathsList.map((p) => `- \`${p}\``).join('\n') || '- （packet 本文を参照）',
     FORBIDDEN_SUMMARY: 'packet の FORBIDDEN 一覧（WIP Issue 本文）に従う',

@@ -35,11 +35,14 @@ export interface EmitResult {
  *  そこで **dedupe の空性による同一性証明** を使う（Codex R7: payload 等コンテンツの一致を dedupe 一致の
  *  代用にしない）:
  *
- *   - **監査事実（deployed main の静的性質）**: main `7e50a04` の全 production call site は
- *     `emitDomainEvent` / `emitGrowthEvent(alsoDomainEvent)` に dedupe を一切渡さない
- *     （`git grep dedupe origin/main` の一致は packages/shared の unit test のみ）。
- *     ∴ **既存 legacy 行の identity はすべて dedupe=''**。これは確率論ではなく、旧コードの
- *     到達可能な書込経路の全数監査による無損失な証明である。
+ *   - **監査事実（repo 上の静的監査・D-3/D-4 是正済みの正確な範囲）**: main `7e50a04` の全 production
+ *     call site は `emitDomainEvent` / `emitGrowthEvent(alsoDomainEvent)` に dedupe を一切渡さない
+ *     （`git grep dedupe` の一致は本ファイルの型定義・引数の受け渡しと packages/shared の実装/unit test
+ *     のみで、**呼出し側で dedupe を指定する箇所は 0** — 実測 grep に基づく）。
+ *     ∴ **repo 上の書込経路から生成された legacy 行の identity はすべて dedupe=''**。これは現行 repo の
+ *     静的監査に基づく到達可能経路の性質であり（「無損失な証明」ではなく repo 上で成立する監査事実）、
+ *     repo 外の経路で書き込まれた行には適用範囲外。その場合も dedupe-bearing emit は fail-closed で
+ *     誤収束せず、backfill（Human Gate）は legacy 形式行の重複検出時に手動照合で中止される。
  *
  *   - **dedupe-less emit（input.dedupe が空）**: legacy キー一致＋列一致（tenantId/eventType/
  *     aggregateType/aggregateId）が成立すれば、identity = (tenant, type, aggregate, '') は保存行の

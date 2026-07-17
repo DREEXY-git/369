@@ -187,8 +187,10 @@ export function foldWipState(comments, { requiredReviewLanes = REQUIRED_REVIEW_L
       verdictsByLane = {}; // 新 freeze サイクル: 旧 verdict は無効
     }
     if (marks.includes('CHANGES_REQUIRED')) {
+      // rework は「レビューサイクルごとに 1 回」数える。複数レーンが同一 freeze cycle で
+      // CHANGES_REQUIRED を返してもカウントは 1（レーン数分インフレさせない — Codex R6 P2）。
+      if (state !== 'CHANGES_REQUESTED') reworkCount += 1;
       state = 'CHANGES_REQUESTED';
-      reworkCount += 1;
       verdictsByLane = {};
     }
     // role 別 verdict の収集（L2 の codex report job が投稿する

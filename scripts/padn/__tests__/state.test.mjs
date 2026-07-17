@@ -173,6 +173,32 @@ test('WIP fold: 部分 PASS では REVIEW_PASSED に進まない・必須3レー
   assert.equal(forgedNoHead.state, 'FROZEN_FOR_REVIEW');
 });
 
+test('WIP fold: 同一レビューサイクルで複数レーンが CHANGES_REQUIRED でも rework は 1 回', () => {
+  const mk = (at, body) => ({ id: 1, created_at: at, user: { login: 'DREEXY-git' }, body });
+  const HEAD = 'aaaa1111bbbb2222cccc3333dddd4444eeee5555';
+  const fold = foldWipState([
+    mk('2026-07-17T01:00:00Z', 'PROMPT_DISPATCHED'),
+    mk('2026-07-17T01:10:00Z', 'WIP_CLAIMED / IMPLEMENTATION_STARTED'),
+    mk('2026-07-17T01:20:00Z', `IMPLEMENTATION_FREEZE — fixed head ${HEAD}`),
+    verdictComment('2026-07-17T01:30:00Z', 'padn_codex_arch', 'CHANGES_REQUIRED', HEAD),
+    verdictComment('2026-07-17T01:31:00Z', 'padn_codex_security', 'CHANGES_REQUIRED', HEAD),
+    verdictComment('2026-07-17T01:32:00Z', 'padn_codex_evidence', 'CHANGES_REQUIRED', HEAD),
+  ]);
+  assert.equal(fold.state, 'CHANGES_REQUESTED');
+  assert.equal(fold.reworkCount, 1, '3 レーン同時 CHANGES_REQUIRED でもサイクルとしては 1 rework');
+  // 別サイクル（freeze を挟む）なら加算される
+  const twoCycles = foldWipState([
+    mk('2026-07-17T01:00:00Z', 'PROMPT_DISPATCHED'),
+    mk('2026-07-17T01:10:00Z', 'WIP_CLAIMED / IMPLEMENTATION_STARTED'),
+    mk('2026-07-17T01:20:00Z', `IMPLEMENTATION_FREEZE — fixed head ${HEAD}`),
+    verdictComment('2026-07-17T01:30:00Z', 'padn_codex_arch', 'CHANGES_REQUIRED', HEAD),
+    mk('2026-07-17T01:40:00Z', 'REWORK_STARTED'),
+    mk('2026-07-17T01:50:00Z', `IMPLEMENTATION_FREEZE — fixed head ${HEAD}`),
+    verdictComment('2026-07-17T02:00:00Z', 'padn_codex_security', 'CHANGES_REQUIRED', HEAD),
+  ]);
+  assert.equal(twoCycles.reworkCount, 2);
+});
+
 test('state machine: 正常遷移・不正遷移・human_only・HEAD_MOVED での PASS 失効', () => {
   const sm = loadStateMachine(smConfig);
   assert.equal(sm.next('PROPOSED', 'PROMPT_DISPATCHED').to, 'DISPATCHED');

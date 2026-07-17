@@ -64,7 +64,9 @@ jobs:
           path: audit-target
 
       # 公式 action の現行 stable は v1 系（実装時点 v1.11 / 2026-07-17 確認）。
-      # permission-profile ':read-only' + safety-strategy read-only で観測専用にする。
+      # 観測専用は permission-profile ':read-only' のみで指定する。README 明記のとおり
+      # safety-strategy: read-only は legacy sandbox を強制し permission profile と併用不可
+      #（両方渡すと Codex 起動前に失敗）。safety-strategy は既定の drop-sudo（profile と併用可）。
       - name: Run Codex audit (read-only, fixed head)
         id: run_codex
         uses: openai/codex-action@v1
@@ -73,7 +75,6 @@ jobs:
           prompt-file: ${{ runner.temp }}/padn-codex-prompt.md
           working-directory: audit-target
           permission-profile: ':read-only'
-          safety-strategy: read-only
           output-schema-file: config/padn/schemas/review-verdict.schema.json
           output-file: ${{ runner.temp }}/padn-codex-verdict.json
 

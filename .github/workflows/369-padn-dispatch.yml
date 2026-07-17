@@ -76,13 +76,26 @@ jobs:
           PADN_REPORTS_ENABLED: 'false'
           PADN_HAS_APP_TOKEN: 'false'
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/padn/dispatcher.mjs
+        run: |
+          # bootstrap: 本 workflow が PR として提案されている段階では main に scripts/padn が
+          # 存在しない（PR run 29557326475 で MODULE_NOT_FOUND を実測）。その間は skip する。
+          if [ ! -f scripts/padn/dispatcher.mjs ]; then
+            echo "PADN scripts not on main yet (bootstrap phase) — skip" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          node scripts/padn/dispatcher.mjs
 
   dispatch:
-    # pull_request 以外のイベントは default branch（main）の workflow 定義で実行される（trusted）
+    # secrets を持つ job は「main の workflow 定義で実行されている」ことを ref で強制する。
+    # 実測（run 29557345673 / deployment_status / head_branch=claude branch）で、
+    # deployment_status は deploy された branch 上の workflow 定義で実行されると確認済み。
+    # workflow_dispatch も任意 ref を選べるため、refs/heads/main 以外では実行しない
+    #（branch 改変版 workflow 定義に secrets を渡さないための fail-closed。
+    #  branch preview の deployment_status は捨てられるが、30分 schedule が回収する）。
     if: >-
       github.repository == 'DREEXY-git/369' &&
-      github.event_name != 'pull_request'
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

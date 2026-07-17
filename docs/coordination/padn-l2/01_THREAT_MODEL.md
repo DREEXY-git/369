@@ -4,16 +4,23 @@
 前提: single-owner private repo（DREEXY-git/369）だが、fork・bot・prompt injection を含む
 一般的な GitHub Actions 脅威モデルで設計する。
 
-## T1. Untrusted workflow definition（pull_request イベント）
+## T1. Untrusted workflow definition（pull_request / deployment_status / workflow_dispatch）
 
 - **脅威**: `pull_request` トリガの run は PR の merge ref にある workflow 定義で実行される。
-  悪意ある（または誤った）PR が `369-padn-dispatch.yml` 自体を書き換えれば、その run では
-  改変版が動く。
+  さらに**実測で確認済み**（run 29557345673）: `deployment_status` も deploy 対象 branch 上の
+  workflow 定義で実行される（Vercel が全 branch を preview deploy するため、branch push だけで
+  改変版 workflow が発火し得る）。`workflow_dispatch` も任意 ref を選択できる。
+  つまり「非 pull_request = main 定義」という単純化は成立しない。
 - **対策**:
   - PR イベントは `ingest_pr` job のみで処理。**secrets を一切参照しない**（App key も
     ANTHROPIC/OPENAI key も渡らない）。GITHUB_TOKEN は `contents: read` のみ。
+  - **secrets を参照する全 job に `github.ref == 'refs/heads/main'` ガード**（validate.mjs が
+    lint で強制）。branch への deployment_status / branch ref の workflow_dispatch では
+    secrets 付き job が一切走らない。branch preview の deployment イベントは捨てられるが、
+    main 定義で走る 30 分 schedule が状態を回収する。
   - スクリプトは `actions/checkout with ref: main` で **main 版を明示 checkout** し、PR 改変版
-    コードを実行しない（workflow YAML 自体の改変は防げないため secrets ゼロが本命の防御）。
+    コードを実行しない（workflow YAML 自体の改変は防げないため secrets ゼロ + ref ガードが
+    本命の防御）。main に scripts が無い bootstrap 期間は明示 skip。
   - 判断・emit は行わず、30 分以内の schedule / 他イベント（main 定義で実行）が回収する。
   - `pull_request_target` は全面禁止（validate.mjs が lint で強制）。
 

@@ -118,6 +118,9 @@ export function lintWorkflows(rootDir = '.') {
     if (/^\s*pull_request_target\s*:/m.test(text)) errors.push(`${file}: pull_request_target は禁止（untrusted head + secrets の危険）`);
     if (!/^concurrency:/m.test(text)) errors.push(`${file}: concurrency 定義が無い（§10）`);
     if (!/PADN_AUTONOMY_ENABLED/.test(text)) errors.push(`${file}: kill switch（PADN_AUTONOMY_ENABLED）ガードが無い`);
+    // deployment_status / workflow_dispatch は branch 上の workflow 定義で実行され得る（実測確認済み）
+    // ため、全 padn workflow に default-branch ref ガードを要求する
+    if (!/refs\/heads\/main/.test(text)) errors.push(`${file}: default-branch ref ガード（refs/heads/main）が無い`);
     for (const m of text.matchAll(/types:\s*\[([^\]]*)\]/g)) {
       for (const raw of m[1].split(',')) {
         const t = raw.trim().replace(/['"]/g, '');

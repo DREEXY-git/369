@@ -23,6 +23,7 @@ jobs:
     # default-off: schedule 起動は autonomy 有効時のみ実体動作。手動起動は常に可（動作確認用）。
     if: >-
       github.repository == 'DREEXY-git/369' &&
+      github.ref == 'refs/heads/main' &&
       (github.event_name == 'workflow_dispatch' || vars.PADN_AUTONOMY_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 10

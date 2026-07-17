@@ -25,9 +25,12 @@ concurrency:
 
 jobs:
   role:
+    # github.ref == refs/heads/main: workflow_dispatch 等で branch 上の改変版 workflow 定義に
+    # secrets を渡さない（repository_dispatch は常に default branch 定義・ref で実行される）
     if: >-
       github.repository == 'DREEXY-git/369' &&
-      vars.PADN_AUTONOMY_ENABLED == 'true'
+      vars.PADN_AUTONOMY_ENABLED == 'true' &&
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:

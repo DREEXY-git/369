@@ -24,9 +24,11 @@ concurrency:
 
 jobs:
   audit:
+    # github.ref ガード: branch 上の改変版 workflow 定義に secrets を渡さない
     if: >-
       github.repository == 'DREEXY-git/369' &&
-      vars.PADN_AUTONOMY_ENABLED == 'true'
+      vars.PADN_AUTONOMY_ENABLED == 'true' &&
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:

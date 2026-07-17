@@ -142,8 +142,14 @@ export function parseWipBody(body) {
   return { wipId, lease, allowedPaths: allowed };
 }
 
+/**
+ * REVIEW_PASSED へ進むために PASS が揃っていなければならない監査レーン
+ * （roles.json reviewer_independence.review_event_types と validate.mjs で整合検査される）。
+ */
+export const REQUIRED_REVIEW_LANES = ['padn_codex_arch', 'padn_codex_security', 'padn_codex_evidence'];
+
 /** WIP コメント列から現在状態を fold する。 */
-export function foldWipState(comments) {
+export function foldWipState(comments, { requiredReviewLanes = REQUIRED_REVIEW_LANES } = {}) {
   let state = 'PROPOSED';
   let reworkCount = 0;
   let frozenHead = null;
@@ -151,6 +157,8 @@ export function foldWipState(comments) {
   let claimedAt = null;
   let dispatchedAt = null;
   let testJobStarted = false;
+  // freeze サイクルごとの role 別 verdict（head 一致のもののみ）。部分 PASS では進めない。
+  let verdictsByLane = {};
   const sorted = [...comments].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
   for (const c of sorted) {
     const body = decodeEntities(c.body);
@@ -158,25 +166,48 @@ export function foldWipState(comments) {
     if (marks.includes('PROMPT_DISPATCHED')) {
       state = 'DISPATCHED';
       dispatchedAt = c.created_at;
+      testJobStarted = false; // 新 packet サイクルで dedupe をリセット
+      verdictsByLane = {};
     }
     if (marks.includes('WIP_CLAIMED')) {
       state = 'CLAIMED';
       claimedAt = c.created_at;
     }
     if (marks.includes('IMPLEMENTATION_STARTED')) state = 'IMPLEMENTING';
-    if (marks.includes('REWORK_STARTED')) state = 'IMPLEMENTING';
+    if (marks.includes('REWORK_STARTED')) {
+      state = 'IMPLEMENTING';
+      testJobStarted = false; // rework サイクルは新たにテスト/証拠ジョブを要する
+    }
     if (marks.includes('TEST_JOB_STARTED')) testJobStarted = true;
     if (marks.includes('CHECKPOINT')) lastCheckpointAt = c.created_at;
     if (marks.includes('IMPLEMENTATION_FREEZE')) {
       state = 'FROZEN_FOR_REVIEW';
       const sha = /(?:head|HEAD)[^0-9a-f]*([0-9a-f]{7,40})/.exec(body);
       if (sha) frozenHead = sha[1];
+      verdictsByLane = {}; // 新 freeze サイクル: 旧 verdict は無効
     }
     if (marks.includes('CHANGES_REQUIRED')) {
       state = 'CHANGES_REQUESTED';
       reworkCount += 1;
+      verdictsByLane = {};
     }
-    if (marks.includes('REVIEW_PASS') || /verdict[^A-Z]*PASS/.test(body)) {
+    // role 別 verdict の収集（L2 の codex report job が投稿する
+    // 369-padn-l2-review-verdict-v1 block）。frozen head と不一致の verdict は stale として無視。
+    for (const b of extractJsonBlocks(body)) {
+      if (b.schema !== '369-padn-l2-review-verdict-v1') continue;
+      const lane = b.role_event_type ?? (/CODEX_VERDICT — (padn_[a-z_]+)/.exec(body)?.[1] ?? null);
+      if (!lane) continue;
+      if (frozenHead && b.head_sha && !String(frozenHead).startsWith(String(b.head_sha)) && !String(b.head_sha).startsWith(String(frozenHead))) {
+        continue;
+      }
+      verdictsByLane[lane] = b.verdict;
+    }
+    // REVIEW_PASSED へ進めるのは:
+    // (a) L1 の明示的な集約イベント REVIEW_PASS marker（Director/正式 verdict の互換経路）、または
+    // (b) 必須監査レーン全てが current head で PASS（部分 PASS では進まない — Codex review P1）
+    const allLanesPass =
+      requiredReviewLanes.length > 0 && requiredReviewLanes.every((lane) => verdictsByLane[lane] === 'PASS');
+    if (marks.includes('REVIEW_PASS') || allLanesPass) {
       if (state === 'FROZEN_FOR_REVIEW') state = 'REVIEW_PASSED';
     }
     if (marks.includes('READY_FOR_HUMAN_GATE')) state = 'READY_FOR_HUMAN_GATE';
@@ -188,7 +219,7 @@ export function foldWipState(comments) {
       if (!['CLOSED', 'POST_MERGE_VERIFIED'].includes(state)) state = 'HOLD';
     }
   }
-  return { state, reworkCount, frozenHead, lastCheckpointAt, claimedAt, dispatchedAt, testJobStarted };
+  return { state, reworkCount, frozenHead, lastCheckpointAt, claimedAt, dispatchedAt, testJobStarted, verdictsByLane };
 }
 
 /** state-machine.json を実行可能な形にする。 */

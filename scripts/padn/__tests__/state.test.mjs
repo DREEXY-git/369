@@ -89,6 +89,73 @@ test('WIP fold: REWORK_STARTED で IMPLEMENTING へ・TEST_JOB_STARTED は冪等
   assert.equal(fold.testJobStarted, true);
 });
 
+test('WIP fold: rework 開始で TEST_JOB_STARTED dedupe がリセットされる（Codex P2）', () => {
+  const mk = (at, body) => ({ id: 1, created_at: at, user: { login: 'DREEXY-git' }, body });
+  const fold = foldWipState([
+    mk('2026-07-17T01:00:00Z', 'PROMPT_DISPATCHED'),
+    mk('2026-07-17T01:10:00Z', 'WIP_CLAIMED / IMPLEMENTATION_STARTED'),
+    mk('2026-07-17T01:15:00Z', 'TEST_JOB_STARTED — 初回サイクル'),
+    mk('2026-07-17T01:20:00Z', 'IMPLEMENTATION_FREEZE — fixed head aaaa1111bbbb2222cccc3333dddd4444eeee5555'),
+    mk('2026-07-17T01:30:00Z', 'CHANGES_REQUIRED r1'),
+    mk('2026-07-17T01:40:00Z', 'REWORK_STARTED — L2 role job'),
+  ]);
+  assert.equal(fold.state, 'IMPLEMENTING');
+  assert.equal(fold.testJobStarted, false, 'rework サイクルでは再度 test job を許可');
+});
+
+const verdictComment = (at, lane, verdict, head) => ({
+  id: 1,
+  created_at: at,
+  user: { login: 'github-actions[bot]' },
+  body: [
+    `## CODEX_VERDICT — ${lane}（head \`${head}\` 限定有効）`,
+    '',
+    '```json',
+    JSON.stringify({ schema: '369-padn-l2-review-verdict-v1', verdict, head_sha: head, role_event_type: lane, findings: [], summary_ja: 'x' }),
+    '```',
+  ].join('\n'),
+});
+
+test('WIP fold: 部分 PASS では REVIEW_PASSED に進まない・必須3レーン揃いで進む（Codex P1）', () => {
+  const mk = (at, body) => ({ id: 1, created_at: at, user: { login: 'DREEXY-git' }, body });
+  const HEAD = 'aaaa1111bbbb2222cccc3333dddd4444eeee5555';
+  const base = [
+    mk('2026-07-17T01:00:00Z', 'PROMPT_DISPATCHED'),
+    mk('2026-07-17T01:10:00Z', 'WIP_CLAIMED / IMPLEMENTATION_STARTED'),
+    mk('2026-07-17T01:20:00Z', `IMPLEMENTATION_FREEZE — fixed head ${HEAD}`),
+  ];
+  // arch だけ PASS → まだ FROZEN_FOR_REVIEW
+  const partial = foldWipState([...base, verdictComment('2026-07-17T01:30:00Z', 'padn_codex_arch', 'PASS', HEAD)]);
+  assert.equal(partial.state, 'FROZEN_FOR_REVIEW');
+  // 3 レーン PASS → REVIEW_PASSED
+  const full = foldWipState([
+    ...base,
+    verdictComment('2026-07-17T01:30:00Z', 'padn_codex_arch', 'PASS', HEAD),
+    verdictComment('2026-07-17T01:31:00Z', 'padn_codex_security', 'PASS', HEAD),
+    verdictComment('2026-07-17T01:32:00Z', 'padn_codex_evidence', 'PASS', HEAD),
+  ]);
+  assert.equal(full.state, 'REVIEW_PASSED');
+  // stale head の verdict は数えない
+  const stale = foldWipState([
+    ...base,
+    verdictComment('2026-07-17T01:30:00Z', 'padn_codex_arch', 'PASS', HEAD),
+    verdictComment('2026-07-17T01:31:00Z', 'padn_codex_security', 'PASS', 'ffff0000ffff0000ffff0000ffff0000ffff0000'),
+    verdictComment('2026-07-17T01:32:00Z', 'padn_codex_evidence', 'PASS', HEAD),
+  ]);
+  assert.equal(stale.state, 'FROZEN_FOR_REVIEW');
+  // 新しい freeze サイクルで旧 verdict は無効化される
+  const refrozen = foldWipState([
+    ...base,
+    verdictComment('2026-07-17T01:30:00Z', 'padn_codex_arch', 'PASS', HEAD),
+    verdictComment('2026-07-17T01:31:00Z', 'padn_codex_security', 'PASS', HEAD),
+    verdictComment('2026-07-17T01:32:00Z', 'padn_codex_evidence', 'PASS', HEAD),
+    mk('2026-07-17T01:40:00Z', 'CHANGES_REQUIRED 追加指摘'),
+    mk('2026-07-17T01:50:00Z', 'REWORK_STARTED'),
+    mk('2026-07-17T02:00:00Z', `IMPLEMENTATION_FREEZE — fixed head ${HEAD}`),
+  ]);
+  assert.equal(refrozen.state, 'FROZEN_FOR_REVIEW');
+});
+
 test('state machine: 正常遷移・不正遷移・human_only・HEAD_MOVED での PASS 失効', () => {
   const sm = loadStateMachine(smConfig);
   assert.equal(sm.next('PROPOSED', 'PROMPT_DISPATCHED').to, 'DISPATCHED');

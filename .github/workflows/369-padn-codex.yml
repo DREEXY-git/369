@@ -33,6 +33,7 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+      issues: read # guard（render-role-prompt.mjs）が WIP Issue / packet コメントを読むため
     outputs:
       final_message: ${{ steps.run_codex.outputs.final-message }}
       head_sha: ${{ steps.packet.outputs.head_sha }}

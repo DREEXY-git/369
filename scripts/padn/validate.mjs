@@ -6,7 +6,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { promptSha256, verifyPacket, renderTemplate } from './prompts.mjs';
 import { validateFencingToken } from './leases.mjs';
-import { loadStateMachine } from './state.mjs';
+import { loadStateMachine, REQUIRED_REVIEW_LANES } from './state.mjs';
 
 const WORKFLOW_DIR = '.github/workflows';
 const PADN_WORKFLOW_PREFIX = '369-padn-';
@@ -27,6 +27,11 @@ export function validateConfigs(rootDir = '.') {
     for (const et of role.event_types ?? []) {
       if (!declared.has(et)) errors.push(`roles.json: role ${key} の event_type ${et} が dispatch_event_types に無い`);
     }
+  }
+  // fold の必須監査レーン定義と roles.json の review_event_types の整合（部分 PASS 防止の前提）
+  const reviewSet = [...roles.reviewer_independence.review_event_types].sort().join(',');
+  if (reviewSet !== [...REQUIRED_REVIEW_LANES].sort().join(',')) {
+    errors.push(`roles.json review_event_types と state.mjs REQUIRED_REVIEW_LANES が不一致（${reviewSet}）`);
   }
   // review 独立性: review event は codex/mixed role にのみ属する
   for (const et of roles.reviewer_independence.review_event_types) {

@@ -53,6 +53,31 @@ export async function getCashflowBridgeData(tenantId: string): Promise<CashflowB
   };
 }
 
+export interface TenantScopedCashflowForecast {
+  forecast: { id: string; name: string; baseDate: Date; createdAt: Date } | null;
+  lines: Awaited<ReturnType<typeof prisma.cashflowForecastLine.findMany>>;
+}
+
+/**
+ * 最新の資金繰り予測とその明細を actor tenant で二重スコープして返す（V90 FIN_CASHFLOW_FORECAST_LINE_TENANT_R1）。
+ * CashflowForecastLine は forecastId 単独FKのため親子 tenant 一致が DB では強制されない。
+ * 子行の取得条件に必ず tenantId を併記し、親と tenant が一致しない行は値・件数・存在シグナルを
+ * 一切返さない（fail-closed＝その行が存在しない世界と同一の出力）。
+ */
+export async function getTenantScopedCashflowForecast(tenantId: string): Promise<TenantScopedCashflowForecast> {
+  const forecast = await prisma.cashflowForecast.findFirst({
+    where: { tenantId },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, name: true, baseDate: true, createdAt: true },
+  });
+  if (!forecast) return { forecast: null, lines: [] };
+  const lines = await prisma.cashflowForecastLine.findMany({
+    where: { forecastId: forecast.id, tenantId },
+    orderBy: { date: 'asc' },
+  });
+  return { forecast, lines };
+}
+
 export interface CashflowUnifiedData {
   summary: CashflowActualExpected;
   recentActuals: Awaited<ReturnType<typeof prisma.financeEvent.findMany>>;

@@ -136,13 +136,22 @@ export async function buildSnapshot(gh, policy, { now = new Date().toISOString()
   for (const wi of wipIssues) {
     snapshot.wips.push(await importWip(gh, wi, { trustedVerdictAuthors }));
   }
-  // 重複 WIP（同じ wipId / 同じ branch）を検出して snapshot に記録（作成はしない）
+  // 重複 WIP（同じ wipId / 同じ lease branch）を検出して snapshot に記録（作成はしない）
   const seen = new Map();
+  const seenBranch = new Map();
   snapshot.duplicateWips = [];
   for (const w of snapshot.wips) {
     const key = w.wipId ?? `issue-${w.issueNumber}`;
     if (seen.has(key)) snapshot.duplicateWips.push({ key, issues: [seen.get(key), w.issueNumber] });
     else seen.set(key, w.issueNumber);
+    const branch = w.lease?.branch;
+    if (branch) {
+      if (seenBranch.has(branch)) {
+        snapshot.duplicateWips.push({ key: `branch:${branch}`, issues: [seenBranch.get(branch), w.issueNumber] });
+      } else {
+        seenBranch.set(branch, w.issueNumber);
+      }
+    }
   }
   return snapshot;
 }

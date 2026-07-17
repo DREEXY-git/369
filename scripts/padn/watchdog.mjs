@@ -71,6 +71,14 @@ export function runWatchdog(snapshot, policy, signals = {}, now = snapshot?.now)
         add('stale_pass_head_moved', FREEZE, `${wip.wipId}: PASS head=${wip.frozenHead} だが現 head=${pr.headSha}（fixed-SHA 失効規則違反）`);
       }
     }
+    // freeze 中の head 移動も検出する（レビュー dispatch は head_unmoved で止まるが、
+    // 検出が無いとレーンが静かに詰まる — Codex R11 P2。freeze 規律違反として FREEZE 級）
+    if (wip.state === 'FROZEN_FOR_REVIEW' && wip.frozenHead) {
+      const pr = prForWip(snapshot, wip);
+      if (pr && pr.headSha && pr.headSha !== wip.frozenHead) {
+        add('frozen_head_moved', FREEZE, `${wip.wipId}: freeze head=${wip.frozenHead} だが現 head=${pr.headSha}（freeze 規律違反・レビュー停止中）`);
+      }
+    }
     if ((wip.reworkCount ?? 0) > policy.rework_max) {
       add('rework_exceeded', BACKPRESSURE, `${wip.wipId}: rework ${wip.reworkCount} > ${policy.rework_max}（REPLAN_REQUIRED 相当）`);
     }

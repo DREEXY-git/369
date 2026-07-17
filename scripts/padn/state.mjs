@@ -172,7 +172,12 @@ export function foldWipState(
   const sorted = [...comments].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
   for (const c of sorted) {
     const body = decodeEntities(c.body);
-    const marks = markersIn(body);
+    // 状態遷移 marker も verdict と同じ信頼投稿者ゲートを通す（Codex R11 P2:
+    // 第三者コメントの散文 READY_FOR_HUMAN_GATE 等で状態を動かせない）。
+    // L1 の正式イベントは owner（policy allowlist）、L2 claim は github-actions[bot] が投稿する。
+    const commentAuthor = c.user?.login ?? '';
+    const trusted = trustedVerdictAuthors.includes(commentAuthor);
+    const marks = trusted ? markersIn(body) : [];
     if (marks.includes('PROMPT_DISPATCHED')) {
       state = 'DISPATCHED';
       dispatchedAt = c.created_at;
@@ -202,9 +207,8 @@ export function foldWipState(
     //   （head_sha 欠落の schema 偽装 block は数えない — Codex R5 P1）
     // - 投稿者が信頼リスト（report job / policy allowlist）に無いコメントの block は無視
     //   （第三者の貼り付けで quorum を偽装できない — Codex R10 P2）
-    const commentAuthor = c.user?.login ?? '';
     const changesLanes = [];
-    if (trustedVerdictAuthors.includes(commentAuthor)) {
+    if (trusted) {
       for (const b of extractJsonBlocks(body)) {
         if (b.schema !== '369-padn-l2-review-verdict-v1') continue;
         const lane = b.role_event_type ?? (/CODEX_VERDICT — (padn_[a-z_]+)/.exec(body)?.[1] ?? null);

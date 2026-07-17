@@ -111,7 +111,12 @@ export async function main(env = process.env) {
   // ライブ WIP 状態の再検査（stale/重複 dispatch の破棄）: dispatcher の 30 分 tick が同じ
   // イベントを複数 queue しても、状態が既に先へ進んでいれば clean skip する（run は成功扱い）。
   if (isWrite) {
-    const fold = foldWipState(liveComments ?? []);
+    // 状態遷移 marker / verdict の信頼投稿者 = policy の human allowlist + L2 report job
+    const policyCfg = JSON.parse(readFileSync(`${rootDir}/config/padn/dispatch-policy.json`, 'utf8'));
+    const trustedVerdictAuthors = [
+      ...new Set([...(policyCfg.actors?.human_allowlist ?? []), 'github-actions[bot]']),
+    ];
+    const fold = foldWipState(liveComments ?? [], { trustedVerdictAuthors });
     const expected = EXPECTED_LIVE_STATE[eventType] ?? [];
     const staleDuplicate =
       !expected.includes(fold.state) || (eventType === 'padn_claude_test' && fold.testJobStarted);

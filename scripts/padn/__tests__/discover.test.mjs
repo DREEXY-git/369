@@ -66,6 +66,28 @@ test('import: 既存 L1 状態（B1 未クレーム / B2 READY_FOR_HUMAN_GATE）
   assert.deepEqual(snap.duplicateWips, []);
 });
 
+test('import: 同一 lease branch の重複 WIP（別 wipId）も検出する（Codex R11 P2）', async () => {
+  const world = standardWorld();
+  // B1 と同じ branch をリースする別 wipId の WIP を追加
+  const dupBranch = {
+    ...world.issues[1],
+    number: 168,
+    title: '[WIP] WIP-PADN-B9-001 別IDで同一branch',
+    body: world.issues[1].body.replace('WIP-PADN-B1-001', 'WIP-PADN-B9-001'),
+  };
+  const gh = new FakeGH({
+    issues: [...world.issues, dupBranch],
+    commentsByIssue: { ...world.commentsByIssue, 168: world.commentsByIssue[67] },
+    pulls: world.pulls,
+    branchShas: world.branchShas,
+  });
+  const snap = await buildSnapshot(gh, policy, { now: world.now });
+  assert.ok(
+    snap.duplicateWips.some((d) => String(d.key).startsWith('branch:claude/padn-b1-contract-child-tenant-v1')),
+    '同一 branch の二重リースが検出されるはず',
+  );
+});
+
 test('import: 同一 wipId の重複 WIP Issue を検出（作成はしない）', async () => {
   const world = standardWorld();
   const dupIssue = { ...world.issues[1], number: 167 }; // B1 と同じ wipId
@@ -76,6 +98,8 @@ test('import: 同一 wipId の重複 WIP Issue を検出（作成はしない）
     branchShas: world.branchShas,
   });
   const snap = await buildSnapshot(gh, policy, { now: world.now });
-  assert.equal(snap.duplicateWips.length, 1);
-  assert.deepEqual(snap.duplicateWips[0].issues, [67, 167]);
+  // wipId キーと branch キーの両方で検出される（R11 で branch キー追加）
+  const byId = snap.duplicateWips.find((d) => d.key === 'WIP-PADN-B1-001');
+  assert.ok(byId, 'wipId キーで検出されるはず');
+  assert.deepEqual(byId.issues, [67, 167]);
 });

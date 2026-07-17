@@ -119,6 +119,63 @@ function fnv1a(s: string): string {
   return (h >>> 0).toString(16).padStart(8, '0');
 }
 
+/**
+ * **canonical 冪等キー**（Phase A・dual-reader 先行導入 / WIP-PADN-PHASEA-001・blocker B2）。
+ *
+ * PR #57（claude/q2c-payment-void-race-fix-v1）は writer を本形式へ切替える:
+ *   `${eventType}:${encodeURIComponent(tenantId)}:${encodeURIComponent(aggregateId)}:${encodeURIComponent(dedupe ?? '')}`
+ * eventType は固定 enum（`:` を含まない）で素のまま prefix に残し、続く成分は encodeURIComponent で
+ * 符号化するため `:` は区切りのみ＝identity→key は**単射**（delimiter injection でも衝突しない）。
+ *
+ * Phase A の main では**writer はこのキーを書かない**（保存は従来の legacy FNV キーのまま）。
+ * 本関数は「PR #57 デプロイ後に canonical キーで保存された行を、rollback 後の main が
+ * 同一論理イベントとして認識する」ための**読み取り専用**の照合キー生成に使う。
+ * PR #57 の書式と byte 単位で互換であること（独自変更禁止）。
+ */
+export function makeCanonicalIdempotencyKey(input: {
+  tenantId: string;
+  eventType: string;
+  aggregateId: string;
+  dedupe?: string;
+}): string {
+  const enc = (s: string) => encodeURIComponent(s);
+  return `${input.eventType}:${enc(input.tenantId)}:${enc(input.aggregateId)}:${enc(input.dedupe ?? '')}`;
+}
+
+export type IdempotencyKeyFormat = 'canonical' | 'legacy' | 'unknown';
+
+/**
+ * 保存済み idempotencyKey 文字列がどちらの表現かを判定する（dual-read 用）。
+ * - legacy   = `eventType:<fnv32 hex8>` → `:` 区切りでちょうど 2 セグメント・末尾が hex8。
+ * - canonical = `eventType:<enc>:<enc>:<enc>` → ちょうど 4 セグメント（符号化成分は `:` を含まない）。
+ * eventType は enum で `:` を含まないため、両形式のセグメント数は決して重ならない（判定は無曖昧）。
+ */
+export function classifyIdempotencyKey(key: string): IdempotencyKeyFormat {
+  const parts = key.split(':');
+  if (parts.length === 4) return 'canonical';
+  if (parts.length === 2 && /^[0-9a-f]{8}$/.test(parts[1] ?? '')) return 'legacy';
+  return 'unknown';
+}
+
+/**
+ * dual-read の同値判定: 保存済み key（canonical/legacy いずれの表現でも）が、
+ * 指定の論理イベント identity (tenant, eventType, aggregate, dedupe) を表すかを返す。
+ *
+ * - canonical 表現との一致は**単射**なので identity の完全一致を意味する（誤爆なし）。
+ * - legacy 表現との一致は FNV 32bit 縮約（非可逆）に基づく現行 main と同一の保証水準
+ *   （読み取り側の従来挙動から後退しない）。
+ * - どちらの key でもない文字列は false（unknown を同値とみなさない）。
+ */
+export function idempotencyKeyMatchesIdentity(
+  key: string,
+  identity: { tenantId: string; eventType: string; aggregateId: string; dedupe?: string },
+): boolean {
+  const format = classifyIdempotencyKey(key);
+  if (format === 'canonical') return key === makeCanonicalIdempotencyKey(identity);
+  if (format === 'legacy') return key === makeIdempotencyKey(identity);
+  return false;
+}
+
 /** 指数バックオフ（ms）。再試行のスケジューリングに使用。 */
 export function nextRetryDelayMs(retryCount: number, baseMs = 2000, maxMs = 3_600_000): number {
   const d = baseMs * Math.pow(2, Math.max(0, retryCount));

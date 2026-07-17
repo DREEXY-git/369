@@ -192,24 +192,26 @@ export function foldWipState(comments, { requiredReviewLanes = REQUIRED_REVIEW_L
       verdictsByLane = {};
     }
     // role 別 verdict の収集（L2 の codex report job が投稿する
-    // 369-padn-l2-review-verdict-v1 block）。frozen head と不一致の verdict は stale として無視。
+    // 369-padn-l2-review-verdict-v1 block）。fail-closed:
+    // frozenHead と block の head_sha が両方存在し prefix 一致する verdict のみ計上する
+    //（head_sha 欠落の schema 偽装 block は数えない — Codex review R5 P1）。
     for (const b of extractJsonBlocks(body)) {
       if (b.schema !== '369-padn-l2-review-verdict-v1') continue;
       const lane = b.role_event_type ?? (/CODEX_VERDICT — (padn_[a-z_]+)/.exec(body)?.[1] ?? null);
       if (!lane) continue;
-      if (frozenHead && b.head_sha && !String(frozenHead).startsWith(String(b.head_sha)) && !String(b.head_sha).startsWith(String(frozenHead))) {
-        continue;
-      }
+      if (!frozenHead || !b.head_sha) continue;
+      const headMatch =
+        String(frozenHead).startsWith(String(b.head_sha)) || String(b.head_sha).startsWith(String(frozenHead));
+      if (!headMatch) continue;
       verdictsByLane[lane] = b.verdict;
     }
-    // REVIEW_PASSED へ進めるのは:
-    // (a) L1 の明示的な集約イベント REVIEW_PASS marker（Director/正式 verdict の互換経路）、または
-    // (b) 必須監査レーン全てが current head で PASS（部分 PASS では進まない — Codex review P1）
+    // FROZEN_FOR_REVIEW → REVIEW_PASSED は「必須監査レーン全てが current head で PASS」のみ。
+    // 素の REVIEW_PASS 文字列による集約迂回路は持たない（偶発的なテキスト言及や偽装 marker で
+    // quorum を迂回できてしまうため — Codex review R5 P1）。人間/Director の正式な前進路は
+    // READY_FOR_HUMAN_GATE marker（fold で直接遷移・merge は常に人間）。
     const allLanesPass =
       requiredReviewLanes.length > 0 && requiredReviewLanes.every((lane) => verdictsByLane[lane] === 'PASS');
-    if (marks.includes('REVIEW_PASS') || allLanesPass) {
-      if (state === 'FROZEN_FOR_REVIEW') state = 'REVIEW_PASSED';
-    }
+    if (allLanesPass && state === 'FROZEN_FOR_REVIEW') state = 'REVIEW_PASSED';
     if (marks.includes('READY_FOR_HUMAN_GATE')) state = 'READY_FOR_HUMAN_GATE';
     if (marks.includes('REPLAN_REQUIRED')) state = 'REPLAN_REQUIRED';
     if (marks.includes('POST_MERGE_VERIFIED')) state = 'POST_MERGE_VERIFIED';

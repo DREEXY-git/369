@@ -2,7 +2,24 @@
 
 > 現在地の「1枚サマリー」。今の真実だけを書きます。長い経緯は `tasks/PROGRESS.md`、詳細監査は `docs/audit/` を参照。
 
-## 🔴 EMERGENCY FIX V82（最優先・現在の真実・2026-07-14）
+## 🟢 現況同期 V9.x（最優先・現在の真実・2026-07-19）
+
+> 本節は git refs / GitHub PR を実測した現況同期（2026-07-19・自律セッション `claude/continue-work-05aza0`）。以下の旧「EMERGENCY FIX V82」節は **2026-07-14 時点の記録＝superseded**（履歴として保持）。live なオーケストレーション正本は GitHub Issue #66（369-PADN-V5・Control Root）＋各 PR conversation。**push 反映状態は常に git refs を正**とする（本節も固定値化しない）。
+
+- **main = `7e50a04`（PR #55 merge・2026-07-14）で凍結**。以降 merge 0件（約5日）・open Draft PR 37本。**Phase 3 は Exit HOLD / CHANGES_REQUIRED**（Codex PR #59 `codex/v87-governance-evidence`・docs-only 監査正本）。
+- **真の release blocker（人間正本化・PR #57 comment 5002405105）**:
+  - **B1**: client idempotencyKey を global `Payment.id` としてそのまま使用し tenant 条件なし `findUnique` → cross-tenant collision＋presence oracle。修正＝tenantId+client key から server-derived Payment ID・全 lookup を tenant scoped。
+  - **B2**: canonical DomainEvent writer と rollback 先 main（legacy FNV のみ）が非互換 → イベント二重化。修正＝**2段階固定順**: Phase A（dual-reader のみ・main から clean branch）→ **main merge（Human Gate）**→ post-main 確認 → Phase B（PR #57 で canonical writer 切替＋B1）。
+- **Phase A = PR #71**（`claude/padn-phasea-event-dual-reader-v1`・base main `7e50a04`）:
+  - `bf0692b`（原 Phase A・4ファイル）は C/D/E PASS→**2026-07-17 15:21 に人間+Codex が全PASS失効・merge拒否**（HUMAN_GATE_REJECTED）で PA-BLK-1..4 提起。
+  - 修正版 Phase A2 impl packet（#66 CONTROL_REVISION 29〜31）→ **head `8f52e14`（18ファイル: `payments.ts` +220 / `apps/web/lib/events.ts` +165 / 新設 `packages/shared/src/finance-event-identity.ts` +147 / `.github/workflows/ci.yml` +20 / 新設 e2e spec 4本 / UI 配線）**。
+  - `8f52e14` は **exact-head CI green（run `29601013557`・4 job success・07-17 17:50）**。**ただし push 後の freeze・新head再監査コメントは未投稿＝ここでループ停止**。
+  - **独立検証（本セッション・read-only・head `8f52e14`）**: B1 は正しく修正済み（`derivePaymentRequestId(tenantId,requestKey)` = `pay:enc(tenantId):enc(requestKey)` の server-derived・単射・tenant-bound、全 lookup tenant scoped、hit 時も `tenantId` 検証で fail-closed converge）。PA-BLK-1/2/4 の緩和も妥当（全書込を単一 `$transaction`＝transactional outbox・dedupe 契約を identity 関数へ集約・FNV 衝突 typed fail-closed）。**要注意＝PR #71 本文が head と乖離**（本文「4ファイル・.github 非接触・writer 不変」／実 head は 18ファイル・`ci.yml` 変更・決済層 writer 意味論変更）。
+- **Phase B = PR #57**（`claude/q2c-payment-void-race-fix-v1`）は **HOLD @ `cda7188`**（Phase A の main merge 後に着手・PR #57 側を正として競合解決）。
+- **未消化の Human Gate（自動実行しない）**: main merge・schema/migration・Production・Secrets・実LLM・外部送信・課金・PR #70（L2 orchestrator・default-off）採用。
+- **プロセス上の次手**: `8f52e14` を freeze → C/D/E(+Codex) 新 fixed-SHA 再監査 → PR #71 本文を実態へ訂正 → 人間が Phase A を merge → post-main 確認 → Phase B（PR #57）。**`8f52e14` も再監査前 merge は非推奨**（毎回 PASS が deeper finding で覆ってきた経緯）。
+
+## 🔴 EMERGENCY FIX V82（記録・2026-07-14・superseded by 現況同期 V9.x）
 
 - **RELEASE HOLD**: `main=35b0640` を固定し **EMERGENCY_FIX**（rollback/revert/main merge/Production 変更なし）。「Wave 1/2 完了」「Production 安全」「脆弱性ゼロ」は**撤回**。
 - **背景**: Codex が PR #44〜#54 に `CHANGES_REQUIRED`／`POST_MERGE_INCIDENT` を記録。既知 P1 を含む `f2ef4d1` 系譜が Production/Ready で公開済み（人間スクショ確認）。正本: PR#53 comment `#4964987100`（CODEX_EMERGENCY_REMEDIATION_PLAN_V82）。

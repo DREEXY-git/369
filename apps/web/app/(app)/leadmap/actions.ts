@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { isHumanUser } from '@hokko/shared';
 import { classifyOutreachReply } from '@hokko/ai';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
@@ -14,6 +15,7 @@ import {
 import { safeAiInput, saveAIOutputStandard } from '@/lib/ai-safety-server';
 import { prepareExternalPayload } from '@/lib/safe-external-send';
 import { updateLeadStage } from '@/lib/domains/crm/lead-stage';
+import { convertLeadToCustomer, repairLeadLinks } from '@/lib/domains/crm/lead-convert';
 
 const ADVANCE_ON: Record<string, true> = { interested: true, quote: true, doc: true, later: true, forward: true, appointment: true };
 
@@ -313,84 +315,55 @@ export async function updateLeadStageAction(formData: FormData) {
 export async function convertLeadToCustomerAction(formData: FormData) {
   const user = await requireUser();
   const leadId = String(formData.get('leadId') ?? '');
+  // High（Codex PR#49 R1 / PR#60 R2 addendum）: 顧客・案件の実確定は人間専用。
+  // 判定は **role 由来の isHumanUser**（AI_AGENT/AI_ASSISTANT を1つでも含めば混在も拒否）で fail-closed する。
+  // session の isAi は User.isAiAgent 由来の独立 boolean で role と不一致になり得るため、これ単独では判定しない。
+  const nonHuman = !isHumanUser({ roles: user.roles });
+  if (nonHuman) redirect(`/leadmap/leads/${leadId}?denied=1`);
   if (!hasPermission(user, 'customer', 'create') || !hasPermission(user, 'deal', 'create')) {
     redirect(`/leadmap/leads/${leadId}?denied=1`);
   }
 
-  // 二重商談化（顧客・案件の重複作成）の防止 + 6書き込みの原子化:
-  //  - リード行を FOR UPDATE でロックし、同一リードへの同時「商談化」を直列化する。
-  //  - ロック後に customerId を再読取し、既に連携済みなら何も作らず既存顧客へ（冪等）。
-  //    従来は check-then-act（トランザクション外の if lead.customerId）だったため、並行 submit が
-  //    両方 null を読んで顧客・案件を二重作成し得た。
-  //  - 顧客・案件・タイムライン・リード更新・履歴・監査を単一 $transaction で確定（途中失敗で
-  //    「顧客だけ残る／リード未連携」等の不整合＝次回さらに重複を生む状態を作らない）。
-  const outcome = await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT id FROM "LocalBusinessLead" WHERE id = ${leadId} AND "tenantId" = ${user.tenantId} FOR UPDATE`;
-    const lead = await tx.localBusinessLead.findFirst({ where: { id: leadId, tenantId: user.tenantId } });
-    if (!lead) return { kind: 'not-found' as const };
-    if (lead.customerId) return { kind: 'already' as const, customerId: lead.customerId };
+  // 二重商談化の防止・6書き込みの原子化・既存 link の整合検証はサービス層（crm/lead-convert）に集約。
+  // domain へは自己申告 boolean ではなく **roles（必須）** を渡し、domain 内でも isHumanUser で fail-closed
+  // 判定する（Codex PR#60 R3 High: optional boolean の fail-open を排除）。
+  const outcome = await convertLeadToCustomer({ tenantId: user.tenantId, userId: user.userId, roles: user.roles }, leadId);
 
-    const customer = await tx.customer.create({
-      data: {
-        tenantId: user.tenantId,
-        name: lead.name,
-        industry: lead.industry,
-        rank: 'B',
-        ownerId: lead.ownerId ?? user.userId,
-        phone: lead.phone,
-        email: lead.email,
-        address: lead.address,
-        website: lead.website,
-        status: 'prospect',
-        notes: `LeadMap（${lead.city ?? ''} ${lead.industry}）から商談化。優先度 ${lead.priority}。`,
-      },
-    });
-
-    const deal = await tx.deal.create({
-      data: {
-        tenantId: user.tenantId,
-        customerId: customer.id,
-        title: `${lead.name} 商談（新規開拓）`,
-        ownerId: lead.ownerId ?? user.userId,
-        stage: 'CONTACT',
-        probability: 30,
-        nextAction: '初回ヒアリングの日程調整',
-        source: 'leadmap',
-        leadId: lead.id,
-      },
-    });
-
-    await tx.customerTimelineEvent.create({
-      data: { tenantId: user.tenantId, customerId: customer.id, type: 'deal', title: 'LeadMapから商談化', body: `新規開拓リードを顧客・案件に連携しました。`, actorId: user.userId },
-    });
-    await tx.localBusinessLead.update({
-      where: { id: lead.id },
-      data: { customerId: customer.id, dealId: deal.id, stage: 'APPOINTMENT' },
-    });
-    await tx.leadPipelineStageHistory.create({
-      data: { tenantId: user.tenantId, leadId: lead.id, fromStage: lead.stage, toStage: 'APPOINTMENT', note: '商談化（CRM連携）', changedById: user.userId },
-    });
-    await tx.auditLog.create({
-      data: {
-        tenantId: user.tenantId,
-        actorId: user.userId ?? null,
-        actorType: 'user',
-        action: 'create',
-        entityType: 'Customer',
-        entityId: customer.id,
-        summary: `LeadMapリード「${lead.name}」を商談化（顧客・案件を作成）`,
-      },
-    });
-    return { kind: 'created' as const, customerId: customer.id };
-  });
-
+  if (outcome.kind === 'forbidden') redirect(`/leadmap/leads/${leadId}?denied=1`);
   if (outcome.kind === 'not-found') redirect('/leadmap/leads');
+  // 既存 link が別 tenant / dangling / 片側欠落: foreign ID へ redirect せず、修復導線へ fail-closed。
+  if (outcome.kind === 'inconsistent') redirect(`/leadmap/leads/${leadId}?error=link-inconsistent`);
   if (outcome.kind === 'created') {
     revalidatePath(`/leadmap/leads/${leadId}`);
     revalidatePath('/customers');
     revalidatePath('/deals');
   }
   redirect(`/customers/${outcome.customerId}`);
+}
+
+/** 不整合 link を持つリードの修復（人間限定・Codex PR#60 R3 P2）。
+ *  再検証→不正 link 切離し→正規の顧客/案件への収束＋修復監査 を単一 tx で行う（domain に集約）。 */
+export async function repairLeadLinkAction(formData: FormData) {
+  const user = await requireUser();
+  const leadId = String(formData.get('leadId') ?? '');
+  // 実確定を伴う修復は人間専用（role 由来 fail-closed・混在も拒否）。
+  if (!isHumanUser({ roles: user.roles })) redirect(`/leadmap/leads/${leadId}?denied=1`);
+  if (!hasPermission(user, 'customer', 'create') || !hasPermission(user, 'deal', 'create')) {
+    redirect(`/leadmap/leads/${leadId}?denied=1`);
+  }
+
+  const outcome = await repairLeadLinks({ tenantId: user.tenantId, userId: user.userId, roles: user.roles }, leadId);
+  if (outcome.kind === 'forbidden') redirect(`/leadmap/leads/${leadId}?denied=1`);
+  if (outcome.kind === 'not-found') redirect('/leadmap/leads');
+  if (outcome.kind === 'not-linked') redirect(`/leadmap/leads/${leadId}?error=not-linked`);
+  revalidatePath(`/leadmap/leads/${leadId}`);
+  if (outcome.kind === 'repaired') {
+    revalidatePath('/customers');
+    revalidatePath('/deals');
+    redirect(`/leadmap/leads/${leadId}?repaired=1`);
+  }
+  // already（整合済み・冪等収束）は正常表示へ戻す。
+  redirect(`/leadmap/leads/${leadId}`);
 }
 
 /** キャンペーン内の未分析リードを一括でAI分析（LeadMapの半自動化の中核）。 */

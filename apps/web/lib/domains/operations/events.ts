@@ -58,14 +58,20 @@ export async function completeEventProject(actor: Actor, eventId: string): Promi
 export async function assignEventStaff(actor: Actor, eventId: string, name: string, role: string, cost: number): Promise<boolean> {
   const event = await findEvent(actor.tenantId, eventId);
   if (!event) return false;
-  const assignment = await prisma.eventStaffAssignment.create({
-    data: { tenantId: actor.tenantId, eventId, name, role, cost, costRecorded: cost > 0 },
+  // 配置・人件費原価・監査を単一 $transaction で確定。costRecorded=cost>0 の主張と EventCost 行を同時にコミット
+  // し、cost 行だけ失敗して「原価済みフラグだけ立つ（粗利過大）」不整合を防ぐ。growth は commit 後（非クリティカル）。
+  const assignment = await prisma.$transaction(async (tx) => {
+    const a = await tx.eventStaffAssignment.create({
+      data: { tenantId: actor.tenantId, eventId, name, role, cost, costRecorded: cost > 0 },
+    });
+    if (cost > 0) {
+      await tx.eventCost.create({ data: { tenantId: actor.tenantId, eventId, category: `人件費(${role})`, amount: cost } });
+    }
+    await tx.auditLog.create({
+      data: { tenantId: actor.tenantId, actorId: actor.userId ?? null, actorType: 'user', action: 'create', entityType: 'EventStaffAssignment', entityId: a.id, summary: `人員配置: ${name}（${role}・${cost}円）→ ${event.name}` },
+    });
+    return a;
   });
-  // 人件費を原価へ反映（粗利に直結）。
-  if (cost > 0) {
-    await prisma.eventCost.create({ data: { tenantId: actor.tenantId, eventId, category: `人件費(${role})`, amount: cost } });
-  }
-  await writeAudit({ tenantId: actor.tenantId, actorId: actor.userId, action: 'create', entityType: 'EventStaffAssignment', entityId: assignment.id, summary: `人員配置: ${name}（${role}・${cost}円）→ ${event.name}` });
   await emitGrowthEvent({
     tenantId: actor.tenantId,
     type: 'event.staff.assigned',

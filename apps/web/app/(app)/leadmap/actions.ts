@@ -131,17 +131,31 @@ export async function updateOutreachDraftAction(formData: FormData) {
   const leadId = String(formData.get('leadId') ?? '');
   const subject = String(formData.get('subject') ?? '');
   const body = String(formData.get('body') ?? '');
+  // 承認後に内容を差し替えて「承認内容≠送信内容」を作れないよう、人間かつ leadmap:update のみ編集可。
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'leadmap', 'update')) {
+    redirect(`/leadmap/leads/${leadId}/outreach?denied=1`);
+  }
   const draft = await prisma.outreachDraft.findFirst({ where: { id: draftId, tenantId: user.tenantId } });
   if (!draft) redirect(`/leadmap/leads/${leadId}/outreach`);
   if (draft.status !== 'SENT') {
-    await prisma.outreachDraft.update({ where: { id: draftId }, data: { subject, body, status: 'DRAFT' } });
-    await writeAudit({
-      tenantId: user.tenantId,
-      actorId: user.userId,
-      action: 'update',
-      entityType: 'OutreachDraft',
-      entityId: draftId,
-      summary: '営業メール下書きを人手で編集',
+    // 編集＝DRAFT へ戻す。PENDING_APPROVAL だった場合は、承認済み内容と送信内容の乖離を防ぐため
+    // 紐づく PENDING の OutreachApproval / ApprovalRequest を無効化し再申請を必須化する（単一 $transaction）。
+    const wasPending = draft.status === 'PENDING_APPROVAL';
+    await prisma.$transaction(async (tx) => {
+      await tx.outreachDraft.update({ where: { id: draftId }, data: { subject, body, status: 'DRAFT' } });
+      if (wasPending) {
+        await tx.outreachApproval.updateMany({
+          where: { draftId, tenantId: user.tenantId, status: 'PENDING' },
+          data: { status: 'REJECTED', note: '下書き編集により無効化（再申請が必要）' },
+        });
+        await tx.approvalRequest.updateMany({
+          where: { tenantId: user.tenantId, type: 'outreach_send', entityType: 'OutreachDraft', entityId: draftId, status: 'PENDING' },
+          data: { status: 'REJECTED' },
+        });
+      }
+      await tx.auditLog.create({
+        data: { tenantId: user.tenantId, actorId: user.userId ?? null, actorType: 'user', action: 'update', entityType: 'OutreachDraft', entityId: draftId, summary: `営業メール下書きを人手で編集${wasPending ? '（承認申請を無効化・再申請要）' : ''}` },
+      });
     });
   }
   revalidatePath(`/leadmap/leads/${leadId}/outreach`);
@@ -152,6 +166,11 @@ export async function requestOutreachApprovalAction(formData: FormData) {
   const user = await requireUser();
   const draftId = String(formData.get('draftId') ?? '');
   const leadId = String(formData.get('leadId') ?? '');
+  // 外部送信パイプラインの起点（draft→PENDING・lead stage 変更）。人間かつ leadmap:update 保持者のみ。
+  // AI主体/権限なし者が送信承認フローを駆動・lead stage を変更するのを DB 接触前に遮断（role 由来判定）。
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'leadmap', 'update')) {
+    redirect(`/leadmap/leads/${leadId}?denied=1`);
+  }
   const draft = await prisma.outreachDraft.findFirst({
     where: { id: draftId, tenantId: user.tenantId },
     include: { lead: true },
@@ -171,33 +190,32 @@ export async function requestOutreachApprovalAction(formData: FormData) {
     purpose: 'leadmap_outreach_send',
   });
 
-  await prisma.outreachDraft.update({ where: { id: draftId }, data: { status: 'PENDING_APPROVAL' } });
-  await prisma.outreachApproval.create({ data: { tenantId: user.tenantId, draftId, status: 'PENDING' } });
-  await prisma.approvalRequest.create({
-    data: {
-      tenantId: user.tenantId,
-      type: 'outreach_send',
-      title: `営業メール送信承認: ${draft.lead.name}`,
-      summary: draft.subject,
-      entityType: 'OutreachDraft',
-      entityId: draftId,
-      requestedById: user.userId,
-      assigneeRole: 'DEPARTMENT_MANAGER',
-      riskLevel: 'MEDIUM',
-      status: 'PENDING',
-    },
-  });
-  await prisma.localBusinessLead.update({
-    where: { id: draft.leadId },
-    data: { stage: 'PENDING_APPROVAL' },
-  });
-  await writeAudit({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    action: 'create',
-    entityType: 'ApprovalRequest',
-    entityId: draftId,
-    summary: `営業メール送信の承認を申請: ${draft.lead.name}`,
+  // draft→PENDING・OutreachApproval・ApprovalRequest・lead stage・監査を単一 $transaction で all-or-nothing。
+  // 途中失敗で「承認記録なしに stage だけ進む」「draft だけ PENDING」等の片欠けを防ぐ。
+  await prisma.$transaction(async (tx) => {
+    await tx.outreachDraft.update({ where: { id: draftId }, data: { status: 'PENDING_APPROVAL' } });
+    await tx.outreachApproval.create({ data: { tenantId: user.tenantId, draftId, status: 'PENDING' } });
+    await tx.approvalRequest.create({
+      data: {
+        tenantId: user.tenantId,
+        type: 'outreach_send',
+        title: `営業メール送信承認: ${draft.lead.name}`,
+        summary: draft.subject,
+        entityType: 'OutreachDraft',
+        entityId: draftId,
+        requestedById: user.userId,
+        assigneeRole: 'DEPARTMENT_MANAGER',
+        riskLevel: 'MEDIUM',
+        status: 'PENDING',
+      },
+    });
+    await tx.localBusinessLead.update({
+      where: { id: draft.leadId },
+      data: { stage: 'PENDING_APPROVAL' },
+    });
+    await tx.auditLog.create({
+      data: { tenantId: user.tenantId, actorId: user.userId ?? null, actorType: 'user', action: 'create', entityType: 'ApprovalRequest', entityId: draftId, summary: `営業メール送信の承認を申請: ${draft.lead.name}` },
+    });
   });
   revalidatePath('/approvals');
   redirect(`/leadmap/leads/${draft.leadId}/outreach`);
@@ -252,10 +270,16 @@ export async function classifyReplyAction(formData: FormData) {
   let stageNote = '';
   if (cls.classification === 'unsubscribe') {
     const target = draft.lead.email ?? `info@${draft.lead.placeId}.example.jp`;
-    await prisma.suppressionList
-      .create({ data: { tenantId: user.tenantId, channel: 'email', value: target, reason: '返信で配信停止希望' } })
-      .catch(() => {});
-    await prisma.localBusinessLead.update({ where: { id: draft.leadId }, data: { stage: 'UNSUBSCRIBED' } });
+    // 抑止リスト登録＋ステージ更新を単一 $transaction で確定。upsert で冪等化し（全エラー握り潰しを廃止）、
+    // 抑止の記録に失敗したら stage も UNSUBSCRIBED にしない＝送信ゲート isSuppressed をすり抜けさせない（fail-closed）。
+    await prisma.$transaction(async (tx) => {
+      await tx.suppressionList.upsert({
+        where: { tenantId_channel_value: { tenantId: user.tenantId, channel: 'email', value: target } },
+        create: { tenantId: user.tenantId, channel: 'email', value: target, reason: '返信で配信停止希望' },
+        update: {},
+      });
+      await tx.localBusinessLead.update({ where: { id: draft.leadId }, data: { stage: 'UNSUBSCRIBED' } });
+    });
     stageNote = '配信停止リストに追加し、ステージを配信停止に更新しました。';
   } else if (cls.classification === 'complaint') {
     await prisma.localBusinessLead.update({ where: { id: draft.leadId }, data: { stage: 'EXCLUDED' } });

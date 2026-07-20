@@ -32,7 +32,9 @@ export default async function LeasePage({ searchParams }: { searchParams: Promis
   const [reservations, assets] = await Promise.all([
     prisma.leaseReservation.findMany({
       where: { tenantId: user.tenantId },
-      include: { lines: { include: { asset: true } } },
+      // 子明細は単一列 FK のため親のテナントスコープだけでは他テナント行を排除できない。表示・重複判定に
+      // 他テナント明細が混入しないよう lines も tenantId で明示スコープする（P3-INV-2 LEASE_LINE_CHILD_TENANT）。
+      include: { lines: { where: { tenantId: user.tenantId }, include: { asset: true } } },
       orderBy: { startAt: 'asc' },
     }),
     prisma.productAsset.findMany({ where: { tenantId: user.tenantId }, select: { id: true, name: true, quantity: true, status: true }, orderBy: { name: 'asc' }, take: 200 }),

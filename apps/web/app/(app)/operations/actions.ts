@@ -127,7 +127,8 @@ export async function createLeaseReservationAction(formData: FormData) {
 function redirectForLifecycle(result: LeaseLifecycleResult, successParam: string): never {
   if (result.ok) redirect(`/inventory/lease?${successParam}=1`);
   if (result.reason === 'already') redirect('/inventory/lease?already=1');
-  if (result.reason === 'invalid-state') redirect('/inventory/lease?error=state');
+  // tenant-mismatch は fail-closed（整合異常を利用者に露出しないよう state と同じ汎用表示に写像）。
+  if (result.reason === 'invalid-state' || result.reason === 'tenant-mismatch') redirect('/inventory/lease?error=state');
   redirect('/inventory/lease?error=notfound');
 }
 
@@ -234,6 +235,9 @@ export async function convertLeaseReservationToEventProjectAction(formData: Form
     include: { lines: { include: { asset: true } } },
   });
   if (!reservation) redirect('/inventory/lease');
+  // 親子テナント整合ゲート（LEASE_LINE_CHILD_TENANT）: 子明細は単一列 FK のため他テナント行を排除できない。
+  // 混在時は該当明細を EventProductUsage へ転記して続行せず、書き込みゼロで中止する（fail-closed）。
+  if (reservation!.lines.some((l) => l.tenantId !== user.tenantId)) redirect('/inventory/lease?error=state');
 
   const event = await prisma.eventProject.create({
     data: {

@@ -50,10 +50,23 @@ export interface LeaseActor {
   userId?: string | null;
 }
 
-/** lifecycle 遷移の結果。already = 既に目標状態（冪等 no-op）・invalid-state = 遷移前提を満たさない。 */
+/**
+ * 親（LeaseReservation）は actor.tenantId でスコープ済みだが、子（LeaseReservationLine）は単一列 FK の
+ * ため DB では親子テナント整合を強制できない。遷移対象に他テナントの子明細が混在していた場合、その明細を
+ * **黙って除外して続行せず**、書き込みゼロで遷移全体を中止するために $transaction 内から投げるセンチネル。
+ * 呼び出し側の .catch で捕捉し reason:'tenant-mismatch' に射影する。
+ */
+export class LeaseTenantMismatchError extends Error {
+  constructor(readonly reservationId: string) {
+    super(`lease reservation ${reservationId} has cross-tenant child line(s)`);
+    this.name = 'LeaseTenantMismatchError';
+  }
+}
+
+/** lifecycle 遷移の結果。already = 既に目標状態（冪等 no-op）・invalid-state = 遷移前提を満たさない・tenant-mismatch = 親子テナント不整合で fail-closed。 */
 export type LeaseLifecycleResult =
   | { ok: true }
-  | { ok: false; reason: 'notfound' | 'invalid-state' | 'already' };
+  | { ok: false; reason: 'notfound' | 'invalid-state' | 'already' | 'tenant-mismatch' };
 
 export type AddLeaseLineResult =
   | { ok: true; available: number; assetName: string; replayed: boolean }
@@ -554,6 +567,13 @@ async function transitionLeaseReservation(
     });
     if (!reservation) return { ok: false, reason: 'notfound' } as const;
 
+    // 親子テナント整合ゲート（P3-INV-2 LEASE_LINE_CHILD_TENANT）: 親は tenantId でスコープ済みだが、
+    // 子明細は単一列 FK のため DB では他テナント行を排除できない。混在時は該当明細を除外して続行せず、
+    // throw で CAS ごと rollback し遷移全体を書き込みゼロで fail-closed する（.catch で reason へ射影）。
+    if (reservation.lines.some((l) => l.tenantId !== actor.tenantId)) {
+      throw new LeaseTenantMismatchError(reservationId);
+    }
+
     if (spec.movementType) {
       // 全対象 Asset を id 昇順（決定論）でロックしてから、line 順に Movement＋Audit を適用。
       await lockAssetsInOrder(tx, actor.tenantId, reservation.lines.map((l) => l.assetId));
@@ -613,5 +633,9 @@ async function transitionLeaseReservation(
       },
     });
     return { ok: true } as const;
+  }).catch((e) => {
+    // tenant-mismatch センチネルは fail-closed 応答へ射影（CAS は rollback 済み）。他例外は上位へ再送。
+    if (e instanceof LeaseTenantMismatchError) return { ok: false, reason: 'tenant-mismatch' } as const;
+    throw e;
   });
 }

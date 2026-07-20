@@ -3,16 +3,18 @@ import { notFound } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { PageHeader } from '@/components/page-header';
-import { Card, CardContent, CardHeader, CardTitle, Badge, Button, EmptyState } from '@/components/ui';
-import { LeadStageBadge, PriorityBadge } from '@/components/badges';
+import { Card, CardContent, CardHeader, CardTitle, Badge, Button, EmptyState, Select } from '@/components/ui';
+import { LeadStageBadge, PriorityBadge, LEAD_STAGE_LABEL } from '@/components/badges';
 import { AccessDenied } from '@/components/access-denied';
-import { analyzeLeadAction, generateOutreachAction, convertLeadToCustomerAction } from '../../actions';
+import { analyzeLeadAction, generateOutreachAction, convertLeadToCustomerAction, updateLeadStageAction } from '../../actions';
+import { manualStageTargets } from '@/lib/domains/crm/lead-stage';
 import { formatDate, formatDateTime, type LeadStage } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
 
-export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function LeadDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string>> }) {
   const { id } = await params;
+  const sp = await searchParams;
   const user = await requireUser();
   // リード詳細は店舗情報・営業メモ・下書きを含む。leadmap:read を持たないロールには
   // データ取得前に遮断する（/approvals と同型・P3-CT-5 push 前レビューの指摘対応）。
@@ -44,6 +46,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const scan = lead.websiteScans[0];
   const snap = lead.placeSnapshots[0];
   const expired = lead.expiresAt ? new Date(lead.expiresAt).getTime() < Date.now() : false;
+  // 手動ステージ変更は人間 ∧ leadmap:update のみ表示（保護の本体は Action/domain の fail-closed 判定）。
+  const canMutateStage = user.isAi === false && hasPermission(user, 'leadmap', 'update');
+  const stageTargets = manualStageTargets(lead.stage);
 
   return (
     <div>
@@ -63,6 +68,25 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         }
       />
 
+      {sp.staged !== undefined ? (
+        <div className="mb-3 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">ステージを変更しました。</div>
+      ) : null}
+      {sp.already !== undefined ? (
+        <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">リードは既にそのステージです（変更は行われませんでした）。</div>
+      ) : null}
+      {sp.denied !== undefined ? (
+        <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">⚠️ この操作を行う権限がありません（人間の担当者による LeadMap 更新権限が必要です）。</div>
+      ) : null}
+      {sp.error === 'stage-transition' ? (
+        <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">⚠️ 現在のステージからその変更は許可されていません（最新の状態を確認してください）。</div>
+      ) : null}
+      {sp.error === 'stage-stale' ? (
+        <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">⚠️ 画面を表示した後にステージが変更されています。変更は行われませんでした。最新の状態を確認してから、もう一度選択してください。</div>
+      ) : null}
+      {sp.error === 'stage-input' ? (
+        <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">⚠️ ステージ変更の入力が不正です。</div>
+      ) : null}
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           {/* 基本情報 */}
@@ -81,6 +105,24 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                 <Field label="SNS" value={lead.socialProfiles.length ? lead.socialProfiles.map((s) => s.platform).join('・') : '—'} />
                 <Field label="ステージ" value={<LeadStageBadge stage={lead.stage as LeadStage} />} />
               </div>
+              {canMutateStage && stageTargets.length > 0 ? (
+                <form action={updateLeadStageAction} className="mt-3 flex flex-wrap items-end gap-2 border-t pt-3">
+                  <input type="hidden" name="leadId" value={lead.id} />
+                  {/* R4: 画面表示時点の開始ステージを送信し、表示後に他の変更が確定した場合は
+                      domain が stale-conflict（書き込み0）で拒否する（最新 stage への再解釈をしない）。 */}
+                  <input type="hidden" name="expectedStage" value={lead.stage} />
+                  <div>
+                    <label className="mb-1 block text-xs" htmlFor="stage-select">ステージを変更（手動）</label>
+                    <Select id="stage-select" name="stage" required>
+                      <option value="">変更先を選択</option>
+                      {stageTargets.map((s) => (
+                        <option key={s} value={s}>{LEAD_STAGE_LABEL[s].text}</option>
+                      ))}
+                    </Select>
+                  </div>
+                  <Button type="submit" variant="outline">変更</Button>
+                </form>
+              ) : null}
             </CardContent>
           </Card>
 

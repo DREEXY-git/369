@@ -1,4 +1,5 @@
 // 承認ゲート（危険操作を必ず ApprovalRequest 経由にする）。Phase 1-2。
+import type { Prisma } from '@hokko/db';
 import { prisma, writeAudit } from './db';
 import { requiresApproval, type ApprovalAction, type RoleKey } from '@hokko/shared';
 
@@ -54,6 +55,49 @@ export async function createApprovalRequest(input: CreateApprovalInput): Promise
     entityId: input.targetId,
     summary: `承認依頼: ${input.title}`,
     metadata: { approvalAction: input.action, riskLevel: input.riskLevel ?? 'MEDIUM' },
+  });
+  return { id: req.id };
+}
+
+/** createApprovalRequest の transaction 版。承認申請＋監査を **呼び出し側 tx 内**で作成する。
+ *  PurchaseOrder の state claim（draft→pending_approval）と同一 tx に載せることで、
+ *  claim 敗者側の孤児 PENDING/Audit を rollback で 0 にできる（Codex PR#58 R2 #1）。 */
+export async function createApprovalRequestTx(
+  tx: Prisma.TransactionClient,
+  input: CreateApprovalInput,
+): Promise<{ id: string }> {
+  const expiresAt = input.expiresInHours ? new Date(Date.now() + input.expiresInHours * 3_600_000) : null;
+  const req = await tx.approvalRequest.create({
+    data: {
+      tenantId: input.tenantId,
+      type: input.action,
+      requestedForAction: input.action,
+      title: input.title,
+      summary: input.summary ?? '',
+      entityType: input.targetType,
+      entityId: input.targetId,
+      requestedById: input.requestedById ?? null,
+      approverRoleRequired: (input.approverRoleRequired ?? null) as any,
+      riskLevel: (input.riskLevel ?? 'MEDIUM') as any,
+      reason: input.reason ?? '',
+      payload: (input.payload ?? undefined) as any,
+      payloadBefore: (input.payloadBefore ?? undefined) as any,
+      payloadAfter: (input.payloadAfter ?? undefined) as any,
+      status: 'PENDING',
+      expiresAt,
+    },
+  });
+  await tx.auditLog.create({
+    data: {
+      tenantId: input.tenantId,
+      actorId: input.requestedById ?? null,
+      actorType: 'user',
+      action: 'approval_request',
+      entityType: input.targetType,
+      entityId: input.targetId,
+      summary: `承認依頼: ${input.title}`,
+      metadata: { approvalAction: input.action, riskLevel: input.riskLevel ?? 'MEDIUM' } as any,
+    },
   });
   return { id: req.id };
 }

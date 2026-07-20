@@ -7,6 +7,8 @@ import { prisma, writeAudit } from '@/lib/db';
 import { executeApprovedAction, requireApprovalForDangerousAction } from '@/lib/approval';
 import { emitGrowthEvent } from '@/lib/growth';
 import { applyInventoryMovement } from '@/lib/operations';
+import { executeApprovedPurchaseOrderIssue } from '@/lib/domains/operations/procurement';
+import { isHumanUser } from '@hokko/shared';
 
 function payloadOf(req: { payloadAfter: unknown }): Record<string, unknown> {
   return (req.payloadAfter ?? {}) as Record<string, unknown>;
@@ -171,7 +173,9 @@ export async function executeApprovedStocktakeAdjustmentAction(formData: FormDat
 /** 承認済みの高額発注を確定（PurchaseOrder→ordered）。 */
 export async function executeApprovedPurchaseOrderIssueAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'update')) redirect('/admin/operations-actions?denied=1');
+  // 承認済み発注の実行も人間専用。role 由来 fail-closed（isHumanUser: AI role 混在・空roles を拒否。
+  // isAi boolean は User.isAiAgent 由来で role と整合制約がないため boolean 単独で判定しない・R3 P2-1 / R8）。
+  if (!hasPermission(user, 'inventory', 'update') || user.isAi || !isHumanUser({ roles: user.roles })) redirect('/admin/operations-actions?denied=1');
   const approvalId = String(formData.get('approvalId') ?? '');
   const req = await prisma.approvalRequest.findFirst({
     where: { id: approvalId, tenantId: user.tenantId, requestedForAction: 'purchase_order_issue' },
@@ -179,34 +183,9 @@ export async function executeApprovedPurchaseOrderIssueAction(formData: FormData
   if (!req) redirect('/admin/operations-actions?error=notfound');
   const poId = String(payloadOf(req!).purchaseOrderId ?? req!.entityId);
 
-  const r = await executeApprovedAction(
-    approvalId,
-    async () => {
-      const po = await prisma.purchaseOrder.findFirst({ where: { id: poId, tenantId: user.tenantId } });
-      if (!po) throw new Error('purchase order not found');
-      await prisma.purchaseOrder.update({ where: { id: poId }, data: { status: 'ordered', approvalId } });
-      await writeAudit({
-        tenantId: user.tenantId,
-        actorId: user.userId,
-        action: 'purchase_order_issue',
-        entityType: 'PurchaseOrder',
-        entityId: poId,
-        summary: `高額発注を承認確定: ${po.orderNo}（approval=${approvalId}）`,
-      });
-      await emitGrowthEvent({
-        tenantId: user.tenantId,
-        type: 'inventory.purchase_order.created',
-        title: `発注確定: ${po.orderNo}`,
-        actorId: user.userId,
-        entityType: 'PurchaseOrder',
-        entityId: poId,
-        amount: Number(po.totalAmount),
-        alsoDomainEvent: { domainType: 'PURCHASE_ORDER_APPROVED' as DomainEventType, aggregateType: 'PurchaseOrder', aggregateId: poId },
-      });
-      return poId;
-    },
-    { executedById: user.userId },
-  );
+  // 実行の CAS/監査/growth はサービス層（procurement）に集約。received/cancelled/別 approval の
+  // 差し戻しはサービス側の status+approvalId CAS で構造的に不可（Codex PR#58 R2 #2）。
+  const r = await executeApprovedPurchaseOrderIssue({ tenantId: user.tenantId, userId: user.userId, roles: user.roles, sessionIsAi: user.isAi }, approvalId, poId);
   if (!r.executed) redirect(`/admin/operations-actions?error=${r.reason}`);
   redirect('/admin/operations-actions?executed=po');
 }

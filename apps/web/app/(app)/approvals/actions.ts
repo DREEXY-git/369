@@ -5,12 +5,13 @@ import { redirect } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
 import { recordUsageEvent } from '@/lib/usage-events';
-import { isSuppressed } from '@hokko/shared';
+import { isSuppressed, isHumanUser } from '@hokko/shared';
 import { getEmailProvider, isExternalSendEnabled } from '@hokko/integrations';
 import { decideContentReviewCore, type BridgeDb } from '@/lib/content-review-bridge';
 import { decideSuggestionReviewCore, type SuggestionBridgeDb } from '@/lib/suggestion-review-bridge';
 import { decideQuoteIssueCore, type QuoteIssueBridgeDb } from '@/lib/quote-issue-bridge';
 import { decideInvoiceVoidCore, type InvoiceVoidBridgeDb } from '@/lib/invoice-void-bridge';
+import { decidePurchaseOrderIssueCore, type PoIssueBridgeDb } from '@/lib/purchase-order-issue-bridge';
 import { decideAiGateCore, type GateBridgeDb } from '@/lib/ai-gate-bridge';
 
 // Phase 4 安全実行 Bridge（v7.0 Lane P4・roadmap82）: AI 承認ゲートへの人間の approve/reject。
@@ -59,9 +60,10 @@ export async function decideApprovalAction(formData: FormData) {
   const decision = String(formData.get('decision') ?? '');
   const note = String(formData.get('note') ?? '');
 
-  // v6.9（Codex r3565885990）: 承認の決定は人間のみ。AI ロールは approval:approve が誤設定で
-  // 付与されていても action 境界で一律拒否する（不変条件・RBAC とは独立の二重防御）。
-  if (!hasPermission(user, 'approval', 'approve') || user.isAi) redirect('/approvals?denied=1');
+  // v6.9（Codex r3565885990）/ PR#58 R8: 承認の決定は人間のみ。isAi boolean（User.isAiAgent 由来・
+  // role と整合制約なし）単独では判定せず、role 由来の isHumanUser（AI_AGENT/AI_ASSISTANT を1つでも
+  // 含む混在・空roles を拒否）で DB 接触前に fail-closed する（不変条件・RBAC とは独立の二重防御）。
+  if (!hasPermission(user, 'approval', 'approve') || user.isAi || !isHumanUser({ roles: user.roles })) redirect('/approvals?denied=1');
 
   const approval = await prisma.approvalRequest.findFirst({
     where: { id: approvalId, tenantId: user.tenantId, status: 'PENDING' },
@@ -169,6 +171,36 @@ export async function decideApprovalAction(formData: FormData) {
     }
     revalidatePath('/approvals');
     revalidatePath('/invoices');
+    if (r.outcome === 'forbidden') redirect('/approvals?denied=1');
+    redirect('/approvals'); // decided / already（冪等）とも一覧へ
+  }
+
+  // PR#58 R3 高額発注承認: 汎用 CAS で ApprovalRequest だけ確定すると PO が pending_approval のまま
+  // 取り残され（reject 後に再申請不能な dangling）閉塞する。専用 bridge で ApprovalRequest 決定＋PO 遷移
+  // （reject→draft/approvalId 解除・approve→整合確認）＋監査を単一 transaction/CAS で確定する。
+  // 承認しても在庫移動・外部送信・課金は発生しない（発注の社内ステータス遷移のみ）。
+  if (approval.type === 'purchase_order_issue') {
+    const purchaseOrderId = String(((approval.payloadAfter ?? {}) as Record<string, unknown>).purchaseOrderId ?? approval.entityId);
+    let r;
+    try {
+      r = await decidePurchaseOrderIssueCore(prisma as unknown as PoIssueBridgeDb, {
+        tenantId: user.tenantId,
+        approvalId,
+        purchaseOrderId,
+        decision: decision === 'approve' ? 'approve' : 'reject',
+        decidedById: user.userId,
+        note,
+        approvalTitle: approval.title,
+        decidedByRoles: user.roles,
+        decidedBySessionIsAi: user.isAi,
+      });
+    } catch {
+      // 対象消失・別 tenant・状態不整合（既に別 submit が確定 等）→ 全体 rollback 済み（PENDING のまま）。
+      revalidatePath('/approvals');
+      redirect('/approvals?error=po_issue_transition');
+    }
+    revalidatePath('/approvals');
+    revalidatePath('/operations/purchase-orders');
     if (r.outcome === 'forbidden') redirect('/approvals?denied=1');
     redirect('/approvals'); // decided / already（冪等）とも一覧へ
   }

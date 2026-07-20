@@ -1,9 +1,16 @@
 import { test, expect, type Page } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
 import { prisma } from '@hokko/db';
+import { derivePaymentRequestId } from '@hokko/shared';
 
 // P3-Q2C 入金消込 hardening の実 PostgreSQL 証拠。
 // 単一 transaction（原子性）・paidAmount の Payment SUM 再導出・FOR UPDATE による並列直列化（lost update 防止）・
 // 状態遷移（PARTIALLY_PAID→PAID）・Receivable 連動・監査・AI 拒否を実 DB 最終状態 re-fetch で検証する。
+// 修正版 Phase A2（PACKET-PADN-PHASEA2-IMPL-W rev2）: request-level 冪等（requestKey →
+// Payment.id=derivePaymentRequestId(tenantId, requestKey)）の導入により「同一 POST バイト列の replay」は
+// 1 Payment へ収束する**正しい挙動**になったため、lost update 試験は replay 毎に相異なる idempotencyKey を
+// 付与した distinct 入金へ改訂（cda7188 の同型修正を derived ID 契約へ整合）。oracle 意図
+//（並行 distinct 入金が SUM 再導出で失われない・Payment 6 件・paidAmount==SUM）は不変。
 // 外部送信・実支払・課金は一切なし（社内の入金記録のみ）。
 
 async function login(page: Page, email: string) {
@@ -81,25 +88,40 @@ test('原子性＋状態遷移: 一部入金→PARTIALLY_PAID→全額入金→P
   }
 });
 
-test('lost update 防止: 同一請求への並列入金を FOR UPDATE で直列化し、paidAmount = Payment SUM が保たれる', async ({ page }) => {
+test('lost update 防止: 同一請求への並列 distinct 入金を FOR UPDATE で直列化し、paidAmount = Payment SUM が保たれる', async ({ page }) => {
   const invId = await makeIssuedInvoice(100000);
   try {
+    const t = await tenantId();
     await login(page, 'ceo@ikezaki.local');
     await page.goto(`/invoices/${invId}`);
     // 1回目の入金 1000 を実 UI で送信し、その Server Action POST（生バイト列）を捕捉する。
     await page.locator('input[name="amount"]').fill('1000');
+    // フォームが mount 時に発行した request-level 冪等キー（hidden input の実値）を submit 前に取得する。
+    // POST body には field value として同じ文字列が含まれるため、これを差し替えて別 request を作れる。
+    const idemInput = page.locator('[data-testid="payment-idempotency-key"]');
+    await expect(idemInput).not.toHaveValue('');
+    const origKey = await idemInput.inputValue();
+    expect(origKey, 'requestKey は ^c[a-z0-9]{20,32}$（server 側 RE 検証と同一契約）').toMatch(/^c[a-z0-9]{20,32}$/);
     const [payReq] = await Promise.all([
       page.waitForRequest((r) => r.method() === 'POST' && r.url().includes(`/invoices/${invId}`)),
       page.getByRole('button', { name: '入金を記録' }).click(),
     ]);
     await page.waitForURL(new RegExp(`/invoices/${invId}\\?paid=1`));
 
-    // 同一 POST を 5 本並列 replay（= 同一請求への同時入金）。lost update があれば paidAmount < SUM になる。
+    // 同一請求への **異なる** 並列入金を 5 本 replay する。request-level 冪等（Phase A2:
+    // Payment.id=derivePaymentRequestId(tenantId, requestKey)）の導入後は、同一 POST バイト列の再送は
+    // 1 request として 1 Payment へ収束するのが正しい挙動なので、ここでは body 中の idempotencyKey 値
+    //（origKey）だけを **別キー**（同長 25 文字・境界不変）へ差し替え、6 本の distinct 入金を同時に投げる。
+    // lost update があれば paidAmount < Payment SUM になる（FOR UPDATE 直列化＋SUM 再導出で防止）。
     const headers = { ...payReq.headers() };
     delete headers['content-length'];
-    const body = payReq.postDataBuffer()!;
+    const bodyStr = payReq.postDataBuffer()!.toString('latin1');
+    expect(bodyStr.includes(origKey), 'POST body に idempotencyKey 値が含まれる').toBe(true);
+    const replayKeys = Array.from({ length: 5 }, () => `c${randomUUID().replace(/-/g, '').slice(0, 24)}`);
     const resps = await Promise.all(
-      Array.from({ length: 5 }, () => page.request.post(payReq.url(), { headers, data: body })),
+      replayKeys.map((k) =>
+        page.request.post(payReq.url(), { headers, data: Buffer.from(bodyStr.replace(origKey, k), 'latin1') }),
+      ),
     );
     for (const r of resps) expect(r.status(), '並列入金が受理される').toBeLessThan(400);
 
@@ -110,6 +132,10 @@ test('lost update 防止: 同一請求への並列入金を FOR UPDATE で直列
     expect(count).toBe(6);
     expect(Number(agg._sum.amount ?? 0)).toBe(6000);
     expect(Number(inv!.paidAmount), 'paidAmount が Payment SUM と一致（lost update なし）').toBe(6000);
+    // Phase A2 derived ID 契約の実測: 6 Payment の id は各 requestKey の server-derived 単射 ID と一致
+    //（client が PK を直接支配していない・tenant-bound）。
+    const ids = (await prisma.payment.findMany({ where: { invoiceId: invId }, select: { id: true } })).map((p) => p.id);
+    expect(new Set(ids)).toEqual(new Set([origKey, ...replayKeys].map((k) => derivePaymentRequestId(t, k))));
   } finally {
     await cleanupInvoice(invId);
   }

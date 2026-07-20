@@ -217,7 +217,10 @@ export async function recordPaymentAction(formData: FormData) {
   if (user.isAi) redirect(`/invoices/${id}?denied=1`);
   const amount = Math.max(0, Number(formData.get('amount') ?? 0) || 0);
   const method = String(formData.get('method') ?? 'bank');
-  const res = await recordInvoicePayment({ tenantId: user.tenantId, userId: user.userId }, id, amount, method, { actorIsAi: user.isAi });
+  // request-level 冪等キー（フォーム mount 時発行の requestKey）。同一 request の逐次/並行 retry・再送を
+  // server-derived Payment ID（derivePaymentRequestId(tenantId, requestKey)）で 1 Payment へ収束（PA-BLK-2）。
+  const idempotencyKey = String(formData.get('idempotencyKey') ?? '');
+  const res = await recordInvoicePayment({ tenantId: user.tenantId, userId: user.userId }, id, amount, method, { actorIsAi: user.isAi, idempotencyKey });
   revalidatePath(`/invoices/${id}`);
   redirect(res.ok ? `/invoices/${id}?paid=1` : `/invoices/${id}?error=${res.reason}`);
 }

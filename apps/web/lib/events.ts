@@ -2,8 +2,14 @@
 // emitDomainEvent: DomainEvent（イベントログ）＋OutboxMessage をトランザクションで保存（冪等）。
 // dispatch: 登録ハンドラ実行 ＋ Webhook 配送。失敗は記録し再試行可能にする。
 import { prisma } from './db';
+import type { Prisma } from '@hokko/db';
 import {
   makeIdempotencyKey,
+  makeCanonicalIdempotencyKey,
+  makeEventIdentityLockMaterial,
+  makeIdemMetadata,
+  legacyRowMatchesIdentity,
+  EventIdentityCollisionError,
   nextRetryDelayMs,
   MAX_EVENT_RETRIES,
   type DomainEventType,
@@ -28,61 +34,177 @@ export interface EmitResult {
   duplicated: boolean;
 }
 
+/** Prisma interactive transaction のクライアント型（emitDomainEventInTx 用）。通常 client も適合する。 */
+type TxClient = Prisma.TransactionClient;
+
+type IdentityLookup =
+  | { kind: 'hit'; id: string }
+  | { kind: 'miss' }
+  /** legacy キーが**別 identity** の行に占有されている（真の FNV 衝突）。既存として返さない。 */
+  | { kind: 'collision' };
+
 /**
- * ドメインイベントを発火（永続化）。同一 idempotencyKey は二重発火しない。
- * DomainEvent と OutboxMessage を1トランザクションで作成（Outboxパターン）。
+ * 同一論理 identity の既存 DomainEvent を照合する（修正版 Phase A dual-read・PA-BLK-4）。
+ * bf0692b の findExistingByEitherKey（legacy 優先・無検証）の置換。
+ *  1) **canonical-first**: canonical キー（PR #57 書式）は identity→key 単射のため、
+ *     tenantId_idempotencyKey の exact 一致 = identity 完全一致（無検証で安全）。
+ *  2) legacy fallback: スカラ列 (tenantId, idempotencyKey, eventType, aggregateType, aggregateId)
+ *     の findFirst ＋ payload.idem.dedupe の JS 完全一致検証（legacyRowMatchesIdentity・ID-2）。
+ *     ハッシュ一致のみでの誤収束を禁止する。
+ *  3) legacy キーが別 identity の行に占有されている場合は collision（fail-closed 判定は呼出し側）。
  */
-export async function emitDomainEvent(input: EmitEventInput): Promise<EmitResult> {
-  const idempotencyKey = makeIdempotencyKey({
+async function findExistingByIdentity(
+  db: Pick<TxClient, 'domainEvent'>,
+  input: EmitEventInput,
+  legacyKey: string,
+  canonicalKey: string,
+): Promise<IdentityLookup> {
+  const identity = {
+    eventType: input.eventType,
+    aggregateType: input.aggregateType,
+    aggregateId: input.aggregateId,
+    dedupe: input.dedupe ?? '',
+  };
+  const byCanonical = await db.domainEvent.findUnique({
+    where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: canonicalKey } },
+    select: { id: true },
+  });
+  if (byCanonical) return { kind: 'hit', id: byCanonical.id };
+  const byLegacy = await db.domainEvent.findFirst({
+    where: {
+      tenantId: input.tenantId,
+      idempotencyKey: legacyKey,
+      eventType: input.eventType,
+      aggregateType: input.aggregateType,
+      aggregateId: input.aggregateId,
+    },
+    select: { id: true, eventType: true, aggregateType: true, aggregateId: true, payload: true },
+  });
+  if (byLegacy && legacyRowMatchesIdentity(byLegacy, identity)) return { kind: 'hit', id: byLegacy.id };
+  // 識別列一致行が無い/検証不成立でも、legacy キー自体が占有されていれば真の衝突（別 identity）。
+  const occupant = await db.domainEvent.findUnique({
+    where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: legacyKey } },
+    select: { id: true },
+  });
+  if (occupant) return { kind: 'collision' };
+  return { kind: 'miss' };
+}
+
+/**
+ * **advisory barrier 付き emit（tx 内・修正版 Phase A / PA-BLK-3）**。
+ * 呼出し規約（ロックグラフ非循環の repo 規約）:
+ *  - 業務 tx（payments.ts 等）は「行ロック（Invoice FOR UPDATE）→ advisory event lock → insert」の順。
+ *    advisory event lock 取得後に行ロックを取る経路は禁止。
+ *  - 複数イベントを同一 tx で emit する場合は固定順（PAYMENT_RECEIVED → RECEIVABLE_COLLECTED）。
+ * 手順:
+ *  (1) SET LOCAL lock_timeout（tx timeout より短い・timeout はエラー＝create しない・retry 可能）
+ *  (2) pg_advisory_xact_lock(hashtextextended(lockMaterial, 0))（tx スコープ・commit/rollback で自動解放）
+ *      bigint 化は PostgreSQL 側のみ＝Phase A/B の hash drift が構造的に不可能。
+ *  (3) canonical-first exact → 検証付き legacy 照合（tx 内・lock 取得後が唯一の権威）
+ *  (4) collision は typed EventIdentityCollisionError で fail-closed（ID-3。キー変形・誤収束をしない）
+ *  (5) miss なら DomainEvent（Phase A writer は **legacy キーのまま**・payload.idem に identity を無損失保存）
+ *      ＋ OutboxMessage を同一 tx で作成
+ */
+export async function emitDomainEventInTx(tx: TxClient, input: EmitEventInput): Promise<EmitResult> {
+  const keyInput = {
     tenantId: input.tenantId,
     eventType: input.eventType,
     aggregateId: input.aggregateId,
     dedupe: input.dedupe,
-  });
+  };
+  const idempotencyKey = makeIdempotencyKey(keyInput);
+  const canonicalKey = makeCanonicalIdempotencyKey(keyInput);
+  const lockMaterial = makeEventIdentityLockMaterial(keyInput);
 
-  const existing = await prisma.domainEvent.findUnique({
-    where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey } },
-    select: { id: true },
-  });
-  if (existing) {
-    return { eventId: existing.id, idempotencyKey, duplicated: true };
+  await tx.$executeRaw`SET LOCAL lock_timeout = '5s'`;
+  // 戻り値 void の関数のため $executeRaw で実行（$queryRaw は void 列を deserialize できない）。
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockMaterial}::text, 0))`;
+
+  const existing = await findExistingByIdentity(tx, input, idempotencyKey, canonicalKey);
+  if (existing.kind === 'hit') return { eventId: existing.id, idempotencyKey, duplicated: true };
+  if (existing.kind === 'collision') {
+    throw new EventIdentityCollisionError({
+      tenantId: input.tenantId,
+      eventType: input.eventType,
+      aggregateId: input.aggregateId,
+      legacyKey: idempotencyKey,
+    });
   }
 
+  // payload.idem = 無損失 identity metadata（ID-2）。Phase A writer は enc:'legacy'。
+  const idem = makeIdemMetadata({
+    aggregateType: input.aggregateType,
+    aggregateId: input.aggregateId,
+    dedupe: input.dedupe ?? '',
+    enc: 'legacy',
+  });
+  const ev = await tx.domainEvent.create({
+    data: {
+      tenantId: input.tenantId,
+      eventType: input.eventType,
+      aggregateType: input.aggregateType,
+      aggregateId: input.aggregateId,
+      actorId: input.actorId ?? null,
+      actorType: input.actorType ?? 'user',
+      payload: { ...(input.payload ?? {}), idem } as any,
+      metadata: (input.metadata ?? undefined) as any,
+      idempotencyKey,
+      status: 'pending',
+    },
+  });
+  await tx.outboxMessage.create({
+    data: {
+      tenantId: input.tenantId,
+      eventId: ev.id,
+      eventType: input.eventType,
+      payload: (input.payload ?? undefined) as any,
+      status: 'pending',
+    },
+  });
+  return { eventId: ev.id, idempotencyKey, duplicated: false };
+}
+
+/**
+ * ドメインイベントを発火（永続化）。同一論理 identity は二重発火しない。
+ * DomainEvent と OutboxMessage を 1 トランザクションで作成（Outbox パターン）。
+ * 修正版 Phase A（PA-BLK-3/PA-BLK-4）:
+ *  - tx 外の事前照合は **hit の短絡のみに使用**（miss は無権威・必ず advisory lock 取得後に再検索）。
+ *  - 判定と作成は interactive tx 内の advisory barrier（emitDomainEventInTx）で直列化。
+ *  - 新規書込のキーは従来どおり legacy（Phase A では writer encoding を変更しない・意味論のみ契約整合）。
+ *  - legacy キーの真の衝突は EventIdentityCollisionError で fail-closed。
+ */
+export async function emitDomainEvent(input: EmitEventInput): Promise<EmitResult> {
+  const keyInput = {
+    tenantId: input.tenantId,
+    eventType: input.eventType,
+    aggregateId: input.aggregateId,
+    dedupe: input.dedupe,
+  };
+  const idempotencyKey = makeIdempotencyKey(keyInput);
+  const canonicalKey = makeCanonicalIdempotencyKey(keyInput);
+
+  // fast-path（tx 外）: hit の短絡のみ。miss/collision はここでは裁定しない（無権威）。
+  const fast = await findExistingByIdentity(prisma, input, idempotencyKey, canonicalKey);
+  if (fast.kind === 'hit') return { eventId: fast.id, idempotencyKey, duplicated: true };
+
   try {
-    const event = await prisma.$transaction(async (tx) => {
-      const ev = await tx.domainEvent.create({
-        data: {
-          tenantId: input.tenantId,
-          eventType: input.eventType,
-          aggregateType: input.aggregateType,
-          aggregateId: input.aggregateId,
-          actorId: input.actorId ?? null,
-          actorType: input.actorType ?? 'user',
-          payload: (input.payload ?? undefined) as any,
-          metadata: (input.metadata ?? undefined) as any,
-          idempotencyKey,
-          status: 'pending',
-        },
-      });
-      await tx.outboxMessage.create({
-        data: {
-          tenantId: input.tenantId,
-          eventId: ev.id,
-          eventType: input.eventType,
-          payload: (input.payload ?? undefined) as any,
-          status: 'pending',
-        },
-      });
-      return ev;
+    return await prisma.$transaction(async (tx) => emitDomainEventInTx(tx, input), {
+      timeout: 15_000,
     });
-    return { eventId: event.id, idempotencyKey, duplicated: false };
   } catch (e: any) {
-    // 競合（同時発火）で unique 制約に当たった場合も冪等に扱う
-    const dup = await prisma.domainEvent.findUnique({
-      where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey } },
-      select: { id: true },
-    });
-    if (dup) return { eventId: dup.id, idempotencyKey, duplicated: true };
+    if (e instanceof EventIdentityCollisionError) throw e;
+    // barrier 外 writer（pre-A main 併走等）との競合で unique 制約に当たった場合の再照合。
+    // 完全一致行あり → 冪等収束。無ければ typed fail-closed（他人の行 ID を返さない・P2002 の握り潰し禁止）。
+    if (typeof e === 'object' && e !== null && (e as { code?: string }).code === 'P2002') {
+      const dup = await findExistingByIdentity(prisma, input, idempotencyKey, canonicalKey);
+      if (dup.kind === 'hit') return { eventId: dup.id, idempotencyKey, duplicated: true };
+      throw new EventIdentityCollisionError({
+        tenantId: input.tenantId,
+        eventType: input.eventType,
+        aggregateId: input.aggregateId,
+        legacyKey: idempotencyKey,
+      });
+    }
     throw e;
   }
 }

@@ -64,6 +64,30 @@ async function cleanupInvoice(id: string) {
   await prisma.invoice.deleteMany({ where: { id } });
 }
 
+// tenant を明示指定して ISSUED invoice を作る（fault injection テストの並列安全な tenant 隔離用）。
+async function makeIssuedInvoiceFor(t: string, total: number): Promise<string> {
+  const inv = await prisma.invoice.create({
+    data: {
+      tenantId: t, number: `INV-IDEMF-${process.pid}-${Date.now()}-${Math.floor(performance.now())}`.slice(0, 40), status: 'ISSUED', issueDate: new Date(), dueDate: new Date(),
+      subtotal: total, taxAmount: 0, total, paidAmount: 0,
+      receivable: { create: { tenantId: t, amount: total, dueDate: new Date(), status: 'open' } },
+    },
+  });
+  return inv.id;
+}
+async function cleanupInvoiceFor(t: string, id: string) {
+  const payIds = (await prisma.payment.findMany({ where: { invoiceId: id }, select: { id: true } })).map((p) => p.id);
+  const evs = await prisma.domainEvent.findMany({ where: { tenantId: t, aggregateId: id }, select: { id: true } });
+  await prisma.outboxMessage.deleteMany({ where: { tenantId: t, eventId: { in: evs.map((e) => e.id) } } });
+  await prisma.growthEvent.deleteMany({ where: { tenantId: t, entityId: { in: [id, ...payIds] } } });
+  await prisma.domainEvent.deleteMany({ where: { tenantId: t, aggregateId: id } });
+  await prisma.auditLog.deleteMany({ where: { tenantId: t, entityId: id, action: 'payment_record' } });
+  await prisma.financeEvent.deleteMany({ where: { tenantId: t, sourceId: id } });
+  await prisma.payment.deleteMany({ where: { invoiceId: id } });
+  await prisma.receivable.deleteMany({ where: { invoiceId: id } });
+  await prisma.invoice.deleteMany({ where: { id } });
+}
+
 test.afterAll(async () => {
   await prisma.$disconnect();
 });
@@ -205,18 +229,21 @@ test('canonical writer で dedupe(FNV)衝突を回避: legacy FNV 衝突する 2
 });
 
 test('fault injection rollback: イベント作成後の例外で Payment/DomainEvent/Outbox/Growth を孤児化せず全 rollback し、同一 key retry で 1 件へ収束', async () => {
-  const t = await tenantId();
-  const uid = await ceoUserId();
-  const invId = await makeIssuedInvoice(100000);
+  // 並列安全化（rework 1）: tenant 全域の Outbox baseline は、同一 seed tenant を使う他 spec の並行な
+  // Outbox 作成/削除で drift する（CI 実測: expected 19 / received 18）。専用 tenant で隔離し、cda7188 の
+  // 「孤児 Outbox 0（tenant baseline 不変）」という orphan 検出セマンティクスを並列安全に維持する。
+  const tenant = await prisma.tenant.create({ data: { name: `PADN-B fault-injection ${Date.now()}-${randomUUID().replace(/-/g, '').slice(0, 8)}` } });
+  const t = tenant.id;
+  const invId = await makeIssuedInvoiceFor(t, 100000);
   const key = mkKey();
   const derivedId = derivePaymentRequestId(t, key);
-  // fault 前の tenant Outbox 総数を baseline に取り、rollback 後に **増えていない**ことで孤児 0 を実測する。
+  // 専用 tenant のため baseline は 0（他 spec と共有せず＝drift しない）。rollback 後も不変を要求する。
   const outboxBefore = await prisma.outboxMessage.count({ where: { tenantId: t } });
   try {
     // 1回目: 副次イベント作成 **後** に例外注入 → 単一 tx なので Payment 含め全 rollback（孤児 0 を要求）。
     let threw = false;
     try {
-      await recordInvoicePayment({ tenantId: t, userId: uid }, invId, 4000, 'bank', {
+      await recordInvoicePayment({ tenantId: t, userId: null }, invId, 4000, 'bank', {
         idempotencyKey: key,
         __faultAfterEventsForTest: () => {
           throw new Error('injected-fault-after-events');
@@ -235,7 +262,7 @@ test('fault injection rollback: イベント作成後の例外で Payment/Domain
     expect(Number((await prisma.invoice.findUnique({ where: { id: invId }, select: { paidAmount: true } }))!.paidAmount), 'paidAmount 不変').toBe(0);
 
     // 2回目: 同一 key で正常 retry → Payment 1 と副次 event が原子的に揃う（前回は rollback 済のため新規）。
-    const r = await recordInvoicePayment({ tenantId: t, userId: uid }, invId, 4000, 'bank', { idempotencyKey: key });
+    const r = await recordInvoicePayment({ tenantId: t, userId: null }, invId, 4000, 'bank', { idempotencyKey: key });
     expect(r.ok, 'retry は成功').toBe(true);
     expect(r.idempotent ?? false, 'retry は新規（前回は rollback 済）').toBe(false);
     expect(await prisma.payment.count({ where: { invoiceId: invId } }), 'retry 後 Payment ちょうど 1').toBe(1);
@@ -247,7 +274,8 @@ test('fault injection rollback: イベント作成後の例外で Payment/Domain
     expect(await prisma.auditLog.count({ where: { entityId: invId, action: 'payment_record' } }), 'Audit ちょうど 1').toBe(1);
     expect(Number((await prisma.invoice.findUnique({ where: { id: invId }, select: { paidAmount: true } }))!.paidAmount)).toBe(4000);
   } finally {
-    await cleanupInvoice(invId);
+    await cleanupInvoiceFor(t, invId);
+    await prisma.tenant.deleteMany({ where: { id: t } });
   }
 });
 

@@ -65,6 +65,18 @@ export default async function LeasePage({ searchParams }: { searchParams: Promis
       {sp.error === 'conflict' ? (
         <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">⚠️ 「{sp.asset}」は在庫を超えるため追加できません（予約重複）。</div>
       ) : null}
+      {sp.error === 'request' ? (
+        <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">⚠️ リクエスト識別子が不正です。ページを再読み込みしてやり直してください。</div>
+      ) : null}
+      {sp.error === 'idem' ? (
+        <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">⚠️ 同じリクエストIDで内容の異なる要求を検知したため中止しました。ページを再読み込みしてやり直してください。</div>
+      ) : null}
+      {sp.already !== undefined ? (
+        <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">この操作は既に完了しています（重複実行は行われませんでした）。</div>
+      ) : null}
+      {sp.error === 'state' ? (
+        <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">⚠️ 現在の予約状態ではこの操作を実行できません。</div>
+      ) : null}
       {sp.pending === 'release' ? (
         <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">予約済み在庫の強制解除は承認申請を作成しました（承認後に解除されます）。</div>
       ) : null}
@@ -83,6 +95,8 @@ export default async function LeasePage({ searchParams }: { searchParams: Promis
           <CardHeader><CardTitle>リース予約を作成</CardTitle></CardHeader>
           <CardContent>
             <form action={createLeaseReservationAction} className="flex flex-wrap items-end gap-2">
+              {/* R2: canonical requestId（render ごとに採番・同一 POST の再送は同一 ID → server 側で冪等収束） */}
+              <input type="hidden" name="requestId" value={crypto.randomUUID()} />
               <div className="flex-1"><label className="mb-1 block text-xs">案件名</label><Input name="eventName" required placeholder="例: 〇〇株式会社 周年式典" /></div>
               <div><label className="mb-1 block text-xs">会場</label><Input name="venue" placeholder="会場" /></div>
               <div><label className="mb-1 block text-xs">開始</label><Input name="startAt" type="date" required /></div>
@@ -125,14 +139,23 @@ export default async function LeasePage({ searchParams }: { searchParams: Promis
                   <div className="mt-3 space-y-2 border-t pt-3">
                     <form action={addAssetToLeaseReservationAction} className="flex flex-wrap items-end gap-2">
                       <input type="hidden" name="reservationId" value={r.id} />
+                      <input type="hidden" name="requestId" value={crypto.randomUUID()} />
                       <Select name="assetId" required className="flex-1"><option value="">商品を追加</option>{assets.map((a) => <option key={a.id} value={a.id}>{a.name}（在庫{a.quantity}）</option>)}</Select>
                       <Input name="quantity" type="number" min="1" defaultValue="1" className="w-20" />
                       <Button type="submit" variant="outline">追加</Button>
                     </form>
                     <div className="flex flex-wrap gap-2">
-                      <form action={confirmLeaseReservationAction}><input type="hidden" name="reservationId" value={r.id} /><Button type="submit" variant="outline">確定</Button></form>
-                      <form action={dispatchLeaseReservationAction}><input type="hidden" name="reservationId" value={r.id} /><Button type="submit" variant="outline">出庫</Button></form>
-                      <form action={returnLeaseReservationAction}><input type="hidden" name="reservationId" value={r.id} /><Button type="submit" variant="outline">返却</Button></form>
+                      {/* lifecycle は reserved→confirmed→dispatched→returned の CAS（P3-INV-2）。
+                          現在状態から遷移可能なボタンのみ表示（server 側でも CAS で fail-closed）。 */}
+                      {r.status === 'reserved' ? (
+                        <form action={confirmLeaseReservationAction}><input type="hidden" name="reservationId" value={r.id} /><Button type="submit" variant="outline">確定</Button></form>
+                      ) : null}
+                      {r.status === 'confirmed' ? (
+                        <form action={dispatchLeaseReservationAction}><input type="hidden" name="reservationId" value={r.id} /><Button type="submit" variant="outline">出庫</Button></form>
+                      ) : null}
+                      {r.status === 'dispatched' ? (
+                        <form action={returnLeaseReservationAction}><input type="hidden" name="reservationId" value={r.id} /><Button type="submit" variant="outline">返却</Button></form>
+                      ) : null}
                       <form action={convertLeaseReservationToEventProjectAction}><input type="hidden" name="reservationId" value={r.id} /><Button type="submit" variant="outline">イベント案件化</Button></form>
                     </div>
                   </div>

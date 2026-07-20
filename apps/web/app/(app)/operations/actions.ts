@@ -3,13 +3,18 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
-  availableQuantity,
-  hasReservationConflict,
   isInventoryMovementType,
   isLargeInventoryAdjustment,
-  type ReservationWindow,
   type DomainEventType,
 } from '@hokko/shared';
+import {
+  addAssetToLeaseReservation,
+  createLeaseReservation,
+  confirmLeaseReservation,
+  dispatchLeaseReservation,
+  returnLeaseReservation,
+  type LeaseLifecycleResult,
+} from '@/lib/domains/operations/lease';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
 import { emitGrowthEvent } from '@/lib/growth';
@@ -96,6 +101,8 @@ export async function adjustInventoryQuantityAction(formData: FormData) {
 
 // ============================ リース予約 ============================
 
+/** リース予約を作成。業務ロジックは lib/domains/operations/lease.ts（R2: requestId＋payload fingerprint の
+ *  durable idempotency ＋ Reservation/Audit/Growth/Domain/Outbox の単一 transaction）。 */
 export async function createLeaseReservationAction(formData: FormData) {
   const user = await requireUser();
   if (!hasPermission(user, 'inventory', 'create')) redirect('/inventory/lease?denied=1');
@@ -103,98 +110,49 @@ export async function createLeaseReservationAction(formData: FormData) {
   const venue = String(formData.get('venue') ?? '').trim() || null;
   const startAt = new Date(String(formData.get('startAt') ?? '') || Date.now());
   const endAt = new Date(String(formData.get('endAt') ?? '') || Date.now());
+  const requestId = String(formData.get('requestId') ?? '');
   if (!eventName) redirect('/inventory/lease?error=name');
 
-  const reservation = await prisma.leaseReservation.create({
-    data: { tenantId: user.tenantId, eventName, venue, status: 'reserved', startAt, endAt },
-  });
-  await writeAudit({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    action: 'create',
-    entityType: 'LeaseReservation',
-    entityId: reservation.id,
-    summary: `リース予約を作成: ${eventName}`,
-  });
-  await emitGrowthEvent({
-    tenantId: user.tenantId,
-    type: 'rental.reservation.created',
-    title: `リース予約: ${eventName}`,
-    actorId: user.userId,
-    entityType: 'LeaseReservation',
-    entityId: reservation.id,
-    alsoDomainEvent: {
-      domainType: 'LEASE_RESERVATION_CREATED' as DomainEventType,
-      aggregateType: 'LeaseReservation',
-      aggregateId: reservation.id,
-    },
-  });
+  const result = await createLeaseReservation(
+    { tenantId: user.tenantId, userId: user.userId },
+    { eventName, venue, startAt, endAt, requestId },
+  );
+  if (!result.ok && result.reason === 'invalid-request-id') redirect('/inventory/lease?error=request');
+  if (!result.ok) redirect('/inventory/lease?error=idem');
   revalidatePath('/inventory/lease');
   redirect('/inventory/lease?created=1');
 }
 
-/** 予約に商品を追加。在庫可用性をチェックし、重複（在庫超過）は拒否。OKなら在庫を予約状態に。 */
+/** lifecycle 遷移結果を redirect パラメータへ写像（already = 冪等 no-op / invalid-state = 順序違反）。 */
+function redirectForLifecycle(result: LeaseLifecycleResult, successParam: string): never {
+  if (result.ok) redirect(`/inventory/lease?${successParam}=1`);
+  if (result.reason === 'already') redirect('/inventory/lease?already=1');
+  if (result.reason === 'invalid-state') redirect('/inventory/lease?error=state');
+  redirect('/inventory/lease?error=notfound');
+}
+
+/** 予約に商品を追加。業務ロジックは lib/domains/operations/lease.ts（P3-INV-2: lock 後再読込・
+ *  ライン＋reserve Movement＋Audit＋Growth/Domain/Outbox の単一 transaction。R2: requestId＋payload
+ *  fingerprint の durable idempotency・可用性 telemetry は domain 側で commit 後 best-effort/catch 非致命）。 */
 export async function addAssetToLeaseReservationAction(formData: FormData) {
   const user = await requireUser();
   if (!hasPermission(user, 'inventory', 'update')) redirect('/inventory/lease?denied=1');
   const reservationId = String(formData.get('reservationId') ?? '');
   const assetId = String(formData.get('assetId') ?? '');
   const quantity = Math.max(1, Number(formData.get('quantity') ?? 1) || 1);
+  const requestId = String(formData.get('requestId') ?? '');
 
-  const [reservation, asset] = await Promise.all([
-    prisma.leaseReservation.findFirst({ where: { id: reservationId, tenantId: user.tenantId } }),
-    prisma.productAsset.findFirst({ where: { id: assetId, tenantId: user.tenantId } }),
-  ]);
-  if (!reservation || !asset) redirect('/inventory/lease?error=notfound');
-
-  // 二重引当（在庫超過）の防止: 重複判定と予約ラインの作成を単一 $transaction で行い、対象 ProductAsset を
-  // FOR UPDATE でロックしてから既存ラインを「ロック下で」再読取する。これにより同一資産への並行予約が
-  // 直列化され、後続 tx は先行 tx が commit した予約ラインも含めて重複判定できる（従来は check-then-act で
-  // 両方が同じ existing を読み、conflict=false のまま在庫を超過して二重引当できた）。
-  const { conflict, avail } = await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT id FROM "ProductAsset" WHERE id = ${assetId} AND "tenantId" = ${user.tenantId} FOR UPDATE`;
-    const existingLines = await tx.leaseReservationLine.findMany({
-      where: { tenantId: user.tenantId, assetId },
-      include: { reservation: true },
-    });
-    const existing: ReservationWindow[] = existingLines.map((l) => ({
-      assetId,
-      quantity: l.quantity,
-      startAt: l.reservation.startAt,
-      endAt: l.reservation.endAt,
-    }));
-    const window = { startAt: reservation!.startAt, endAt: reservation!.endAt };
-    const conflict = hasReservationConflict({ assetId, quantity, ...window }, existing, asset!.quantity);
-    const avail = availableQuantity(assetId, asset!.quantity, window, existing);
-    // 衝突時はラインを作らずに抜ける（ロックは commit で解放）。
-    if (!conflict) {
-      await tx.leaseReservationLine.create({ data: { tenantId: user.tenantId, reservationId, assetId, quantity } });
-    }
-    return { conflict, avail };
-  });
-
-  await emitGrowthEvent({
-    tenantId: user.tenantId,
-    type: 'inventory.availability.checked',
-    title: `在庫可用性チェック: ${asset!.name}（残${avail}）`,
-    actorId: user.userId,
-    entityType: 'ProductAsset',
-    entityId: assetId,
-    metric: { available: avail, requested: quantity, conflict },
-  });
-
-  if (conflict) redirect(`/inventory/lease?error=conflict&asset=${encodeURIComponent(asset!.name)}`);
-
-  // 在庫を予約状態へ（単一の真実源 InventoryMovement 経由）。ライン確定後に反映。
-  await applyInventoryMovement({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    assetId,
-    type: 'reserve',
-    quantity,
-    reservationId,
-    note: `リース予約 ${reservation!.eventName} に割当`,
-  });
+  const result = await addAssetToLeaseReservation(
+    { tenantId: user.tenantId, userId: user.userId },
+    { reservationId, assetId, quantity, requestId },
+  );
+  if (!result.ok) {
+    if (result.reason === 'notfound') redirect('/inventory/lease?error=notfound');
+    if (result.reason === 'invalid-state') redirect('/inventory/lease?error=state');
+    if (result.reason === 'invalid-request-id') redirect('/inventory/lease?error=request');
+    if (result.reason === 'idempotency-mismatch') redirect('/inventory/lease?error=idem');
+    redirect(`/inventory/lease?error=conflict&asset=${encodeURIComponent(result.assetName)}`);
+  }
   revalidatePath('/inventory/lease');
   redirect('/inventory/lease?added=1');
 }
@@ -203,108 +161,27 @@ export async function confirmLeaseReservationAction(formData: FormData) {
   const user = await requireUser();
   if (!hasPermission(user, 'inventory', 'update')) redirect('/inventory/lease?denied=1');
   const reservationId = String(formData.get('reservationId') ?? '');
-  const reservation = await prisma.leaseReservation.findFirst({ where: { id: reservationId, tenantId: user.tenantId } });
-  if (!reservation) redirect('/inventory/lease');
-  await prisma.leaseReservation.update({ where: { id: reservationId }, data: { status: 'confirmed' } });
-  await writeAudit({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    action: 'update',
-    entityType: 'LeaseReservation',
-    entityId: reservationId,
-    summary: `リース予約を確定: ${reservation!.eventName}`,
-  });
-  await emitGrowthEvent({
-    tenantId: user.tenantId,
-    type: 'rental.reservation.confirmed',
-    title: `リース予約確定: ${reservation!.eventName}`,
-    actorId: user.userId,
-    entityType: 'LeaseReservation',
-    entityId: reservationId,
-    alsoDomainEvent: {
-      domainType: 'LEASE_RESERVATION_CONFIRMED' as DomainEventType,
-      aggregateType: 'LeaseReservation',
-      aggregateId: reservationId,
-    },
-  });
+  const result = await confirmLeaseReservation({ tenantId: user.tenantId, userId: user.userId }, reservationId);
   revalidatePath('/inventory/lease');
-  redirect('/inventory/lease?confirmed=1');
+  redirectForLifecycle(result, 'confirmed');
 }
 
 export async function dispatchLeaseReservationAction(formData: FormData) {
   const user = await requireUser();
   if (!hasPermission(user, 'inventory', 'update')) redirect('/inventory/lease?denied=1');
   const reservationId = String(formData.get('reservationId') ?? '');
-  const reservation = await prisma.leaseReservation.findFirst({
-    where: { id: reservationId, tenantId: user.tenantId },
-    include: { lines: true },
-  });
-  if (!reservation) redirect('/inventory/lease');
-  for (const l of reservation!.lines) {
-    await applyInventoryMovement({
-      tenantId: user.tenantId,
-      actorId: user.userId,
-      assetId: l.assetId,
-      type: 'dispatch',
-      quantity: l.quantity,
-      reservationId,
-      note: `出庫: ${reservation!.eventName}`,
-    });
-  }
-  await prisma.leaseReservation.update({ where: { id: reservationId }, data: { status: 'dispatched', deliveryAt: new Date() } });
-  await emitGrowthEvent({
-    tenantId: user.tenantId,
-    type: 'rental.item.dispatched',
-    title: `リース出庫: ${reservation!.eventName}`,
-    actorId: user.userId,
-    entityType: 'LeaseReservation',
-    entityId: reservationId,
-    alsoDomainEvent: {
-      domainType: 'LEASE_ITEM_DISPATCHED' as DomainEventType,
-      aggregateType: 'LeaseReservation',
-      aggregateId: reservationId,
-    },
-  });
+  const result = await dispatchLeaseReservation({ tenantId: user.tenantId, userId: user.userId }, reservationId);
   revalidatePath('/inventory/lease');
-  redirect('/inventory/lease?dispatched=1');
+  redirectForLifecycle(result, 'dispatched');
 }
 
 export async function returnLeaseReservationAction(formData: FormData) {
   const user = await requireUser();
   if (!hasPermission(user, 'inventory', 'update')) redirect('/inventory/lease?denied=1');
   const reservationId = String(formData.get('reservationId') ?? '');
-  const reservation = await prisma.leaseReservation.findFirst({
-    where: { id: reservationId, tenantId: user.tenantId },
-    include: { lines: true },
-  });
-  if (!reservation) redirect('/inventory/lease');
-  for (const l of reservation!.lines) {
-    await applyInventoryMovement({
-      tenantId: user.tenantId,
-      actorId: user.userId,
-      assetId: l.assetId,
-      type: 'return',
-      quantity: l.quantity,
-      reservationId,
-      note: `返却: ${reservation!.eventName}`,
-    });
-  }
-  await prisma.leaseReservation.update({ where: { id: reservationId }, data: { status: 'returned', returnAt: new Date() } });
-  await emitGrowthEvent({
-    tenantId: user.tenantId,
-    type: 'rental.item.returned',
-    title: `リース返却: ${reservation!.eventName}`,
-    actorId: user.userId,
-    entityType: 'LeaseReservation',
-    entityId: reservationId,
-    alsoDomainEvent: {
-      domainType: 'LEASE_ITEM_RETURNED' as DomainEventType,
-      aggregateType: 'LeaseReservation',
-      aggregateId: reservationId,
-    },
-  });
+  const result = await returnLeaseReservation({ tenantId: user.tenantId, userId: user.userId }, reservationId);
   revalidatePath('/inventory/lease');
-  redirect('/inventory/lease?returned=1');
+  redirectForLifecycle(result, 'returned');
 }
 
 export async function recordLeaseDamageAction(formData: FormData) {

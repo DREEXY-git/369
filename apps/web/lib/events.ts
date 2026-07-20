@@ -102,8 +102,12 @@ async function findExistingByIdentity(
  *      bigint 化は PostgreSQL 側のみ＝Phase A/B の hash drift が構造的に不可能。
  *  (3) canonical-first exact → 検証付き legacy 照合（tx 内・lock 取得後が唯一の権威）
  *  (4) collision は typed EventIdentityCollisionError で fail-closed（ID-3。キー変形・誤収束をしない）
- *  (5) miss なら DomainEvent（Phase A writer は **legacy キーのまま**・payload.idem に identity を無損失保存）
- *      ＋ OutboxMessage を同一 tx で作成
+ *  (5) miss なら DomainEvent（**Phase B canonical writer**: 保存キー=canonicalKey・payload.idem.enc='canonical'）
+ *      ＋ OutboxMessage を同一 tx で作成。
+ *      Phase B 切替（条件4）: writer encoding のみを legacy FNV→canonical へ切替える。reader
+ *      （findExistingByIdentity・canonical-first＋検証付き legacy fallback）と lockMaterial は**不変**の
+ *      ため、pre-B に書かれた legacy 行の照合・advisory barrier の直列化・legacy 衝突の fail-closed は
+ *      すべて維持される（writer 切替をまたいでも二重化ゼロ・lock drift 無し）。
  */
 export async function emitDomainEventInTx(tx: TxClient, input: EmitEventInput): Promise<EmitResult> {
   const keyInput = {
@@ -121,8 +125,11 @@ export async function emitDomainEventInTx(tx: TxClient, input: EmitEventInput): 
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockMaterial}::text, 0))`;
 
   const existing = await findExistingByIdentity(tx, input, idempotencyKey, canonicalKey);
-  if (existing.kind === 'hit') return { eventId: existing.id, idempotencyKey, duplicated: true };
+  // 返却キーは Phase B の保存キー（canonical）で統一する（新規行の保存キーと一致・retry 間で不変）。
+  if (existing.kind === 'hit') return { eventId: existing.id, idempotencyKey: canonicalKey, duplicated: true };
   if (existing.kind === 'collision') {
+    // 衝突の主体は **legacy キー**（pre-B legacy 行が別 identity で占有）。canonical writer でも reader は
+    // legacy 占有を検出し fail-closed する（誤収束・キー変形をしない）。error の legacyKey は legacy のまま。
     throw new EventIdentityCollisionError({
       tenantId: input.tenantId,
       eventType: input.eventType,
@@ -131,12 +138,12 @@ export async function emitDomainEventInTx(tx: TxClient, input: EmitEventInput): 
     });
   }
 
-  // payload.idem = 無損失 identity metadata（ID-2）。Phase A writer は enc:'legacy'。
+  // payload.idem = 無損失 identity metadata（ID-2）。Phase B canonical writer は enc:'canonical'。
   const idem = makeIdemMetadata({
     aggregateType: input.aggregateType,
     aggregateId: input.aggregateId,
     dedupe: input.dedupe ?? '',
-    enc: 'legacy',
+    enc: 'canonical',
   });
   const ev = await tx.domainEvent.create({
     data: {
@@ -148,7 +155,8 @@ export async function emitDomainEventInTx(tx: TxClient, input: EmitEventInput): 
       actorType: input.actorType ?? 'user',
       payload: { ...(input.payload ?? {}), idem } as any,
       metadata: (input.metadata ?? undefined) as any,
-      idempotencyKey,
+      // Phase B 条件4: 保存キーは canonical（identity→key 単射・delimiter injection 耐性）。
+      idempotencyKey: canonicalKey,
       status: 'pending',
     },
   });
@@ -161,7 +169,7 @@ export async function emitDomainEventInTx(tx: TxClient, input: EmitEventInput): 
       status: 'pending',
     },
   });
-  return { eventId: ev.id, idempotencyKey, duplicated: false };
+  return { eventId: ev.id, idempotencyKey: canonicalKey, duplicated: false };
 }
 
 /**
@@ -170,8 +178,8 @@ export async function emitDomainEventInTx(tx: TxClient, input: EmitEventInput): 
  * 修正版 Phase A（PA-BLK-3/PA-BLK-4）:
  *  - tx 外の事前照合は **hit の短絡のみに使用**（miss は無権威・必ず advisory lock 取得後に再検索）。
  *  - 判定と作成は interactive tx 内の advisory barrier（emitDomainEventInTx）で直列化。
- *  - 新規書込のキーは従来どおり legacy（Phase A では writer encoding を変更しない・意味論のみ契約整合）。
- *  - legacy キーの真の衝突は EventIdentityCollisionError で fail-closed。
+ *  - 新規書込のキーは **canonical**（Phase B 条件4・writer encoding を canonical へ切替済）。
+ *  - legacy キーの真の衝突は EventIdentityCollisionError で fail-closed（reader 不変）。
  */
 export async function emitDomainEvent(input: EmitEventInput): Promise<EmitResult> {
   const keyInput = {
@@ -185,7 +193,7 @@ export async function emitDomainEvent(input: EmitEventInput): Promise<EmitResult
 
   // fast-path（tx 外）: hit の短絡のみ。miss/collision はここでは裁定しない（無権威）。
   const fast = await findExistingByIdentity(prisma, input, idempotencyKey, canonicalKey);
-  if (fast.kind === 'hit') return { eventId: fast.id, idempotencyKey, duplicated: true };
+  if (fast.kind === 'hit') return { eventId: fast.id, idempotencyKey: canonicalKey, duplicated: true };
 
   try {
     return await prisma.$transaction(async (tx) => emitDomainEventInTx(tx, input), {
@@ -197,7 +205,7 @@ export async function emitDomainEvent(input: EmitEventInput): Promise<EmitResult
     // 完全一致行あり → 冪等収束。無ければ typed fail-closed（他人の行 ID を返さない・P2002 の握り潰し禁止）。
     if (typeof e === 'object' && e !== null && (e as { code?: string }).code === 'P2002') {
       const dup = await findExistingByIdentity(prisma, input, idempotencyKey, canonicalKey);
-      if (dup.kind === 'hit') return { eventId: dup.id, idempotencyKey, duplicated: true };
+      if (dup.kind === 'hit') return { eventId: dup.id, idempotencyKey: canonicalKey, duplicated: true };
       throw new EventIdentityCollisionError({
         tenantId: input.tenantId,
         eventType: input.eventType,

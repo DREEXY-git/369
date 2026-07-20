@@ -1,0 +1,130 @@
+# 369 PADN L2 — Dispatcher（イベント → 役割ジョブ起動の決定）
+#
+# 重要な事実（§6）: この workflow file が main に merge されるまで、いかなるイベントでも
+# 自動起動しない（GitHub Actions は default branch 上の定義しか schedule/repository_dispatch を
+# 受けない）。main 反映自体が Human Gate（tasks/CURRENT_STATE.md）。
+#
+# 既定は完全 default-off（§18）: Actions Variable PADN_AUTONOMY_ENABLED が 'true' でなければ
+# dispatcher は観測ログのみを出して終了する。observe mode では決定を計算しても emit しない。
+#
+# セキュリティ設計（§7 / docs/coordination/padn-l2/01_THREAT_MODEL.md）:
+# - pull_request イベントでは workflow 定義が PR の merge ref から読まれる（untrusted）。
+#   そのため PR イベントは secrets ゼロの ingest_pr ジョブでのみ処理し、スクリプトも
+#   ref: main を明示 checkout して PR 改変版コードを実行しない。
+# - pull_request_target は使用しない。
+# - fork PR には secrets を渡さない（ingest_pr の if ガード + dispatcher 内の fork 判定）。
+# - 内部 chaining（repository_dispatch）は GitHub App installation token でのみ行う。
+#   GITHUB_TOKEN で作ったイベントは新しい workflow run を起動しない（再帰防止仕様）ため、
+#   App token が無い場合 dispatcher は emit しない（scripts/padn/dispatcher.mjs）。
+name: 369 PADN L2 Dispatch
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: '手動起動の理由（監査ログ用）'
+        required: false
+        type: string
+  schedule:
+    # 30分周期（コスト/遅延のトレードオフは config/padn/dispatch-policy.json schedule.rationale_ja）
+    - cron: '*/30 * * * *'
+  issues:
+    types: [opened, edited, labeled, closed]
+  issue_comment:
+    types: [created]
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  deployment_status: {}
+  repository_dispatch:
+    types: [padn_dispatch]
+
+permissions: {}
+
+concurrency:
+  # dispatcher 全体で同時 1（§10）。キューさせる（cancel すると判断機会を失うため false）。
+  group: 369-padn-dispatcher
+  cancel-in-progress: false
+
+jobs:
+  # pull_request イベント専用の ingest（untrusted workflow definition 前提・secrets ゼロ・write ゼロ）。
+  # 判断は次回 schedule / 他イベントの dispatch ジョブが main 定義で行う。
+  ingest_pr:
+    if: >-
+      github.repository == 'DREEXY-git/369' &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read # observe の snapshot 構築用（secrets は引き続きゼロ）
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # PR 改変版スクリプトを実行しないため、常に main のスクリプトを checkout する
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Observe only (no secrets, no emit)
+        env:
+          PADN_AUTONOMY_ENABLED: ${{ vars.PADN_AUTONOMY_ENABLED }}
+          PADN_MODE: observe
+          PADN_WRITE_LANES: '0'
+          PADN_REPORTS_ENABLED: 'false'
+          PADN_HAS_APP_TOKEN: 'false'
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # bootstrap: 本 workflow が PR として提案されている段階では main に scripts/padn が
+          # 存在しない（PR run 29557326475 で MODULE_NOT_FOUND を実測）。その間は skip する。
+          if [ ! -f scripts/padn/dispatcher.mjs ]; then
+            echo "PADN scripts not on main yet (bootstrap phase) — skip" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          node scripts/padn/dispatcher.mjs
+
+  dispatch:
+    # secrets を持つ job は「main の workflow 定義で実行されている」ことを ref で強制する。
+    # 実測（run 29557345673 / deployment_status / head_branch=claude branch）で、
+    # deployment_status は deploy された branch 上の workflow 定義で実行されると確認済み。
+    # workflow_dispatch も任意 ref を選べるため、refs/heads/main 以外では実行しない
+    #（branch 改変版 workflow 定義に secrets を渡さないための fail-closed。
+    #  branch preview の deployment_status は捨てられるが、30分 schedule が回収する）。
+    if: >-
+      github.repository == 'DREEXY-git/369' &&
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read # snapshot（open PR 列挙）用
+      actions: read # §9 budget（collectRuntimeSignals）の workflow run 実測用
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Mint GitHub App installation token（未設定なら skip）
+        id: app_token
+        if: vars.PADN_GITHUB_APP_ID != ''
+        continue-on-error: true
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.PADN_GITHUB_APP_ID }}
+          private-key: ${{ secrets.PADN_GITHUB_APP_PRIVATE_KEY }}
+      - name: Run dispatcher
+        env:
+          PADN_AUTONOMY_ENABLED: ${{ vars.PADN_AUTONOMY_ENABLED }}
+          PADN_MODE: ${{ vars.PADN_MODE || 'observe' }}
+          PADN_WRITE_LANES: ${{ vars.PADN_WRITE_LANES || '0' }}
+          PADN_REPORTS_ENABLED: ${{ vars.PADN_REPORTS_ENABLED || 'false' }}
+          PADN_ACTOR_ALLOWLIST: ${{ vars.PADN_ACTOR_ALLOWLIST }}
+          PADN_HAS_APP_TOKEN: ${{ steps.app_token.outputs.token != '' && 'true' || 'false' }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token || github.token }}
+        run: node scripts/padn/dispatcher.mjs

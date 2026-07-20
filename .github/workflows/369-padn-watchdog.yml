@@ -1,0 +1,46 @@
+# 369 PADN L2 — Watchdog（§16）
+#
+# read-only で L1/L2 状態を検査し、異常検出時は run を fail させる（Actions の失敗通知に乗る）。
+# PADN_REPORTS_ENABLED=true のときのみ Control Root へ BACKPRESSURE_ON / INCIDENT_FREEZE を
+# append-only 投稿する。既存 branch / PR / Evidence の削除は行わない（watchdog.mjs の
+# 出力語彙に削除系 action は存在しない）。
+name: 369 PADN L2 Watchdog
+
+on:
+  schedule:
+    # dispatcher（*/30）と 7 分ずらす（同時実行の観測ノイズ回避）
+    - cron: '7,37 * * * *'
+  workflow_dispatch: {}
+
+permissions: {}
+
+concurrency:
+  group: 369-padn-watchdog
+  cancel-in-progress: false
+
+jobs:
+  watchdog:
+    # default-off: schedule 起動は autonomy 有効時のみ実体動作。手動起動は常に可（動作確認用）。
+    if: >-
+      github.repository == 'DREEXY-git/369' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' || vars.PADN_AUTONOMY_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read # snapshot（open PR 列挙）用
+      actions: read # collectRuntimeSignals の workflow run 実測（private repo では明示付与が必須）
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run watchdog (read-only detection)
+        env:
+          PADN_AUTONOMY_ENABLED: ${{ vars.PADN_AUTONOMY_ENABLED }}
+          PADN_MODE: ${{ vars.PADN_MODE || 'observe' }}
+          PADN_REPORTS_ENABLED: ${{ vars.PADN_REPORTS_ENABLED || 'false' }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/padn/watchdog.mjs

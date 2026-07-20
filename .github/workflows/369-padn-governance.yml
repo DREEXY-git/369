@@ -1,0 +1,53 @@
+# 369 PADN L2 — Governance / Vault Sync Check（RT0・read-only）
+#
+# config/padn の相互整合・否定系 selftest・PADN 単体テスト・workflow lint を検査する。
+# GitHub docs ↔ 369-vault の drift は検出と報告のみ（vault main への反映は Human Gate）。
+name: 369 PADN L2 Governance
+
+on:
+  schedule:
+    - cron: '45 1 * * *'
+  workflow_dispatch: {}
+  repository_dispatch:
+    types: [padn_governance_sync]
+
+permissions: {}
+
+concurrency:
+  # governance/vault 系は同時 1（§10）
+  group: 369-padn-governance
+  cancel-in-progress: false
+
+jobs:
+  governance:
+    if: >-
+      github.repository == 'DREEXY-git/369' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' || vars.PADN_AUTONOMY_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Validate configs + workflow lint
+        run: node scripts/padn/validate.mjs --configs
+      - name: Negative selftests
+        run: node scripts/padn/validate.mjs --selftest
+      - name: PADN unit tests (node built-in test runner)
+        run: node --test scripts/padn/__tests__/*.test.mjs
+      - name: Vault link hygiene（新規ノートの index.md リンク漏れ検出・報告のみ）
+        run: |
+          missing=0
+          for f in 369-vault/知識/*.md 369-vault/思想/*.md 369-vault/プロンプト/*.md; do
+            [ -e "$f" ] || continue
+            name=$(basename "$f" .md)
+            if ! grep -qF "$name" 369-vault/index.md; then
+              echo "::warning::369-vault/index.md からリンクされていないノート: $f"
+              missing=$((missing+1))
+            fi
+          done
+          echo "index 未リンクノート: $missing 件（報告のみ・自動修正しない）" >> "$GITHUB_STEP_SUMMARY"

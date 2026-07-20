@@ -1,0 +1,126 @@
+{
+  "schema": "369-padn-l2-roles-v1",
+  "program_id": "369-PADN-L2-AUTONOMY-V11",
+  "l1_program_id": "369-PADN-V5",
+  "notes_ja": "A〜H の役割定義。L2 はここに定義された role job を GitHub イベントで自動起動する。engine=claude は anthropics/claude-code-action、engine=codex は openai/codex-action、engine=script は scripts/padn/*.mjs。write=false の role はコード変更を行わない。A（Director）の判断そのものは L2 で自動化しない（dispatcher は Director の standing policy の機械的執行のみ）。",
+  "roles": {
+    "A": {
+      "name_ja": "Program Director / Lease Manager",
+      "engine": "human_supervised_claude",
+      "write": false,
+      "l2_automated": false,
+      "workflow": null,
+      "event_types": [],
+      "notes_ja": "WIP 発行・Lease 発行・容量変更・Human Gate 判定は L1（チャット/人間）に残す。L2 dispatcher は既存 PROMPT_DISPATCHED / Lease の機械的検証と role job 起動のみを行う。"
+    },
+    "B": {
+      "name_ja": "Implementer（実装レーン）",
+      "engine": "claude",
+      "write": true,
+      "l2_automated": true,
+      "workflow": ".github/workflows/369-padn-claude.yml",
+      "event_types": ["padn_claude_implement", "padn_claude_remediate"],
+      "prompt_templates": {
+        "padn_claude_implement": "claude-implement.md",
+        "padn_claude_remediate": "claude-remediate.md"
+      },
+      "notes_ja": "有効な Lease + fencing token + prompt hash 一致 + allowed paths が揃った場合のみ起動。成果は必ず Draft PR。"
+    },
+    "C": {
+      "name_ja": "Implementation / Architecture / Security Auditor（独立監査）",
+      "engine": "codex",
+      "write": false,
+      "l2_automated": true,
+      "workflow": ".github/workflows/369-padn-codex.yml",
+      "event_types": ["padn_codex_arch", "padn_codex_security"],
+      "prompt_templates": {
+        "padn_codex_arch": "codex-arch.md",
+        "padn_codex_security": "codex-security.md"
+      },
+      "notes_ja": "fixed head checkout + read-only sandbox。Security は独立 job。PASS は同一 SHA でのみ有効。Implementer 自身を final reviewer にしない（engine 分離で構造的に強制）。"
+    },
+    "D": {
+      "name_ja": "Test / Evidence（テスト作成 + 証拠監査）",
+      "engine": "mixed",
+      "write": true,
+      "l2_automated": true,
+      "workflow": ".github/workflows/369-padn-claude.yml",
+      "event_types": ["padn_claude_test", "padn_codex_evidence"],
+      "prompt_templates": {
+        "padn_claude_test": "claude-test.md",
+        "padn_codex_evidence": "codex-evidence.md"
+      },
+      "notes_ja": "padn_claude_test はテスト追加（write / claude workflow）。padn_codex_evidence は証拠監査（read-only / codex workflow）。"
+    },
+    "E": {
+      "name_ja": "Integration Manager（統合列車監査）",
+      "engine": "codex",
+      "write": false,
+      "l2_automated": true,
+      "workflow": ".github/workflows/369-padn-codex.yml",
+      "event_types": ["padn_integration_audit"],
+      "prompt_templates": {
+        "padn_integration_audit": "integration-audit.md"
+      },
+      "notes_ja": "統合 train の file overlap / merge-tree / CI 相関の read-only 監査。main merge は常に Human Gate。"
+    },
+    "F": {
+      "name_ja": "Post-merge Verifier（マージ後検証）",
+      "engine": "script",
+      "write": false,
+      "l2_automated": true,
+      "workflow": ".github/workflows/369-padn-dispatch.yml",
+      "event_types": [],
+      "notes_ja": "main への push / workflow_run(push, main) 完了を dispatcher が観測し、POST_MERGE 検証レポート材料を作る。dispatch は行わずレポートのみ。"
+    },
+    "G": {
+      "name_ja": "Scout / Discovery（read-only 探索）",
+      "engine": "script",
+      "write": false,
+      "l2_automated": true,
+      "workflow": ".github/workflows/369-padn-dispatch.yml",
+      "event_types": ["padn_dispatch"],
+      "notes_ja": "discover.mjs による L1 状態の import（Control Root / WIP / Lease / PR / head）。新規 WIP・Issue・branch・PR は作成しない（重複作成の構造的防止）。"
+    },
+    "H": {
+      "name_ja": "Oversight（H-Codex read-only 監督）",
+      "engine": "codex",
+      "write": false,
+      "l2_automated": true,
+      "workflow": ".github/workflows/369-padn-oversight.yml",
+      "event_types": ["padn_oversight"],
+      "prompt_templates": {
+        "padn_oversight": "oversight.md"
+      },
+      "notes_ja": "1日2回 + 主要イベントで起動。Task/Lease 発行・コード変更を行わない。所見は報告のみ。"
+    },
+    "GOV": {
+      "name_ja": "Governance / Vault Sync Checker",
+      "engine": "script",
+      "write": false,
+      "l2_automated": true,
+      "workflow": ".github/workflows/369-padn-governance.yml",
+      "event_types": ["padn_governance_sync"],
+      "prompt_templates": {
+        "padn_governance_sync": "governance-sync.md"
+      },
+      "notes_ja": "config 整合・GitHub/vault drift の read-only 検査。vault main への反映は Human Gate。"
+    }
+  },
+  "dispatch_event_types": [
+    "padn_dispatch",
+    "padn_claude_implement",
+    "padn_claude_remediate",
+    "padn_claude_test",
+    "padn_codex_arch",
+    "padn_codex_security",
+    "padn_codex_evidence",
+    "padn_integration_audit",
+    "padn_governance_sync",
+    "padn_oversight"
+  ],
+  "reviewer_independence": {
+    "rule_ja": "Implementer（claude）は自分の成果物の final reviewer になれない。REVIEW 系 event_type（padn_codex_*）は必ず engine=codex（read-only）で実行する。",
+    "review_event_types": ["padn_codex_arch", "padn_codex_security", "padn_codex_evidence"]
+  }
+}

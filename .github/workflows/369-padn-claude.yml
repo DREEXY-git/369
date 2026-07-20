@@ -1,0 +1,213 @@
+# 369 PADN L2 — Claude 役割ジョブ（B 実装 / B rework / D テスト作成）
+#
+# 起動経路は repository_dispatch のみ（dispatcher が App token で送る。§6 internal chaining）。
+# default branch の workflow 定義で実行されるため untrusted PR 定義の混入はない。
+#
+# ガード（§9 の defense in depth）:
+#   1. dispatcher 側で §9 全条件を検証済み
+#   2. 本 workflow の guard step が payload を静的検証 + ライブ再検証（packet hash / head / base drift）
+#   3. 実行後に ALLOWED_PATHS 逸脱を機械検査（逸脱で job fail → watchdog 検出対象）
+#
+# Human Gate 越境禁止: main への merge / schema / package / secrets / 外部送信は行わない。
+# 成果は lease で指定された branch への push と Draft PR 更新のみ。
+name: 369 PADN L2 Claude Role Jobs
+
+on:
+  repository_dispatch:
+    types: [padn_claude_implement, padn_claude_remediate, padn_claude_test]
+
+permissions: {}
+
+concurrency:
+  # WIP ごとに同時 1（§10）。評価中の run を消さないため cancel しない。
+  group: 369-padn-claude-${{ github.event.client_payload.wip_id }}
+  cancel-in-progress: false
+
+jobs:
+  role:
+    # github.ref == refs/heads/main: workflow_dispatch 等で branch 上の改変版 workflow 定義に
+    # secrets を渡さない（repository_dispatch は常に default branch 定義・ref で実行される）
+    if: >-
+      github.repository == 'DREEXY-git/369' &&
+      vars.PADN_AUTONOMY_ENABLED == 'true' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Guard — payload 静的検証
+        run: node scripts/padn/validate.mjs --payload "$GITHUB_EVENT_PATH"
+
+      - name: Guard — ライブ再検証 + prompt render
+        id: packet
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/padn/render-role-prompt.mjs
+
+      # 以降の step は guard が proceed=true を出した場合のみ実行（stale/duplicate dispatch は
+      # guard が clean skip し、run は成功で終わる — Codex review P2 対応）。
+      # payload 由来の値は run: へ ${{ }} 直接展開せず env 経由で quote する（script injection 対策。
+      # branch は validate.mjs でも形式検証済みだが defense in depth）。
+      - name: Lease branch を用意（既存 remote branch があれば継続、無ければ base_sha から作成）
+        if: steps.packet.outputs.proceed == 'true'
+        env:
+          PADN_BRANCH: ${{ steps.packet.outputs.branch }}
+          PADN_BASE_SHA: ${{ steps.packet.outputs.base_sha }}
+        run: |
+          git fetch origin "$PADN_BRANCH" || true
+          if git rev-parse --verify "origin/$PADN_BRANCH" >/dev/null 2>&1; then
+            git checkout -B "$PADN_BRANCH" "origin/$PADN_BRANCH"
+          else
+            git checkout -B "$PADN_BRANCH" "$PADN_BASE_SHA"
+          fi
+
+      - name: Mint GitHub App installation token
+        id: app_token
+        if: steps.packet.outputs.proceed == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.PADN_GITHUB_APP_ID }}
+          private-key: ${{ secrets.PADN_GITHUB_APP_PRIVATE_KEY }}
+
+      # 公式 action の現行 stable は v1 系（実装時点 v1.0.176 / 2026-07-17 確認）。
+      # prompt 指定で automation mode になる。tool 制限と turn 上限は claude_args で行う。
+      - name: Run Claude role job (automation mode)
+        if: steps.packet.outputs.proceed == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ steps.app_token.outputs.token }}
+          prompt: ${{ steps.packet.outputs.prompt }}
+          settings: |
+            {
+              "permissions": {
+                "deny": [
+                  "Bash(git push --force*)",
+                  "Bash(gh pr merge*)",
+                  "Bash(pnpm db:migrate*)",
+                  "Bash(pnpm db:reset*)",
+                  "WebFetch",
+                  "WebSearch"
+                ]
+              }
+            }
+          claude_args: |
+            --max-turns 60
+            --allowedTools "Edit,Write,Read,Glob,Grep,Bash(pnpm test),Bash(pnpm typecheck),Bash(pnpm lint),Bash(pnpm db:generate),Bash(git add:*),Bash(git commit:*),Bash(git status),Bash(git diff:*),Bash(git log:*)"
+
+      # push は Claude の tool から撤去し workflow が管理する（Codex R9 P1）:
+      # `git push origin HEAD:*` を許すと HEAD:main 等 lease 外 ref へ push 可能だった。
+      # さらに ALLOWED_PATHS 検査を push 前のローカル diff に行い、逸脱は origin に到達しない。
+      - name: Pre-push check — ALLOWED_PATHS 逸脱検査（逸脱は push されない）
+        if: steps.packet.outputs.proceed == 'true'
+        env:
+          PADN_ALLOWED_PATHS: ${{ steps.packet.outputs.allowed_paths }}
+          PADN_BASE_SHA: ${{ steps.packet.outputs.base_sha }}
+        run: |
+          git diff --name-only "$PADN_BASE_SHA..HEAD" | node scripts/padn/check-diff-paths.mjs
+
+      - name: Push lease branch（workflow 管理・lease branch 以外へは push 不能）
+        if: steps.packet.outputs.proceed == 'true'
+        env:
+          PADN_BRANCH: ${{ steps.packet.outputs.branch }}
+          PADN_BASE_SHA: ${{ steps.packet.outputs.base_sha }}
+          APP_TOKEN: ${{ steps.app_token.outputs.token }}
+        run: |
+          # defense in depth（validate.mjs の branch policy 検証に加え）: 保護 ref への push を
+          # workflow 側でも明示拒否し、lease branch prefix を要求する（Codex R13 P1）。
+          case "$PADN_BRANCH" in
+            main|master|release|release/*|release-*|production|production/*|gh-pages)
+              echo "::error::protected ref への push は禁止: $PADN_BRANCH"; exit 1;;
+          esac
+          case "$PADN_BRANCH" in
+            claude/*) : ;;
+            *) echo "::error::lease branch は claude/ prefix 必須: $PADN_BRANCH"; exit 1;;
+          esac
+          # 実装（base からの新 commit / diff）が無い場合は push も freeze もしない（Codex R15 P2）:
+          # LLM の HOLD 経路等で無 commit のまま push→freeze すると、実装なしで FROZEN_FOR_REVIEW へ
+          # 進んでしまう。変更が無ければ Director/HOLD 処理に委ねる。
+          if git diff --quiet "$PADN_BASE_SHA" HEAD; then
+            echo "変更なし（HOLD/no-op）: push・freeze を行わない" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          # App token で push する（GITHUB_TOKEN の push は CI を再帰防止仕様で起動しないため）。
+          # 宛先は lease branch の refs/heads のみに固定。
+          git push "https://x-access-token:${APP_TOKEN}@github.com/${{ github.repository }}.git" \
+            "HEAD:refs/heads/$PADN_BRANCH"
+          echo "pushed_head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        id: push_lease
+
+      # IMPLEMENTATION_FREEZE marker は LLM（App bot）ではなく workflow（github-actions[bot]）が
+      # 確定 head で投稿する（Codex R14 P1）: fold の信頼投稿者は github-actions[bot] のため、
+      # App bot 由来の freeze は無視されレーンが IMPLEMENTING で詰まる。implement/remediate が
+      # 実変更を push した場合のみ（has_changes=true）freeze を確定させ、Codex 監査レーンへ進める。
+      - name: Post IMPLEMENTATION_FREEZE marker (deterministic, github-actions[bot])
+        if: >-
+          steps.packet.outputs.proceed == 'true' &&
+          steps.push_lease.outputs.has_changes == 'true' &&
+          (github.event.action == 'padn_claude_implement' || github.event.action == 'padn_claude_remediate')
+        uses: actions/github-script@v7
+        env:
+          PADN_WIP_ISSUE: ${{ steps.packet.outputs.wip_issue }}
+          PADN_WIP_ID: ${{ steps.packet.outputs.wip_id }}
+          PADN_HEAD: ${{ steps.push_lease.outputs.pushed_head }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const head = process.env.PADN_HEAD;
+            const body = [
+              `## IMPLEMENTATION_FREEZE — ${process.env.PADN_WIP_ID}（fixed head \`${head}\`）`,
+              '',
+              'L2 role job が push を完了し、この head で凍結しました。以降は Codex 監査レーンの対象です。',
+              '',
+              '```json',
+              JSON.stringify({ schema: '369-l2-event-v1', program_id: '369-PADN-L2-AUTONOMY-V11', event_type: 'L2_IMPLEMENTATION_FREEZE', wip_id: process.env.PADN_WIP_ID, head_sha: head }, null, 2),
+              '```',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: Number(process.env.PADN_WIP_ISSUE), body,
+            });
+
+      - name: Ensure Draft PR（無ければ作成・merge は行わない）
+        if: steps.packet.outputs.proceed == 'true'
+        uses: actions/github-script@v7
+        env:
+          PADN_BRANCH: ${{ steps.packet.outputs.branch }}
+          PADN_WIP_ID: ${{ steps.packet.outputs.wip_id }}
+          PADN_WIP_ISSUE: ${{ steps.packet.outputs.wip_issue }}
+        with:
+          github-token: ${{ steps.app_token.outputs.token }}
+          script: |
+            const branch = process.env.PADN_BRANCH;
+            const existing = await github.rest.pulls.list({
+              owner: context.repo.owner, repo: context.repo.repo,
+              head: `${context.repo.owner}:${branch}`, state: 'open',
+            });
+            if (existing.data.length > 0) { core.info(`Draft PR 既存: #${existing.data[0].number}`); return; }
+            try {
+              const pr = await github.rest.pulls.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                head: branch, base: 'main', draft: true,
+                title: `[Draft][PADN-L2] ${process.env.PADN_WIP_ID}`,
+                body: `WIP ${process.env.PADN_WIP_ID}（Issue #${process.env.PADN_WIP_ISSUE}）の L2 role job 成果。Draft のまま維持し、merge は Human Gate。`,
+              });
+              core.info(`Draft PR 作成: #${pr.data.number}`);
+            } catch (e) {
+              // base との diff が無い（変更なし/HOLD）場合の 422 は正常系として記録のみ
+              core.warning(`Draft PR 作成せず: ${e.message}`);
+            }

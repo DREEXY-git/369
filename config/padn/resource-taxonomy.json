@@ -1,0 +1,88 @@
+{
+  "schema": "369-padn-l2-resource-taxonomy-v1",
+  "notes_ja": "semantic resource lock の分類。path lock（ALLOWED_PATHS）に加えて、意味的に同じ資源へ触るレーンの併走を防ぐ。lock level は SNAPSHOT_READ < INTENT_WRITE < WRITE < EXCLUSIVE（PR #62 candidate の設計を read-only 参照して採用。candidate 自体は未採用のまま）。",
+  "lock_levels": ["SNAPSHOT_READ", "INTENT_WRITE", "WRITE", "EXCLUSIVE"],
+  "compatibility": {
+    "notes_ja": "行=保持中 / 列=要求。true=併走可。",
+    "SNAPSHOT_READ": { "SNAPSHOT_READ": true, "INTENT_WRITE": true, "WRITE": true, "EXCLUSIVE": false },
+    "INTENT_WRITE": { "SNAPSHOT_READ": true, "INTENT_WRITE": true, "WRITE": false, "EXCLUSIVE": false },
+    "WRITE": { "SNAPSHOT_READ": true, "INTENT_WRITE": false, "WRITE": false, "EXCLUSIVE": false },
+    "EXCLUSIVE": { "SNAPSHOT_READ": false, "INTENT_WRITE": false, "WRITE": false, "EXCLUSIVE": false }
+  },
+  "resources": {
+    "crm_leadmap": {
+      "description_ja": "リード・商談・LeadMap（CRM統合ラウンドの単一レーン所有対象を含む）",
+      "paths": [
+        "apps/web/app/(app)/leadmap/**",
+        "apps/web/app/(app)/leads/**",
+        "apps/web/lib/domains/crm/**",
+        "packages/shared/src/leads*"
+      ]
+    },
+    "approvals": {
+      "description_ja": "承認フロー（decideApprovalAction 系）",
+      "paths": ["apps/web/app/(app)/approvals/**", "packages/shared/src/approval*"]
+    },
+    "finance_cashflow": {
+      "description_ja": "資金繰り予測（B2 レーン既存対象）",
+      "paths": ["apps/web/app/(app)/finance/cashflow/**", "apps/web/lib/domains/finance/cashflow*"]
+    },
+    "finance_receivables_payments": {
+      "description_ja": "入金・督促・請求（#57 レーン対象、FORBIDDEN 継承）",
+      "paths": [
+        "apps/web/app/(app)/finance/**",
+        "apps/web/lib/domains/finance/dunning*",
+        "apps/web/lib/domains/finance/payments*",
+        "apps/web/app/(app)/invoices/**"
+      ]
+    },
+    "legal_contracts": {
+      "description_ja": "契約・契約リスク/条項（B1 レーン既存対象）",
+      "paths": ["apps/web/app/(app)/contracts/**", "apps/web/lib/domains/legal/**"]
+    },
+    "operations": {
+      "description_ja": "operations.ts（G-201 の collision map で #63×#64 の唯一の重複と判明済み）",
+      "paths": ["apps/web/lib/operations.ts", "apps/web/app/(app)/operations/**"]
+    },
+    "inventory": {
+      "description_ja": "在庫・発注・棚卸・リース",
+      "paths": ["apps/web/app/(app)/inventory/**", "apps/web/lib/domains/inventory/**", "packages/shared/src/inventory*"]
+    },
+    "meetings": {
+      "description_ja": "会議・アップロード",
+      "paths": ["apps/web/app/(app)/meetings/**", "apps/web/lib/domains/meetings/**"]
+    },
+    "worker_queue": {
+      "description_ja": "BullMQ worker / jobs（RT3）",
+      "paths": ["apps/worker/**"]
+    },
+    "db_schema": {
+      "description_ja": "Prisma schema / migrations / seed（RT4/RT3・Human Gate）",
+      "paths": ["packages/db/prisma/**"]
+    },
+    "rbac_labels": {
+      "description_ja": "RBAC / 機密ラベル（Human Gate）",
+      "paths": ["packages/shared/rbac.ts", "packages/shared/src/rbac*", "packages/shared/labels.ts", "packages/shared/src/labels*"]
+    },
+    "ci_workflows": {
+      "description_ja": "GitHub Actions（RT4・main 反映は Human Gate）",
+      "paths": [".github/**"]
+    },
+    "padn_control_plane": {
+      "description_ja": "PADN L2 自身（RT4 扱い：自己書き換えの自動開始禁止）",
+      "paths": ["scripts/padn/**", "config/padn/**"]
+    },
+    "docs_coordination": {
+      "description_ja": "協調ドキュメント（RT0）",
+      "paths": ["docs/coordination/**", "docs/audit/**", "docs/roadmap/**", "docs/function-master/**"]
+    },
+    "vault": {
+      "description_ja": "369-vault 鏡像（RT0・独立リポジトリ main への反映は Human Gate）",
+      "paths": ["369-vault/**"]
+    },
+    "e2e_evidence": {
+      "description_ja": "E2E 証拠テスト",
+      "paths": ["apps/web/tests/e2e/**"]
+    }
+  }
+}

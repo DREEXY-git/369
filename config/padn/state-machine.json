@@ -1,0 +1,61 @@
+{
+  "schema": "369-padn-l2-state-machine-v1",
+  "notes_ja": "WIP レーンの状態機械。L1（Issue コメントのイベント）から観測された状態を fold し、L2 dispatcher は「現在状態で許可された遷移を進める role job」だけを起動する。human_only=true の遷移は AI/L2 が実行してはならない（Human Gate）。",
+  "states": [
+    "PROPOSED",
+    "DISPATCHED",
+    "CLAIMED",
+    "IMPLEMENTING",
+    "FROZEN_FOR_REVIEW",
+    "CHANGES_REQUESTED",
+    "REVIEW_PASSED",
+    "READY_FOR_HUMAN_GATE",
+    "MERGED",
+    "POST_MERGE_VERIFIED",
+    "CLOSED",
+    "HOLD",
+    "EXPIRED",
+    "REPLAN_REQUIRED"
+  ],
+  "initial": "PROPOSED",
+  "terminal": ["CLOSED"],
+  "transitions": [
+    { "from": "PROPOSED", "event": "PROMPT_DISPATCHED", "to": "DISPATCHED", "actor": "director" },
+    { "from": "DISPATCHED", "event": "WIP_CLAIMED", "to": "CLAIMED", "actor": "implementer", "guards": ["prompt_hash_match", "lease_active", "fencing_token_match", "no_prior_claim"] },
+    { "from": "DISPATCHED", "event": "LEASE_EXPIRED", "to": "EXPIRED", "actor": "system" },
+    { "from": "CLAIMED", "event": "IMPLEMENTATION_STARTED", "to": "IMPLEMENTING", "actor": "implementer" },
+    { "from": "CLAIMED", "event": "LEASE_EXPIRED", "to": "EXPIRED", "actor": "system" },
+    { "from": "IMPLEMENTING", "event": "IMPLEMENTATION_FREEZE", "to": "FROZEN_FOR_REVIEW", "actor": "implementer", "guards": ["fixed_head_recorded"] },
+    { "from": "IMPLEMENTING", "event": "LEASE_EXPIRED", "to": "EXPIRED", "actor": "system" },
+    { "from": "FROZEN_FOR_REVIEW", "event": "REVIEW_PASS", "to": "REVIEW_PASSED", "actor": "reviewer", "guards": ["review_head_equals_frozen_head"] },
+    { "from": "FROZEN_FOR_REVIEW", "event": "REVIEW_CHANGES_REQUIRED", "to": "CHANGES_REQUESTED", "actor": "reviewer" },
+    { "from": "FROZEN_FOR_REVIEW", "event": "HEAD_MOVED", "to": "IMPLEMENTING", "actor": "system", "notes_ja": "freeze 中の head 変更は違反として watchdog 対象。PASS は失効。" },
+    { "from": "CHANGES_REQUESTED", "event": "REWORK_STARTED", "to": "IMPLEMENTING", "actor": "implementer", "guards": ["rework_count_lte_max"] },
+    { "from": "CHANGES_REQUESTED", "event": "REWORK_LIMIT_EXCEEDED", "to": "REPLAN_REQUIRED", "actor": "system" },
+    { "from": "REVIEW_PASSED", "event": "HEAD_MOVED", "to": "IMPLEMENTING", "actor": "system", "notes_ja": "fixed SHA が変わったら以前の PASS は失効（Control Root 運用規約3）。" },
+    { "from": "REVIEW_PASSED", "event": "READY_FOR_HUMAN_GATE", "to": "READY_FOR_HUMAN_GATE", "actor": "director" },
+    { "from": "READY_FOR_HUMAN_GATE", "event": "HEAD_MOVED", "to": "IMPLEMENTING", "actor": "system" },
+    { "from": "READY_FOR_HUMAN_GATE", "event": "HUMAN_MERGE", "to": "MERGED", "actor": "human", "human_only": true },
+    { "from": "MERGED", "event": "POST_MERGE_VERIFIED", "to": "POST_MERGE_VERIFIED", "actor": "system" },
+    { "from": "POST_MERGE_VERIFIED", "event": "WIP_CLOSED", "to": "CLOSED", "actor": "director" },
+    { "from": "REPLAN_REQUIRED", "event": "PROMPT_DISPATCHED", "to": "DISPATCHED", "actor": "director", "notes_ja": "再計画後の再ディスパッチ（新 packet / 新 hash / 新 lease revision）。" },
+    { "from": "EXPIRED", "event": "PROMPT_DISPATCHED", "to": "DISPATCHED", "actor": "director" },
+    { "from": "HOLD", "event": "RESUME", "to": "DISPATCHED", "actor": "human", "human_only": true }
+  ],
+  "wildcard_transitions": [
+    { "from": "*", "event": "HOLD", "to": "HOLD", "actor": "director", "except": ["CLOSED", "MERGED", "POST_MERGE_VERIFIED"] }
+  ],
+  "rework_max": 2,
+  "l2_dispatchable": {
+    "notes_ja": "L2 dispatcher が role job を起動してよいのは以下の (state, event_type) の組のみ。それ以外の状態では起動しない（idempotent: 既に先の状態に進んでいれば no-op）。",
+    "pairs": [
+      { "state": "DISPATCHED", "event_type": "padn_claude_implement" },
+      { "state": "CHANGES_REQUESTED", "event_type": "padn_claude_remediate" },
+      { "state": "IMPLEMENTING", "event_type": "padn_claude_test" },
+      { "state": "FROZEN_FOR_REVIEW", "event_type": "padn_codex_arch" },
+      { "state": "FROZEN_FOR_REVIEW", "event_type": "padn_codex_security" },
+      { "state": "FROZEN_FOR_REVIEW", "event_type": "padn_codex_evidence" },
+      { "state": "REVIEW_PASSED", "event_type": "padn_integration_audit" }
+    ]
+  }
+}

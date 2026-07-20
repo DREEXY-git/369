@@ -1,0 +1,84 @@
+{
+  "schema": "369-padn-l2-dispatch-policy-v1",
+  "program_id": "369-PADN-L2-AUTONOMY-V11",
+  "default_mode": "observe",
+  "kill_switch": {
+    "variable": "PADN_AUTONOMY_ENABLED",
+    "notes_ja": "Actions Variable。'true' 以外（未設定含む）なら全 workflow が観測ログのみで終了する。merge 直後の初期値は未設定＝無効。"
+  },
+  "mode_variable": "PADN_MODE",
+  "write_lanes_variable": "PADN_WRITE_LANES",
+  "reports_variable": "PADN_REPORTS_ENABLED",
+  "schedule": {
+    "dispatcher_cron": "*/30 * * * *",
+    "watchdog_cron": "7,37 * * * *",
+    "oversight_cron": "15 0,12 * * *",
+    "governance_cron": "45 1 * * *",
+    "rationale_ja": "30分周期を採用。15分周期は遅延を最大15分縮める代わりに Actions 実行回数（=コスト）が2倍になる。L2 の主経路はイベントトリガであり、schedule は取りこぼし回収用のため 30分で十分。watchdog は dispatcher と 7分ずらして同時実行の競合観測を避ける。"
+  },
+  "actors": {
+    "human_allowlist": ["DREEXY-git"],
+    "notes_ja": "workflow_dispatch / issues / issue_comment / pull_request 起点のイベントで respect される人間 actor の allowlist。Actions Variable PADN_ACTOR_ALLOWLIST（カンマ区切り）が設定されていればそちらを優先。",
+    "allowlist_variable": "PADN_ACTOR_ALLOWLIST",
+    "trusted_bots": [],
+    "ignored_bots": ["vercel[bot]", "github-actions[bot]", "dependabot[bot]"],
+    "ignore_bot_suffix": "[bot]",
+    "notes2_ja": "bot actor のイベントは dispatch 判断の入力にしない（bot ループ防止）。自 App の bot も suffix ルールで遮断される。"
+  },
+  "chain": {
+    "max_depth": 2,
+    "notes_ja": "repository_dispatch の client_payload.chain_depth。dispatcher(0) → role job(1) → 完了報告起点の再評価(2) まで。超過は破棄。"
+  },
+  "capacity": {
+    "max_total_write_lanes_hard": 2,
+    "reviewer_backlog_max": 2,
+    "notes_ja": "L1 Control Root の write_capacity=2 と review queue>2 で BACKPRESSURE_ON の運用値を継承。3本目の write レーンは Human Gate。"
+  },
+  "rework_max": 2,
+  "consecutive_failures_freeze": 2,
+  "budget": {
+    "max_role_dispatches_per_day": 12,
+    "max_llm_jobs_per_day": 8,
+    "notes_ja": "1日あたりの role job 起動上限。超過で新規 dispatch 停止（BACKPRESSURE_ON）。実測は当日分の repository_dispatch 起点 workflow run 数で数える。"
+  },
+  "leases": {
+    "ttl_hours": 48,
+    "checkpoint_ttl_hours": 24
+  },
+  "director": {
+    "heartbeat_ttl_hours": 24,
+    "notes_ja": "Control Root 上の Director（A）イベント（SESSION_ONLINE / HEARTBEAT / CHECKPOINT / PROMPT_DISPATCHED / QUEUE_UPDATE 等）が TTL 内に存在しない場合、active Director 不在として新規 dispatch を行わない。"
+  },
+  "control_root": {
+    "title_marker": "[CONTROL]",
+    "schema_marker": "369-control-root-v1",
+    "known_issue_hint": 66,
+    "notes_ja": "Issue 番号は入口であり固定前提ではない。discovery は title_marker + schema_marker で行い、複数一致は DUPLICATE_CONTROL_ROOT として停止する。"
+  },
+  "wip": {
+    "title_marker": "[WIP]",
+    "notes_ja": "L2 は WIP Issue を新規作成しない。既存 WIP の import のみ。"
+  },
+  "lease_branch": {
+    "allowed_prefixes": ["claude/"],
+    "protected_refs": ["main", "master", "release", "production", "gh-pages"],
+    "notes_ja": "role job が push する lease branch は allowed_prefixes のいずれかで始まり、protected_refs（およびそれらへの前方一致 release*/production* 等）に一致してはならない。main 等の保護 ref への直接 push を構造的に禁止する（Draft PR / Human Gate 経路の迂回防止）。"
+  },
+  "reports": {
+    "enabled_default": false,
+    "throttle_minutes": 60,
+    "event_schema": "369-l2-event-v1",
+    "notes_ja": "Control Root への append-only イベント投稿は PADN_REPORTS_ENABLED=true かつ autonomy 有効時のみ。それ以外は GITHUB_STEP_SUMMARY のみに出力する（schedule 起点のコメントスパム防止）。"
+  },
+  "vercel": {
+    "correlate_deployment_status": true,
+    "preview_is_not_pass": true,
+    "production_forbidden": true,
+    "notes_ja": "deployment_status イベントの deployment.sha を open PR の head に相関させる。Preview Ready は Security/Evidence PASS ではない。Production 操作・Production token の使用は行わない。"
+  },
+  "ci": {
+    "workflow_name": "CI",
+    "required_check": "release_gate",
+    "stage_jobs": ["stage1", "stage2_integration", "stage3_e2e", "release_gate"]
+  }
+}

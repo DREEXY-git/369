@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "369-padn-l2-oversight-report-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "overall_status", "findings", "summary"],
+  "properties": {
+    "schema": { "const": "369-padn-l2-oversight-report-v1" },
+    "overall_status": { "enum": ["OK", "ATTENTION", "ALERT"] },
+    "control_revision_observed": { "type": "integer" },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "summary_ja"],
+        "properties": {
+          "severity": { "enum": ["alert", "attention", "info"] },
+          "summary_ja": { "type": "string" },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hitokoto", "genzaichi", "kanryo", "sagyochu", "kansachu", "mondai", "ningen_kakunin", "tsugi"],
+      "properties": {
+        "hitokoto": { "type": "string" },
+        "genzaichi": { "type": "string" },
+        "kanryo": { "type": "string" },
+        "sagyochu": { "type": "string" },
+        "kansachu": { "type": "string" },
+        "mondai": { "type": "string" },
+        "ningen_kakunin": { "type": "string" },
+        "tsugi": { "type": "string" }
+      }
+    }
+  }
+}

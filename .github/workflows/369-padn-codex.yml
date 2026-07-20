@@ -1,0 +1,129 @@
+# 369 PADN L2 — Codex 監査ジョブ（C arch / C-SEC security / D-EVID evidence / E integration）
+#
+# §8: read-only sandbox / fixed head checkout / prompt file / output schema /
+#      final message は別 job で GitHub へ投稿 / Security と Evidence は独立に起動される
+#      （dispatcher が padn_codex_security と padn_codex_evidence を別イベントとして送るため
+#        run 自体が独立し、verdict も独立に記録される）。
+# PASS は同一 SHA でのみ有効（verdict コメントに head SHA を機械可読で刻む）。
+# Implementer（claude）はレビュー系イベントを受けない（roles.json reviewer_independence）。
+name: 369 PADN L2 Codex Audit Jobs
+
+on:
+  repository_dispatch:
+    types: [padn_codex_arch, padn_codex_security, padn_codex_evidence, padn_integration_audit]
+
+permissions: {}
+
+concurrency:
+  # §10: integration audit は全体で同時 1（train は単一資源）。その他の監査は
+  # WIP + head SHA + 監査種別ごとに 1。同一 head への同一監査の重複 run は後発を残して
+  # 先発を cancel してよい（verdict は投稿コメントに残り、run の途中生成物は evidence では
+  # ないため）。integration は cancel しない（キュー化）。
+  group: ${{ github.event.action == 'padn_integration_audit' && '369-padn-integration' || format('369-padn-codex-{0}-{1}-{2}', github.event.client_payload.wip_id, github.event.client_payload.head_sha, github.event.action) }}
+  cancel-in-progress: ${{ github.event.action != 'padn_integration_audit' }}
+
+jobs:
+  audit:
+    # github.ref ガード: branch 上の改変版 workflow 定義に secrets を渡さない
+    if: >-
+      github.repository == 'DREEXY-git/369' &&
+      vars.PADN_AUTONOMY_ENABLED == 'true' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      issues: read # guard（render-role-prompt.mjs）が WIP Issue / packet コメントを読むため
+    outputs:
+      final_message: ${{ steps.run_codex.outputs.final-message }}
+      head_sha: ${{ steps.packet.outputs.head_sha }}
+      wip_issue: ${{ steps.packet.outputs.wip_issue }}
+      wip_id: ${{ steps.packet.outputs.wip_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Guard — payload 静的検証
+        run: node scripts/padn/validate.mjs --payload "$GITHUB_EVENT_PATH"
+
+      - name: Guard — ライブ再検証 + prompt render
+        id: packet
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PADN_PROMPT_FILE: ${{ runner.temp }}/padn-codex-prompt.md
+        run: node scripts/padn/render-role-prompt.mjs
+
+      - name: Fixed head checkout（監査対象を別ディレクトリへ）
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.packet.outputs.head_sha }}
+          path: audit-target
+          # 監査は BASE_SHA..HEAD_SHA の diff 検証を要求するため全履歴を fetch する
+          #（既定 depth=1 では base commit が無く diff-scope 検証が不能になる）
+          fetch-depth: 0
+
+      # 公式 action の現行 stable は v1 系（実装時点 v1.11 / 2026-07-17 確認）。
+      # 観測専用は permission-profile ':read-only' のみで指定する。README 明記のとおり
+      # safety-strategy: read-only は legacy sandbox を強制し permission profile と併用不可
+      #（両方渡すと Codex 起動前に失敗）。safety-strategy は既定の drop-sudo（profile と併用可）。
+      - name: Run Codex audit (read-only, fixed head)
+        id: run_codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: ${{ runner.temp }}/padn-codex-prompt.md
+          working-directory: audit-target
+          permission-profile: ':read-only'
+          output-schema-file: config/padn/schemas/review-verdict.schema.json
+          output-file: ${{ runner.temp }}/padn-codex-verdict.json
+
+  # final message の投稿は最小権限の別 job（§8）。GITHUB_TOKEN のコメントは新しい workflow を
+  # 起動しない（再帰防止仕様）ため bot ループも構造的に発生しない。
+  report:
+    needs: audit
+    if: always() && needs.audit.result != 'skipped' && vars.PADN_AUTONOMY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Post verdict to WIP issue (append-only)
+        uses: actions/github-script@v7
+        env:
+          CODEX_FINAL_MESSAGE: ${{ needs.audit.outputs.final_message }}
+          AUDIT_RESULT: ${{ needs.audit.result }}
+          HEAD_SHA: ${{ needs.audit.outputs.head_sha }}
+          WIP_ISSUE: ${{ needs.audit.outputs.wip_issue }}
+          WIP_ID: ${{ needs.audit.outputs.wip_id }}
+          EVENT_TYPE: ${{ github.event.action }}
+        with:
+          script: |
+            const issue = Number(process.env.WIP_ISSUE);
+            if (!issue) { core.warning('WIP issue 不明のため投稿しない'); return; }
+            const ok = process.env.AUDIT_RESULT === 'success' && process.env.CODEX_FINAL_MESSAGE;
+            const header = ok
+              ? `## CODEX_VERDICT — ${process.env.EVENT_TYPE}（head \`${process.env.HEAD_SHA}\` 限定有効）`
+              : `## CODEX_AUDIT_FAILED — ${process.env.EVENT_TYPE}（verdict なし・PASS ではない）`;
+            const body = [
+              header,
+              '',
+              ok ? '```json' : '_audit job が失敗しました。run ログを確認してください。_',
+              ok ? process.env.CODEX_FINAL_MESSAGE : '',
+              ok ? '```' : '',
+              '',
+              `- run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              `- 注意: PASS は head \`${process.env.HEAD_SHA}\` でのみ有効。head が動いた時点で失効（fixed-SHA 原則）。`,
+              '',
+              '_この投稿は PADN L2 orchestrator による append-only イベントです。_',
+            ].filter(Boolean).join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue,
+              body,
+            });

@@ -224,7 +224,7 @@ export async function decideApprovalAction(formData: FormData) {
     });
     if (draft) {
       await prisma.outreachApproval.updateMany({
-        where: { draftId: draft.id, status: 'PENDING' },
+        where: { draftId: draft.id, tenantId: user.tenantId, status: 'PENDING' },
         data: { status, approverId: user.userId, decidedAt: new Date(), note },
       });
 

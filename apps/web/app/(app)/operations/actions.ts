@@ -30,7 +30,7 @@ import {
   updateEventRiskStatus,
 } from '@/lib/domains/operations/events';
 import { bridgeEventProjectToFinance } from '@/lib/domains/finance/finance-bridge';
-import { applyInventoryMovement } from '@/lib/operations';
+import { applyInventoryMovement, applyInventoryMovementTx } from '@/lib/operations';
 
 // ============================ 在庫移動 ============================
 
@@ -193,13 +193,16 @@ export async function recordLeaseDamageAction(formData: FormData) {
   const note = String(formData.get('note') ?? '');
   const asset = await prisma.productAsset.findFirst({ where: { id: assetId, tenantId: user.tenantId } });
   if (!asset) redirect('/inventory/lease');
-  await prisma.damageLossRecord.create({ data: { tenantId: user.tenantId, assetId, type: 'damage', cost, note } });
-  await applyInventoryMovement({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    assetId,
-    type: 'damage',
-    note: note || '破損記録',
+  // 破損記録＋在庫 status 変更 Movement を単一 $transaction で all-or-nothing（記録だけ／status だけの片欠けを防ぐ）。
+  await prisma.$transaction(async (tx) => {
+    await tx.damageLossRecord.create({ data: { tenantId: user.tenantId, assetId, type: 'damage', cost, note } });
+    await applyInventoryMovementTx(tx, {
+      tenantId: user.tenantId,
+      actorId: user.userId,
+      assetId,
+      type: 'damage',
+      note: note || '破損記録',
+    });
   });
   revalidatePath('/inventory/lease');
   redirect('/inventory/lease?damaged=1');
@@ -333,18 +336,21 @@ export async function assignAssetToEventAction(formData: FormData) {
   ]);
   if (!event || !asset) redirect(`/operations/events/${eventId}?error=notfound`);
 
-  await prisma.eventProductUsage.create({
-    data: { tenantId: user.tenantId, eventId, assetId, assetName: asset!.name, quantity },
-  });
-  // 案件用に在庫を予約状態へ
-  await applyInventoryMovement({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    assetId,
-    type: 'reserve',
-    quantity,
-    eventId,
-    note: `イベント割当: ${event!.name}`,
+  // 使用記録＋在庫予約 Movement を単一 $transaction で all-or-nothing（reserve 失敗で孤児 usage を作らない・
+  // Asset FOR UPDATE ロック下で確定）。growth は commit 後（非クリティカル）。
+  await prisma.$transaction(async (tx) => {
+    await tx.eventProductUsage.create({
+      data: { tenantId: user.tenantId, eventId, assetId, assetName: asset!.name, quantity },
+    });
+    await applyInventoryMovementTx(tx, {
+      tenantId: user.tenantId,
+      actorId: user.userId,
+      assetId,
+      type: 'reserve',
+      quantity,
+      eventId,
+      note: `イベント割当: ${event!.name}`,
+    });
   });
   await emitGrowthEvent({
     tenantId: user.tenantId,

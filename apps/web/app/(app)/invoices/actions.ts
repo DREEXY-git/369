@@ -111,13 +111,25 @@ export async function issueInvoiceAction(formData: FormData) {
   const inv = await prisma.invoice.findFirst({ where: { id, tenantId: user.tenantId } });
   if (!inv || inv.status !== 'DRAFT') redirect(`/invoices/${id}`);
 
-  await prisma.invoice.update({ where: { id }, data: { status: 'ISSUED', issueDate: new Date() } });
-  await prisma.receivable.upsert({
-    where: { invoiceId: id },
-    create: { tenantId: user.tenantId, invoiceId: id, amount: inv.total, dueDate: inv.dueDate, status: 'open' },
-    update: { amount: inv.total, dueDate: inv.dueDate },
+  // 発行=ISSUED 遷移・売掛起票・監査を単一 $transaction で all-or-nothing 確定（ISSUED なのに売掛欠落を防ぐ）。
+  // status CAS（DRAFT のときだけ）を barrier に並行/二重発行を1本へ収束（count≠1 は rollback して no-op）。sibling finalizeInvoiceCandidate と同型。
+  const issued = await prisma.$transaction(async (tx) => {
+    const claim = await tx.invoice.updateMany({
+      where: { id, tenantId: user.tenantId, status: 'DRAFT' },
+      data: { status: 'ISSUED', issueDate: new Date() },
+    });
+    if (claim.count !== 1) return false;
+    await tx.receivable.upsert({
+      where: { invoiceId: id },
+      create: { tenantId: user.tenantId, invoiceId: id, amount: inv.total, dueDate: inv.dueDate, status: 'open' },
+      update: { amount: inv.total, dueDate: inv.dueDate },
+    });
+    await tx.auditLog.create({
+      data: { tenantId: user.tenantId, actorId: user.userId ?? null, actorType: 'user', action: 'update', entityType: 'Invoice', entityId: id, summary: `請求書 ${inv.number} を発行（売掛起票）` },
+    });
+    return true;
   });
-  await writeAudit({ tenantId: user.tenantId, actorId: user.userId, action: 'update', entityType: 'Invoice', entityId: id, summary: `請求書 ${inv.number} を発行（売掛起票）` });
+  if (!issued) redirect(`/invoices/${id}`);
   revalidatePath(`/invoices/${id}`);
   redirect(`/invoices/${id}?issued=1`);
 }

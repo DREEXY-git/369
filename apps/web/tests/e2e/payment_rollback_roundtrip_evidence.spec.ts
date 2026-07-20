@@ -6,7 +6,7 @@ import {
   makeLegacyIdempotencyKey,
   derivePaymentRequestId,
   receivableStatusAfterPayment,
-  legacyRowMatchesIdentity,
+  idempotencyKeyMatchesIdentity,
   RECEIVABLE_COLLECTED_DEDUPE,
 } from '@hokko/shared';
 import { emitDomainEvent } from '../../lib/events';
@@ -219,31 +219,33 @@ test('required_tests 4: Phase A 作成 → 改訂 Phase B retry replica（収束
       });
     expect(await phaseBRetryReplica(), 'Phase B retry は既存 Payment へ converge（書込 0）').toBe('converged');
 
-    // 改訂 Phase B reader 契約（ID-4: canonical-first exact ＋ payload.idem 検証付き legacy 照合）の直接検証:
-    // A が書いた dedupe 付き legacy 行が、Phase B reader の照合順で**決定的に発見可能**であること。
+    // Phase B reader 契約（ID-4: canonical-first exact ＋ payload.idem 検証付き legacy 照合）の直接検証:
+    // **Phase B 条件4 切替後**: A（本実装）は canonical encoding で書くため、Phase B reader の
+    // canonical-first exact が A の行を**単射キーで直接発見**する（legacy fallback へ落ちない＝より強い一致）。
     for (const identity of [
       { tenantId: t, eventType: 'PAYMENT_RECEIVED', aggregateType: 'Invoice', aggregateId: invId, dedupe: token },
       { tenantId: t, eventType: 'RECEIVABLE_COLLECTED', aggregateType: 'Invoice', aggregateId: invId, dedupe: RECEIVABLE_COLLECTED_DEDUPE },
     ] as const) {
       const canonicalKey = makeCanonicalIdempotencyKey(identity);
       const legacyKey = makeLegacyIdempotencyKey(identity);
-      // (1) canonical exact は miss（Phase A writer は legacy encoding のまま＝人間条件4）。
-      expect(
-        await prisma.domainEvent.findUnique({ where: { tenantId_idempotencyKey: { tenantId: t, idempotencyKey: canonicalKey } }, select: { id: true } }),
-        'canonical exact は miss（A は legacy で書く）',
-      ).toBeNull();
-      // (2) 検証付き legacy 照合: スカラ列 findFirst ＋ payload.idem.dedupe の完全一致 → hit。
+      // (1) canonical exact は hit（A は canonical で書く＝人間条件4 切替後・identity→key 単射で誤爆なし）。
+      const canonicalRow = await prisma.domainEvent.findUnique({
+        where: { tenantId_idempotencyKey: { tenantId: t, idempotencyKey: canonicalKey } },
+        select: { id: true, payload: true },
+      });
+      expect(canonicalRow, 'canonical exact が A の行を直接 hit（切替後 writer は canonical）').toBeTruthy();
+      expect((canonicalRow!.payload as { idem?: { enc?: string; dedupe?: string } }).idem?.enc, 'enc は canonical').toBe('canonical');
+      expect((canonicalRow!.payload as { idem?: { dedupe?: string } }).idem?.dedupe, 'payload.idem.dedupe は契約 identity と一致').toBe(identity.dedupe);
+      // (2) legacy fallback は空振り（A は legacy キーで書かないため legacy 行は存在しない）。canonical-first で
+      //     既に確定するため legacy 照合には依存しない（reader は不変・依然 verified fallback を備える）。
       const legacyRow = await prisma.domainEvent.findFirst({
         where: { tenantId: t, idempotencyKey: legacyKey, eventType: identity.eventType, aggregateType: 'Invoice', aggregateId: invId },
         select: { id: true, eventType: true, aggregateType: true, aggregateId: true, payload: true },
       });
-      expect(legacyRow, 'legacy 行がスカラ列で特定できる').toBeTruthy();
-      expect(
-        legacyRowMatchesIdentity(legacyRow!, identity),
-        'payload.idem により dedupe 付き identity の legacy 照合が決定的に成立（A→B upgrade で二重化しない前提条件）',
-      ).toBe(true);
-      // 陰性対照: dedupe 相違 identity には一致しない（無検証収束の禁止）。
-      expect(legacyRowMatchesIdentity(legacyRow!, { ...identity, dedupe: '' })).toBe(false);
+      expect(legacyRow, 'legacy キーの行は存在しない（canonical writer 切替）').toBeNull();
+      // dual-read の同値判定（encoding 非依存）: canonical キーは identity に一致し、dedupe 相違には一致しない。
+      expect(idempotencyKeyMatchesIdentity(canonicalKey, identity), 'canonical キーは identity に一致').toBe(true);
+      expect(idempotencyKeyMatchesIdentity(canonicalKey, { ...identity, dedupe: 'other-dedupe' }), 'dedupe 相違には一致しない').toBe(false);
     }
 
     const after = await chainSnapshot(t, invId, []);

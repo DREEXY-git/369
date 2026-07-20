@@ -260,6 +260,18 @@ jobs:
             payment_mixed_writer_race --repeat-each=3 --retries=0 --reporter=json
           node -e "const s=require('./apps/web/padn-a2-repeat-gate.json').stats; console.log('padn-a2-repeat-gate stats:', JSON.stringify(s)); if(!(s.expected===12&&s.skipped===0&&s.unexpected===0&&s.flaky===0)){console.error('::error::PADN A2 repeat gate failed: expected 12(4x3)/skipped 0/unexpected 0/flaky 0 required'); process.exit(1);}"
 
+      # 369-PADN-V5 Phase B（canonical writer 切替）: 新設 3 spec の**件数固定 gate**。
+      # canonical writer evidence(3) + VOID race(3) + idempotency net-new(8) = 14 expected・skipped 0・
+      # unexpected 0・flaky 0 を JSON reporter の stats で機械検証する（新設 spec の削除/rename/skip 化を
+      # 件数不一致で CI fail＝silent green の構造的禁止）。retries=0・実 PG service・外部送信/実LLMなし。
+      # 既存 padn-a2-gate（12 expected）は Phase B で test 数不変のため据え置き（弱体化しない）。
+      - name: PADN Phase B canonical writer count gate (14 expected, retries=0, skip=0)
+        run: |
+          PLAYWRIGHT_JSON_OUTPUT_NAME=padn-phaseb-gate.json pnpm --filter @hokko/web exec playwright test \
+            payment_canonical_writer_evidence payment_void_race_evidence payment_idempotency_evidence \
+            --retries=0 --reporter=json
+          node -e "const s=require('./apps/web/padn-phaseb-gate.json').stats; console.log('padn-phaseb-gate stats:', JSON.stringify(s)); if(!(s.expected===14&&s.skipped===0&&s.unexpected===0&&s.flaky===0)){console.error('::error::PADN Phase B count gate failed: expected 14(3+3+8)/skipped 0/unexpected 0/flaky 0 required'); process.exit(1);}"
+
       - name: Run E2E (playwright)
         run: pnpm --filter @hokko/web exec playwright test
 

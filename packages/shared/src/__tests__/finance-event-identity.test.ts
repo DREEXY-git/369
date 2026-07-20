@@ -9,7 +9,12 @@ import {
   readIdemMetadata,
   legacyRowMatchesIdentity,
 } from '../finance-event-identity';
-import { makeCanonicalIdempotencyKey, makeLegacyIdempotencyKey } from '../events';
+import {
+  makeCanonicalIdempotencyKey,
+  makeLegacyIdempotencyKey,
+  makeEventIdentityLockMaterial,
+  EVENT_IDENTITY_LOCK_NS,
+} from '../events';
 
 describe('finance-event-identity（修正版 Phase A・PA-BLK-1 契約正本）', () => {
   it('PAYMENT_REQUEST_KEY_RE accepts cuid-like request keys and rejects others', () => {
@@ -110,5 +115,61 @@ describe('finance-event-identity（修正版 Phase A・PA-BLK-1 契約正本）'
     expect(legacyRowMatchesIdentity({ ...base, aggregateType: 'Receivable' }, identity)).toBe(false);
     // FNV 衝突ペア（別 aggregateId・同一 legacy key）は列不一致で既存として返らない（PA-BLK-4）。
     expect(legacyRowMatchesIdentity({ ...base, aggregateId: 'cwkr44pwctu472mwavgtao6ix' }, identity)).toBe(false);
+  });
+});
+
+// PB-4: canonical byte-format freeze（Phase B 条件5「canonical 書式の凍結維持」）。
+// 切替後 writer が保存するキーは makeCanonicalIdempotencyKey(契約 identity) そのもの。cda7188（PR #57）の
+// makeIdempotencyKey（= canonical writer）と **byte 一致**であることを、cda7188 の書式を再構築した参照実装との
+// 全文比較と、hardcode 期待文字列の二重で pin する。1 byte でも書式がドリフトすれば即 fail し、rollback 先
+// （Phase A の legacy 書式）との dual-read 互換や lockMaterial の hash 不変が崩れることを検出する。
+// contract 本体（finance-event-identity.ts / shared events.ts）は変更しない（freeze は test 側の番犬）。
+describe('canonical byte-format freeze（Phase B 条件5・cda7188 byte parity）', () => {
+  // cda7188 packages/shared/src/events.ts makeIdempotencyKey（canonical writer）の書式を逐語再構築した参照実装。
+  //   `${eventType}:${enc(tenantId)}:${enc(aggregateId)}:${enc(dedupe ?? '')}`
+  const cda7188MakeIdempotencyKey = (input: {
+    tenantId: string;
+    eventType: string;
+    aggregateId: string;
+    dedupe?: string;
+  }): string => {
+    const enc = (s: string) => encodeURIComponent(s);
+    return `${input.eventType}:${enc(input.tenantId)}:${enc(input.aggregateId)}:${enc(input.dedupe ?? '')}`;
+  };
+
+  it('makeCanonicalIdempotencyKey は cda7188 makeIdempotencyKey と byte 一致（現行 writer の保存キー書式）', () => {
+    const samples = [
+      { tenantId: 't1', eventType: 'PAYMENT_RECEIVED', aggregateId: 'inv-1', dedupe: 'cabcdef0123456789abcdef01' },
+      { tenantId: 't:x', eventType: 'RECEIVABLE_COLLECTED', aggregateId: 'a/b c', dedupe: 'receivable-collected' },
+      { tenantId: 'tenant-a', eventType: 'CUSTOMER_CREATED', aggregateId: 'q1' }, // dedupe 省略（空文字扱い）
+      { tenantId: 't', eventType: 'DEAL_CREATED', aggregateId: '1:a', dedupe: ':' }, // delimiter injection
+    ];
+    for (const s of samples) {
+      expect(makeCanonicalIdempotencyKey(s)).toBe(cda7188MakeIdempotencyKey(s));
+    }
+  });
+
+  it('契約 identity → canonical key の hardcode freeze（PAYMENT_RECEIVED / RECEIVABLE_COLLECTED）', () => {
+    // 切替後 writer が実際に保存するキーそのもの（byte 凍結）。
+    expect(
+      makeCanonicalIdempotencyKey(paymentReceivedIdentity({ tenantId: 'tenant-a', invoiceId: 'inv-1', requestKey: 'cabcdef0123456789abcdef01' })),
+    ).toBe('PAYMENT_RECEIVED:tenant-a:inv-1:cabcdef0123456789abcdef01');
+    expect(
+      makeCanonicalIdempotencyKey(receivableCollectedIdentity({ tenantId: 'tenant-a', invoiceId: 'inv-1' })),
+    ).toBe('RECEIVABLE_COLLECTED:tenant-a:inv-1:receivable-collected');
+    // 符号化成分に `:` を含む tenant/aggregate でも区切りは prefix の eventType のみ（単射）。
+    expect(
+      makeCanonicalIdempotencyKey(paymentReceivedIdentity({ tenantId: 't:1', invoiceId: 'inv:2', requestKey: 'cabcdef0123456789abcdef01' })),
+    ).toBe('PAYMENT_RECEIVED:t%3A1:inv%3A2:cabcdef0123456789abcdef01');
+  });
+
+  it('makeEventIdentityLockMaterial の書式凍結（lockMaterial=NS+canonical・hash 入力の byte 不変）', () => {
+    expect(EVENT_IDENTITY_LOCK_NS).toBe('domain_event_identity:v1:');
+    const id = paymentReceivedIdentity({ tenantId: 'tenant-a', invoiceId: 'inv-1', requestKey: 'cabcdef0123456789abcdef01' });
+    expect(makeEventIdentityLockMaterial(id)).toBe(
+      'domain_event_identity:v1:PAYMENT_RECEIVED:tenant-a:inv-1:cabcdef0123456789abcdef01',
+    );
+    // lockMaterial は canonical 由来のため、writer を Phase A(legacy)→B(canonical) へ切替えても不変（lock drift なし）。
+    expect(makeEventIdentityLockMaterial(id)).toBe(`${EVENT_IDENTITY_LOCK_NS}${makeCanonicalIdempotencyKey(id)}`);
   });
 });

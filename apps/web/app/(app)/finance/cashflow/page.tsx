@@ -1,10 +1,9 @@
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
-import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Table, Th, Td, Badge, Stat, EmptyState } from '@/components/ui';
 import { formatJpy, formatDate, formatDateTime } from '@hokko/shared';
-import { getCashflowBridgeData, getCashflowUnifiedData } from '@/lib/domains/finance/cashflow';
+import { getCashflowBridgeData, getCashflowUnifiedData, getTenantScopedCashflowForecast } from '@/lib/domains/finance/cashflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,12 +12,9 @@ export default async function CashflowPage() {
   if (!hasPermission(user, 'finance', 'read')) {
     return <div><PageHeader title="資金繰り" /><div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">閲覧権限がありません。</div></div>;
   }
-  const forecast = await prisma.cashflowForecast.findFirst({
-    where: { tenantId: user.tenantId },
-    include: { lines: { orderBy: { date: 'asc' } } },
-    orderBy: { createdAt: 'desc' },
-  });
-  const lines = forecast?.lines ?? [];
+  // 明細は親子二重 tenant scope の read model 経由でのみ取得する（forecastId 単独FKの
+  // 越境行を KPI/警告/表に混入させない）。V90 FIN_CASHFLOW_FORECAST_LINE_TENANT_R1。
+  const { lines } = await getTenantScopedCashflowForecast(user.tenantId);
   const minBalance = lines.length ? Math.min(...lines.map((l) => toNumber(l.balance))) : 0;
   const shortage = lines.find((l) => toNumber(l.balance) < 0);
   const maxBalance = lines.length ? Math.max(...lines.map((l) => toNumber(l.balance)), 1) : 1;

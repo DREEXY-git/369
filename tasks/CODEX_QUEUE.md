@@ -42,6 +42,23 @@
 
 ---
 
+## ラウンド2（現行・2026-07-20）— 対象 SHA 更新
+
+ラウンド1（`1be06b5`）で **Codex E が CHANGES_REQUIRED**（証拠 gap＋3 RED 候補）。Claude が対応済み。**新しい監査対象 = PR #77 の最新 head（現在 `bb9ef05`）** = 現 main ＋ M1-b 17修正 ＋ ラウンド2:
+
+- **7本の実PG証拠spec**（`apps/web/tests/e2e/m1b_*.spec.ts`）を新設（E の要求）。
+- **E-01 exactly-once**: 請求送信＝write-ahead claim→provider→finalize、outreach 送信＝resumable state machine（fault hook 付き）。
+- **E-02 barrier**: finance bridge を `pg_advisory_xact_lock` ＋単一 tx 化（TOCTOU 解消）。
+- **E-04 CAS**: outreach 申請 DRAFT→PENDING の CAS ＋ 編集 vs 承認の決定論的競合。
+- **testable core を `next/cache` 非依存の `lib/` へ移設**（e2e loader が spec を load できるように）。
+
+各レーンは **PR #77 の最新 head を checkout** し、**監査した exact SHA に判定を pin**（head が動いたら最新で再監査）。**CI green の SHA を対象にするのが望ましい**（`bb9ef05` の CI 結論を確認）。
+
+- **A**: ラウンド2全体を統括再監査し GO / CHANGES_REQUIRED を宣言。
+- **E（再監査）**: 自身のラウンド1 CHANGES_REQUIRED が解消したか（7 spec＋3 RED 修正）を検証。成果物は `codex/m1b-E-audit-v2`。
+- **B/C/D/F/G**: 初回監査（ラウンド1 の担当領域のまま・対象 SHA のみ `bb9ef05` へ）。
+
 ## 更新履歴
 
 - 2026-07-20: 初版。ラウンド1 = M1-b（PR #77 @ `1be06b5`）の独立監査を A〜G へ割当。
+- 2026-07-20: ラウンド2。対象を `bb9ef05`（M1-b＋7証拠spec＋E-01/E-02/E-04 修正＋core 移設）へ更新。E は v2 で再監査。

@@ -22,6 +22,18 @@ export default async function StocktakeDetailPage({ params, searchParams }: { pa
 
   const diffLines = st!.lines.filter((l) => l.countedQuantity != null && l.difference !== 0);
   const pendingReconcile = diffLines.filter((l) => !l.reconciled);
+  // 完了条件の表示制御（server 側でも同条件を transaction 内で再検証・CR #4990223932）。
+  const isOpen = st!.status !== 'reconciled' && !st!.completedAt;
+  const canComplete =
+    canEdit && isOpen && st!.status === 'counted' && st!.lines.every((l) => l.countedQuantity != null) && pendingReconcile.length === 0;
+  const ERR: Record<string, string> = {
+    state: 'この操作は現在の棚卸状態では実行できません（完了済みの棚卸は再記録・再反映できません）。',
+    'invalid-state': 'この操作は現在の棚卸状態では実行できません。',
+    'uncounted-lines': '未カウントの品目が残っているため完了できません。',
+    'unreconciled-lines': '未反映の差異が残っているため完了できません。',
+    'pending-approval': '承認待ちの差異反映があるため完了できません。',
+    already: 'この棚卸は既に完了しています。',
+  };
 
   return (
     <div>
@@ -30,12 +42,14 @@ export default async function StocktakeDetailPage({ params, searchParams }: { pa
         description={`状態: ${st!.status} ／ ${st!.lines.length}品目 ／ 差異 ${diffLines.length}件`}
         breadcrumb={[{ label: 'Operations', href: '/operations' }, { label: '棚卸', href: '/operations/stocktakes' }, { label: st!.title, href: '#' }]}
         action={
-          canEdit && pendingReconcile.length === 0 && st!.status !== 'reconciled' ? (
+          canComplete ? (
             <form action={completeStocktakeAction}><input type="hidden" name="stocktakeId" value={st!.id} /><Button type="submit">棚卸を完了</Button></form>
           ) : undefined
         }
       />
       {sp.pending === 'adjust' ? <div className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">大幅差異のため承認申請しました（/admin/operations-actions で承認後に反映）。</div> : null}
+      {sp.completed ? <div className="mb-3 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">棚卸を完了しました。</div> : null}
+      {sp.error && ERR[sp.error] ? <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{ERR[sp.error]}</div> : null}
       {sp.reconciled ? <div className="mb-3 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">差異を在庫へ反映しました。</div> : null}
 
       <Card>
@@ -50,7 +64,7 @@ export default async function StocktakeDetailPage({ params, searchParams }: { pa
                   <Td className="text-sm">{l.asset.name}</Td>
                   <Td className="text-xs">{l.expectedQuantity}</Td>
                   <Td className="text-xs">
-                    {canEdit && !l.reconciled ? (
+                    {canEdit && isOpen && !l.reconciled ? (
                       <form action={recordStocktakeCountAction} className="flex items-center gap-1">
                         <input type="hidden" name="lineId" value={l.id} />
                         <Input name="countedQuantity" type="number" min="0" defaultValue={l.countedQuantity ?? ''} className="h-7 w-20" />
@@ -67,7 +81,7 @@ export default async function StocktakeDetailPage({ params, searchParams }: { pa
                   </Td>
                   <Td className="text-xs">{l.reconciled ? <Badge tone="green">反映済</Badge> : '-'}</Td>
                   <Td>
-                    {canEdit && l.countedQuantity != null && !l.reconciled && l.difference !== 0 ? (
+                    {canEdit && isOpen && l.countedQuantity != null && !l.reconciled && l.difference !== 0 ? (
                       <form action={reconcileStocktakeLineAction}>
                         <input type="hidden" name="lineId" value={l.id} />
                         <Button type="submit" variant="outline" className="h-7 px-2 text-xs">{isLargeStocktakeDifference(l.difference) ? '承認申請' : '反映'}</Button>

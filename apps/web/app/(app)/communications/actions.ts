@@ -96,22 +96,25 @@ export async function decideTempItemAction(formData: FormData) {
   const item = await prisma.temporaryIngestionItem.findFirst({ where: { id: itemId, tenantId: user.tenantId } });
   if (!item) redirect('/communications/temp');
 
-  if (decision === 'save') {
-    await prisma.temporaryIngestionItem.update({ where: { id: itemId }, data: { status: 'saved' } });
-    await prisma.communicationThread.create({
-      data: { tenantId: user.tenantId, channel: item.channel, subject: item.preview.split(' — ')[0] ?? item.preview, relevance: 'relevant' },
+  // 保存判定・スレッド作成・監査を単一 $transaction で確定。status CAS（未確定のときだけ）で二重処理・
+  // 部分失敗（saved なのにスレッド無し）を防ぐ（count≠1 は rollback して no-op）。
+  const done = await prisma.$transaction(async (tx) => {
+    const claim = await tx.temporaryIngestionItem.updateMany({
+      where: { id: itemId, tenantId: user.tenantId, status: { notIn: ['saved', 'discarded'] } },
+      data: { status: decision === 'save' ? 'saved' : 'discarded' },
     });
-  } else {
-    await prisma.temporaryIngestionItem.update({ where: { id: itemId }, data: { status: 'discarded' } });
-  }
-  await writeAudit({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    action: 'update',
-    entityType: 'TemporaryIngestionItem',
-    entityId: itemId,
-    summary: `一時保管アイテムを${decision === 'save' ? '保存' : '破棄'}`,
+    if (claim.count !== 1) return false;
+    if (decision === 'save') {
+      await tx.communicationThread.create({
+        data: { tenantId: user.tenantId, channel: item.channel, subject: item.preview.split(' — ')[0] ?? item.preview, relevance: 'relevant' },
+      });
+    }
+    await tx.auditLog.create({
+      data: { tenantId: user.tenantId, actorId: user.userId ?? null, actorType: 'user', action: 'update', entityType: 'TemporaryIngestionItem', entityId: itemId, summary: `一時保管アイテムを${decision === 'save' ? '保存' : '破棄'}` },
+    });
+    return true;
   });
+  if (!done) redirect('/communications/temp?already=1');
   revalidatePath('/communications/temp');
   redirect('/communications/temp');
 }

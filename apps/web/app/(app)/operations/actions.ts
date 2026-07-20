@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import {
   isInventoryMovementType,
   isLargeInventoryAdjustment,
+  isHumanUser,
   type DomainEventType,
 } from '@hokko/shared';
 import {
@@ -37,7 +38,7 @@ import { applyInventoryMovement, applyInventoryMovementTx } from '@/lib/operatio
 /** 在庫移動を記録（入庫/移動/予約/出庫/返却/破損/メンテ開始・完了）。adjust は専用アクションへ。 */
 export async function createInventoryMovementAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/inventory-movements?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'inventory', 'update')) redirect('/operations/inventory-movements?denied=1');
   const assetId = String(formData.get('assetId') ?? '');
   const type = String(formData.get('type') ?? '');
   const quantity = Number(formData.get('quantity') ?? 1) || 1;
@@ -63,7 +64,7 @@ export async function createInventoryMovementAction(formData: FormData) {
 /** 在庫数量の調整。大幅調整（|Δ|≥閾値）は承認必須（直接適用しない）。 */
 export async function adjustInventoryQuantityAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/inventory-movements?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'inventory', 'update')) redirect('/operations/inventory-movements?denied=1');
   const assetId = String(formData.get('assetId') ?? '');
   const newQuantity = Math.max(0, Number(formData.get('newQuantity') ?? 0) || 0);
   const note = String(formData.get('note') ?? '');
@@ -326,7 +327,7 @@ export async function createEventProjectAction(formData: FormData) {
 
 export async function assignAssetToEventAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
   const eventId = String(formData.get('eventId') ?? '');
   const assetId = String(formData.get('assetId') ?? '');
   const quantity = Math.max(1, Number(formData.get('quantity') ?? 1) || 1);

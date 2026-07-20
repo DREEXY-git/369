@@ -239,11 +239,27 @@ export async function decideApprovalAction(formData: FormData) {
           target,
         );
 
-        let sendStatus: string = 'logged';
+        // 送信記録の write-ahead: 外部送信の前に OutreachSendLog を確保（suppressed/queued）し、送信後に結果へ更新する。
+        // 「送信→記録」の順だと送信成功後クラッシュでコンプラ送信記録が欠落する（メール実送信は取り消せない）ため、
+        // 先にログを確保して「送ったのに記録なし」を構造的に排除する。
+        const outreachLog = await prisma.outreachSendLog.create({
+          data: {
+            tenantId: user.tenantId,
+            draftId: draft.id,
+            channel: 'email',
+            toAddress: target,
+            fromAddress: process.env.MAIL_FROM ?? 'sales@dreexy.example.jp',
+            subject: draft.subject,
+            body: draft.body,
+            status: blocked ? 'suppressed' : 'queued',
+            provider: 'log',
+            approvedById: user.userId,
+          },
+        });
+
+        let sendStatus: string = blocked ? 'suppressed' : 'logged';
         let provider = 'log';
-        if (blocked) {
-          sendStatus = 'suppressed';
-        } else if (isExternalSendEnabled()) {
+        if (!blocked && isExternalSendEnabled()) {
           const email = getEmailProvider();
           const res = await email.send({
             to: target,
@@ -254,21 +270,9 @@ export async function decideApprovalAction(formData: FormData) {
           sendStatus = res.status;
           provider = res.provider;
         }
-
-        const outreachLog = await prisma.outreachSendLog.create({
-          data: {
-            tenantId: user.tenantId,
-            draftId: draft.id,
-            channel: 'email',
-            toAddress: target,
-            fromAddress: process.env.MAIL_FROM ?? 'sales@dreexy.example.jp',
-            subject: draft.subject,
-            body: draft.body,
-            status: sendStatus,
-            provider,
-            approvedById: user.userId,
-          },
-        });
+        if (!blocked) {
+          await prisma.outreachSendLog.update({ where: { id: outreachLog.id }, data: { status: sendStatus, provider } });
+        }
         // Phase 1-29: 非課金の利用量記録（outreach 送信が logged/sent として確定した事実のみ）。課金ではない・billing=usage_only 固定。
         // suppressed / failed は emit しない（抑止・失敗はユーザーに課金しない＝never_billable 相当）。
         // metadata は非PIIの channel/status のみ（toAddress/subject/body/draftId/leadId/顧客情報/金額は入れない）。

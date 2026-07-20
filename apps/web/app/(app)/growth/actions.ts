@@ -5,11 +5,12 @@ import { redirect } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
 import { emitGrowthEvent } from '@/lib/growth';
-import { isGrowthEventType, growthCategoryOf } from '@hokko/shared';
+import { isGrowthEventType, growthCategoryOf, isHumanUser } from '@hokko/shared';
 
 export async function createGrowthEventAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'marketing', 'create')) redirect('/growth?denied=1');
+  // 実レコード作成は人間の管理導線のみ（marketing:create は AI_AGENT も保持するため isHumanUser で二重防御）。
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'marketing', 'create')) redirect('/growth?denied=1');
   const type = String(formData.get('type') ?? 'management.decision.recorded');
   // WIP-3（roadmap64 追補）: finance カテゴリの行は非財務閲覧者の一覧から遮断されるため、
   // 記録した本人に見えないサイレント消失を防ぐ（UI の選択肢からも除外・読み書きの対称性）。
@@ -33,7 +34,7 @@ export async function createGrowthEventAction(formData: FormData) {
 /** 既存 DomainEvent から成長イベントを派生記録する（管理者導線）。 */
 export async function emitGrowthEventFromDomainAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'marketing', 'create')) redirect('/growth?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'marketing', 'create')) redirect('/growth?denied=1');
   const domainEventId = String(formData.get('domainEventId') ?? '');
   const ev = await prisma.domainEvent.findFirst({ where: { id: domainEventId, tenantId: user.tenantId } });
   if (!ev) redirect('/growth/events?error=notfound');

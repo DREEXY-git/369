@@ -60,7 +60,7 @@ export async function assignEventStaff(actor: Actor, eventId: string, name: stri
   if (!event) return false;
   // 配置・人件費原価・監査を単一 $transaction で確定。costRecorded=cost>0 の主張と EventCost 行を同時にコミット
   // し、cost 行だけ失敗して「原価済みフラグだけ立つ（粗利過大）」不整合を防ぐ。growth は commit 後（非クリティカル）。
-  const assignment = await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     const a = await tx.eventStaffAssignment.create({
       data: { tenantId: actor.tenantId, eventId, name, role, cost, costRecorded: cost > 0 },
     });
@@ -70,7 +70,6 @@ export async function assignEventStaff(actor: Actor, eventId: string, name: stri
     await tx.auditLog.create({
       data: { tenantId: actor.tenantId, actorId: actor.userId ?? null, actorType: 'user', action: 'create', entityType: 'EventStaffAssignment', entityId: a.id, summary: `人員配置: ${name}（${role}・${cost}円）→ ${event.name}` },
     });
-    return a;
   });
   await emitGrowthEvent({
     tenantId: actor.tenantId,

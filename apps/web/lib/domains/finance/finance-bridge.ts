@@ -195,6 +195,13 @@ export async function bridgeEventProjectToFinance(actor: Actor, eventId: string)
 export async function bridgePurchaseOrderToFinance(actor: Actor, poId: string) {
   const po = await prisma.purchaseOrder.findFirst({ where: { id: poId, tenantId: actor.tenantId } });
   if (!po) throw new Error('po not found');
+  // 冪等: 既にブリッジ済み（同 PO の purchase_order FinanceEvent が存在）なら二重生成しない
+  // （bridgeEventProjectToFinance と同型・二重送信での台帳重複を防ぐ）。
+  const existingBridge = await prisma.financeEvent.findFirst({
+    where: { tenantId: actor.tenantId, sourceType: 'PurchaseOrder', sourceId: poId, type: 'purchase_order' },
+    select: { id: true },
+  });
+  if (existingBridge) return;
   const amount = toNumber(po.totalAmount);
   const dueAt = po.expectedAt ?? defaultDue();
 
@@ -211,6 +218,13 @@ export async function bridgePurchaseOrderToFinance(actor: Actor, poId: string) {
 export async function bridgeDamageChargeToInvoiceCandidate(actor: Actor, damageId: string) {
   const dmg = await prisma.damageLossRecord.findFirst({ where: { id: damageId, tenantId: actor.tenantId } });
   if (!dmg) throw new Error('damage record not found');
+  // 冪等: 既にブリッジ済み（同破損記録の請求候補が存在）なら二重生成しない（bridgeEventProjectToFinance と同型）。
+  const existingBridge = await prisma.invoiceCandidate.findFirst({
+    where: { tenantId: actor.tenantId, sourceType: 'DamageLossRecord', sourceId: damageId },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  });
+  if (existingBridge) return { invoiceCandidateId: existingBridge.id };
   const amount = toNumber(dmg.cost);
   const dueAt = defaultDue();
 

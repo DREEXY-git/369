@@ -102,12 +102,18 @@ export async function executeInvoiceExternalSend(actor: Actor, invoiceId: string
     sendStatus = res.status;
     provider = res.provider;
   }
-  await prisma.invoice.update({ where: { id: invoiceId }, data: { status: 'SENT' } });
-  // 送信＝入金予定（売掛回収見込み）を計上。
-  await prisma.financeEvent.create({
-    data: { tenantId: actor.tenantId, type: 'payment_expected', sourceType: 'Invoice', sourceId: invoiceId, direction: 'inflow', amount: toNumber(inv.total), dueAt: inv.dueDate, status: 'approved', description: `入金予定: ${inv.number}` },
+  // SENT 遷移・入金予定（売掛回収見込み）FinanceEvent・監査を単一 $transaction で確定。
+  // 別コミットだと SENT 確定後クラッシュで payment_expected（資金繰り予測の入力）が恒久消失し、
+  // retry も canSendInvoice('SENT')=false で不能になるため、3書き込みを all-or-nothing にする。
+  await prisma.$transaction(async (tx) => {
+    await tx.invoice.updateMany({ where: { id: invoiceId, tenantId: actor.tenantId }, data: { status: 'SENT' } });
+    await tx.financeEvent.create({
+      data: { tenantId: actor.tenantId, type: 'payment_expected', sourceType: 'Invoice', sourceId: invoiceId, direction: 'inflow', amount: toNumber(inv.total), dueAt: inv.dueDate, status: 'approved', description: `入金予定: ${inv.number}` },
+    });
+    await tx.auditLog.create({
+      data: { tenantId: actor.tenantId, actorId: actor.userId ?? null, actorType: 'user', action: 'invoice_send', entityType: 'Invoice', entityId: invoiceId, summary: `請求書 ${inv.number} を送信（${sendStatus}/${provider}）` },
+    });
   });
-  await writeAudit({ tenantId: actor.tenantId, actorId: actor.userId, action: 'invoice_send', entityType: 'Invoice', entityId: invoiceId, summary: `請求書 ${inv.number} を送信（${sendStatus}/${provider}）` });
   await emitGrowthEvent({
     tenantId: actor.tenantId,
     type: 'finance.invoice.sent',

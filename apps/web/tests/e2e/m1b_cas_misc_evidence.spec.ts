@@ -140,16 +140,20 @@ test('E-03 deal stage: History作成後・Audit前のfaultでCASごと全rollbac
   }
 });
 
-test('E-03 deal stage: 異なる次stageへの並行CASは勝者1本（History/Audit各1・最終stageと一致）', async () => {
+test('E-03 deal stage: 同一 expectedStage の異なる次stage並行CASは勝者1本・敗者stale（古い画面の上書き拒否）', async () => {
   const actor = await getActor();
   const { customerId, dealId } = await makeCustomerDeal(actor.tenantId);
   const targets = ['HEARING', 'PROPOSAL'] as const;
   try {
-    // 両者とも stage=CONTACT から CAS。updateMany の row-lock で直列化され勝者1本（sleep 非依存の実競合）。
-    const results = await Promise.all(targets.map((t) => updateDealStageCore(actor, { dealId, stage: t })));
+    // 両者とも「画面表示時 = CONTACT」を expectedStage として CAS。expected を固定条件にするため、
+    // staggered（後着が先着 commit 後に現stageを読む）でも両方成功せず勝者は必ず1本（stale-intent を排除）。
+    // FOR UPDATE で直列化・sleep 非依存の実競合。
+    const results = await Promise.all(
+      targets.map((t) => updateDealStageCore(actor, { dealId, stage: t, expectedStage: 'CONTACT' })),
+    );
     const winners = results.filter((r) => r.ok);
     expect(winners.length, 'CAS 勝者はちょうど1本').toBe(1);
-    for (const r of results) if (!r.ok) expect(r.reason, '敗者は already（書き込み0）').toBe('already');
+    for (const r of results) if (!r.ok) expect(r.reason, '敗者は stale（expected=CONTACT だが既に勝者stageへ遷移済み＝古い画面）').toBe('stale');
 
     const okIdx = results.findIndex((r) => r.ok);
     const c = await dealCounts(actor.tenantId, dealId);

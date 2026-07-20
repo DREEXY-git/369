@@ -15,36 +15,51 @@ export interface DealStageTestHooks {
 
 export type UpdateDealStageResult =
   | { ok: true }
-  | { ok: false; reason: 'notfound' | 'invalid-stage' | 'already' };
+  | { ok: false; reason: 'notfound' | 'invalid-stage' | 'already' | 'stale' };
 
 /**
  * 案件ステージ変更の testable core（Server Action から切り出し・fault 注入で証拠化）。
- * enum 検証（任意文字列の書き込み排除）→ 現ステージ CAS（fromStage 一致時のみ・並行変更を1本に収束）→
- * 履歴＋監査を単一 $transaction で確定。CAS count≠1（並行敗者/replay）は書き込みゼロで already。
+ * enum 検証 → **expectedStage（画面表示時の stage）を CAS 条件**にして stale-intent を弾く → 履歴＋監査を
+ * 単一 $transaction で確定。expectedStage を固定条件にすることで、古い画面からの上書きや、実行時に現 stage を
+ * 読み直すことによる「異なる次stageへの並行変更が両方成功」（E2-02/F-02）を構造的に排除する。
+ * 敗者は lock 下で現 stage を確定読みし、target 済み=already / それ以外=stale（画面が古い）へ分岐。
+ * expectedStage 未指定時は後方互換で現 stage を採用。
  */
 export async function updateDealStageCore(
   actor: { tenantId: string; userId?: string | null },
-  input: { dealId: string; stage: string },
+  input: { dealId: string; stage: string; expectedStage?: string },
   opts: DealStageTestHooks = {},
 ): Promise<UpdateDealStageResult> {
   if (!(DEAL_STAGES as readonly string[]).includes(input.stage)) return { ok: false, reason: 'invalid-stage' };
-  const deal = await prisma.deal.findFirst({ where: { id: input.dealId, tenantId: actor.tenantId } });
+  const deal = await prisma.deal.findFirst({ where: { id: input.dealId, tenantId: actor.tenantId }, select: { title: true, stage: true } });
   if (!deal) return { ok: false, reason: 'notfound' };
+  // 期待 stage = 画面表示時の stage（form の hidden）。妥当な enum のみ採用・無ければ現 stage で後方互換。
+  const expected: DealStage =
+    input.expectedStage && (DEAL_STAGES as readonly string[]).includes(input.expectedStage)
+      ? (input.expectedStage as DealStage)
+      : deal.stage;
 
-  const changed = await prisma.$transaction(async (tx) => {
+  const outcome = await prisma.$transaction(async (tx) => {
+    // 対象 Deal を FOR UPDATE で直列化してから、expected を CAS 条件にする（lease.ts と同型の barrier）。
+    await tx.$queryRaw`SELECT id FROM "Deal" WHERE id = ${input.dealId} AND "tenantId" = ${actor.tenantId} FOR UPDATE`;
     const claim = await tx.deal.updateMany({
-      where: { id: input.dealId, tenantId: actor.tenantId, stage: deal.stage },
+      where: { id: input.dealId, tenantId: actor.tenantId, stage: expected },
       data: { stage: input.stage as DealStage },
     });
-    if (claim.count !== 1) return false;
+    if (claim.count !== 1) {
+      // 敗者: lock 下で現 stage を確定読み。target 済み=already（冪等 no-op）／それ以外=stale（画面が古い＝要再読込）。
+      const cur = await tx.deal.findFirst({ where: { id: input.dealId, tenantId: actor.tenantId }, select: { stage: true } });
+      return cur?.stage === input.stage ? 'already' : 'stale';
+    }
     await tx.dealStageHistory.create({
-      data: { tenantId: actor.tenantId, dealId: input.dealId, fromStage: deal.stage, toStage: input.stage as DealStage, changedById: actor.userId ?? null },
+      data: { tenantId: actor.tenantId, dealId: input.dealId, fromStage: expected, toStage: input.stage as DealStage, changedById: actor.userId ?? null },
     });
     if (opts.__faultBetweenWritesForTest) opts.__faultBetweenWritesForTest();
     await tx.auditLog.create({
       data: { tenantId: actor.tenantId, actorId: actor.userId ?? null, actorType: 'user', action: 'update', entityType: 'Deal', entityId: input.dealId, summary: `案件「${deal.title}」のステージを ${input.stage} に変更` },
     });
-    return true;
+    return 'ok' as const;
   });
-  return changed ? { ok: true } : { ok: false, reason: 'already' };
+  if (outcome === 'ok') return { ok: true };
+  return { ok: false, reason: outcome };
 }

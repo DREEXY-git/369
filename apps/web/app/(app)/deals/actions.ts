@@ -10,11 +10,14 @@ export async function updateDealStageAction(formData: FormData) {
   const user = await requireUser();
   const dealId = String(formData.get('dealId') ?? '');
   const stage = String(formData.get('stage') ?? '');
+  const expectedStage = String(formData.get('expectedStage') ?? '');
   if (!hasPermission(user, 'deal', 'update')) redirect(`/deals/${dealId}?denied=1`);
 
-  const result = await updateDealStageCore({ tenantId: user.tenantId, userId: user.userId }, { dealId, stage });
+  const result = await updateDealStageCore({ tenantId: user.tenantId, userId: user.userId }, { dealId, stage, expectedStage });
   if (!result.ok && result.reason === 'invalid-stage') redirect(`/deals/${dealId}?error=stage`);
   if (!result.ok && result.reason === 'notfound') redirect('/deals/kanban');
+  // stale = 画面表示後に別担当がステージを進めた（古い画面からの上書きを拒否）。再読込を促す。
+  if (!result.ok && result.reason === 'stale') redirect(`/deals/${dealId}?stale=1`);
   if (!result.ok && result.reason === 'already') redirect(`/deals/${dealId}?already=1`);
   revalidatePath('/deals/kanban');
   revalidatePath(`/deals/${dealId}`);

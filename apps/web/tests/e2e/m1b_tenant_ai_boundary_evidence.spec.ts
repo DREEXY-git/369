@@ -472,7 +472,10 @@ async function replayAsRole(
   captured: Captured,
   body: string,
 ): Promise<string> {
-  const email = `m1b-ai-${roleKeys.join('-')}-${process.pid}-${Date.now()}-${Math.floor(performance.now())}@ikezaki.local`;
+  // loginAction は email を toLowerCase() してから DB 照合する（case-sensitive な text 列）。
+  // roleKeys は大文字（AI_AGENT / OWNER）を含むため、小文字化しないと作成 email と照合 email が
+  // 一致せずログイン不成立→waitForURL('**/dashboard') が 30s ハングする。全体を小文字化して整合させる。
+  const email = `m1b-ai-${roleKeys.join('-')}-${process.pid}-${Date.now()}-${Math.floor(performance.now())}@ikezaki.local`.toLowerCase();
   const aiUserId = await makeUser(t, email, roleKeys, isAiAgent);
   const ctx = await browser.newContext();
   try {

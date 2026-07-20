@@ -5,8 +5,8 @@ import {
   updateOutreachDraftCore,
   applyUnsubscribeCore,
   type OutreachRequestHooks,
-} from '../../app/(app)/leadmap/actions';
-import { decideOutreachApprovalCore } from '../../app/(app)/approvals/actions';
+} from '../../lib/domains/leadmap/outreach-request';
+import { decideOutreachApprovalCore } from '../../lib/domains/leadmap/outreach-send';
 
 // Codex M1-b E-04 の実 PostgreSQL 証拠。営業メール承認の申請・編集・配信停止の状態機械を
 // production-shared core（requestOutreachApprovalCore / updateOutreachDraftCore / applyUnsubscribeCore /

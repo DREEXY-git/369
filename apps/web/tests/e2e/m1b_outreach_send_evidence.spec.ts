@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { prisma } from '@hokko/db';
 import type { EmailProvider } from '@hokko/integrations';
-import { requestOutreachApprovalCore } from '../../app/(app)/leadmap/actions';
-import { decideOutreachApprovalCore, type OutreachSendHooks } from '../../app/(app)/approvals/actions';
+import { requestOutreachApprovalCore } from '../../lib/domains/leadmap/outreach-request';
+import { decideOutreachApprovalCore, type OutreachSendHooks } from '../../lib/domains/leadmap/outreach-send';
 
 // Codex M1-b E-01 の実 PostgreSQL 証拠。営業メール送信承認（decideApprovalAction の outreach_send 分岐）の
 // production-shared core（decideOutreachApprovalCore）を fault hook 付きで直接呼び、

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { prisma } from '@hokko/db';
-import { updateDealStageCore } from '../../app/(app)/deals/actions';
-import { decideTempItemCore } from '../../app/(app)/communications/actions';
+import { updateDealStageCore } from '../../lib/domains/deals/deal-stage';
+import { decideTempItemCore } from '../../lib/domains/communications/temp-item';
 
 // CODEX E-03（M1-b round2）実 PostgreSQL 証拠 — CAS misc レーン（deal stage / temp item）。
 // round1 で CAS＋$transaction 化された2経路の「transaction が存在する」ことでは証明できない主張を

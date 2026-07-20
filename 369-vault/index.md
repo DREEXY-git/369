@@ -154,6 +154,7 @@
 - [[Codex指摘クローズv62]] — v6.1 復旧を Codex がレビューして CHANGES REQUIRED：値内部 escaped quote の秘密漏れ（High）を bounded scanner へ設計し直し・クラッシュ判定を単一正本に統一・ビルドバッジを OWNER/ADMIN role へ限定・AI社員8名 parity＋実在別テナント404・NAV 明示契約67・証拠段階の言い過ぎ是正・MVP先行/Wave1-5 方針正本化（Codex 再監査まで GO 提案なし・audit176 v6.2/roadmap80/PR #14）。
 - [[完全復旧と4軸ロードマップv61]] — 「4機能が消えた」の正体は配信系譜（コードは統合ブランチに存在・利用者画面は main を配信）と判明：復旧ブランチで秘密マスク3経路・クラッシュ残骸の二重実行誤判定・AI社員と3Dオフィスの人物正本を赤テスト先行で修正・NAV 静的契約67＋build識別バッジ・4軸Phase＋AI社員開発環境/Salesforce/MoneyForward台帳を証拠段階と方式で正本化（main/本番は人間GO後のみ・audit176/roadmap80/PR #14）。
 - [[三系統前進v56]] — v5.6 で三系統を同時前進：Evidence ID を EVID- 接頭辞に補正（正式 Function ID と混同しない）・C21 SEO/Content v0（未根拠クレームは AI が生成しない・注入で生成中止・CI 99 green）・Agent Control Plane v0（AI 実行の遷移許可表・巻き戻し禁止・stale を働いていると見せない・schema 変更なし・CI 100 green・スクリーンショット artifact 開始）・Work Evidence Cockpit v0（成果は証拠5区分のみ・削減時間は baseline なしでは「計測なし」・PR #6 新規・CI 103 green）・C22 Referral は Gate 設計のみ（roadmap72-76/audit171-174）。
+- [[DomainEvent識別子canonical移行_PADN_PhaseA_A2_B]] — 入金の冪等化とイベント同一性を「読み手を先に canonical 対応 → 意味論だけ Phase A2 → encoding だけ Phase B」の順で main へ入れ切ったアーク：B1（cross-tenant Payment 衝突）は schema を触らず server 由来単射 ID で修復・dedupe は payload.idem・PG advisory lock＋FNV 衝突 fail-closed・cross-flip 増分0を実 PG で実証。Phase A v1 は「監査範囲不足」で HUMAN_GATE_REJECTED → 設計監査を挟み固定SHAで C/D/E 独立再監査 → PR #71/#72 を人間 merge（main 62c0ae8→0263a98）。旧 #57 は superseded（PADN Phase A/A2/B・CI green は前提であり PASS 根拠にしない）。
 
 ## 🔗 コード側の正（source of truth）
 

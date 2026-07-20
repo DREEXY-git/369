@@ -6,7 +6,7 @@ import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
 import { recordUsageEvent } from '@/lib/usage-events';
 import { isSuppressed, isHumanUser } from '@hokko/shared';
-import { getEmailProvider, isExternalSendEnabled } from '@hokko/integrations';
+import { getEmailProvider, isExternalSendEnabled, type EmailProvider } from '@hokko/integrations';
 import { decideContentReviewCore, type BridgeDb } from '@/lib/content-review-bridge';
 import { decideSuggestionReviewCore, type SuggestionBridgeDb } from '@/lib/suggestion-review-bridge';
 import { decideQuoteIssueCore, type QuoteIssueBridgeDb } from '@/lib/quote-issue-bridge';
@@ -54,6 +54,206 @@ export async function decideAiGateAction(formData: FormData) {
   redirect('/approvals');
 }
 
+// ============================================================================
+// outreach_send 承認決定の production-shared core（Codex M1-b E-01）。
+// 従来は decideApprovalAction 内で「ApprovalRequest CAS を先に commit → その後に write-ahead
+// OutreachSendLog / draft / lead を別 write で更新」だったため、途中 fault の retry が CAS no-op に
+// なり `APPROVED + queued/未作成 log + PENDING_APPROVAL` で停止し得た。ここでは
+//  (1) 決定（内部状態のみ）を単一 transaction で atomic 化（決定 CAS 勝者のみ OutreachApproval 同期＋監査）
+//  (2) 送信副作用を **再開可能な状態機械** 化：ApprovalRequest 行ロックで write-ahead SendLog を1件だけ確保 →
+//      queued→sending の CAS 勝者だけが provider を呼ぶ（exactly-once）→ 送信後 draft/lead 確定 → executed anchor
+// にする。どの crash window から retry しても provider 送信は最大1回・最終的に整合へ収束する。
+// fault hook は test-only（未指定で本番挙動と同一・lib/domains/operations/lease.ts と同様式）。
+// ============================================================================
+
+export interface OutreachSendHooks {
+  /** provider 呼び出し回数を数える計装用 fake provider（未指定なら getEmailProvider()）。 */
+  __emailProviderForTest?: EmailProvider;
+  /** W1: write-ahead SendLog 確保後・provider 前に throw。 */
+  __faultAfterSendLogForTest?: () => void;
+  /** W2: provider 送信後・log status 更新前に throw。 */
+  __faultAfterProviderForTest?: () => void;
+  /** W3: log 確定後・draft/lead 更新前に throw。 */
+  __faultBeforeDraftLeadForTest?: () => void;
+}
+
+export type OutreachDecisionResult = { outcome: 'sent' | 'suppressed' | 'rejected' | 'noop' };
+
+/**
+ * outreach_send 承認決定の本体。decideApprovalAction の early branch と証拠 spec の双方から呼ばれる。
+ * 並行2決定・crash retry いずれでも decided winner は1本（決定監査1・OutreachApproval 1）、
+ * provider 送信・SendLog・UsageEvent は各1へ収束する。
+ */
+export async function decideOutreachApprovalCore(
+  ctx: {
+    tenantId: string;
+    userId?: string | null;
+    approvalId: string;
+    decision: 'approve' | 'reject';
+    note: string;
+    approvalTitle?: string;
+  },
+  opts: OutreachSendHooks = {},
+): Promise<OutreachDecisionResult> {
+  const { tenantId, userId, approvalId, decision, note, approvalTitle } = ctx;
+  const status = decision === 'approve' ? 'APPROVED' : 'REJECTED';
+
+  // (1) 決定（内部状態のみ・外部作用なし）を単一 transaction で atomic 化。
+  //     決定 CAS（PENDING→status）勝者だけが OutreachApproval 同期・(reject時)draft REJECTED・決定監査を書く。
+  const t1 = await prisma.$transaction(async (tx) => {
+    const decided = await tx.approvalRequest.updateMany({
+      where: { id: approvalId, tenantId, status: 'PENDING' },
+      data: { status, decidedById: userId ?? null, decidedAt: new Date(), decisionNote: note },
+    });
+    const appr = await tx.approvalRequest.findFirst({
+      where: { id: approvalId, tenantId },
+      select: { status: true, entityId: true },
+    });
+    if (!appr?.entityId) return { winner: false, effective: appr?.status ?? null, entityId: null as string | null };
+    if (decided.count === 1) {
+      await tx.outreachApproval.updateMany({
+        where: { draftId: appr.entityId, tenantId, status: 'PENDING' },
+        data: { status, approverId: userId ?? null, decidedAt: new Date(), note },
+      });
+      if (status === 'REJECTED') {
+        await tx.outreachDraft.updateMany({
+          where: { id: appr.entityId, tenantId, status: 'PENDING_APPROVAL' },
+          data: { status: 'REJECTED' },
+        });
+      }
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          actorId: userId ?? null,
+          actorType: 'user',
+          action: status === 'APPROVED' ? 'approve' : 'reject',
+          entityType: 'ApprovalRequest',
+          entityId: approvalId,
+          summary: `${approvalTitle ?? '営業メール送信承認'} を${status === 'APPROVED' ? '承認' : '却下'}`,
+        },
+      });
+    }
+    return { winner: decided.count === 1, effective: appr.status, entityId: appr.entityId };
+  });
+
+  if (!t1.entityId) return { outcome: 'noop' };
+  if (t1.effective === 'REJECTED') return { outcome: 'rejected' };
+  if (t1.effective !== 'APPROVED') return { outcome: 'noop' };
+
+  // (2) APPROVED: 再開可能な送信状態機械（外部作用は transaction 外）。
+  return runOutreachSendStateMachine({ tenantId, userId, approvalId, draftId: t1.entityId }, opts);
+}
+
+async function runOutreachSendStateMachine(
+  args: { tenantId: string; userId?: string | null; approvalId: string; draftId: string },
+  opts: OutreachSendHooks,
+): Promise<OutreachDecisionResult> {
+  const { tenantId, userId, approvalId, draftId } = args;
+  const draft = await prisma.outreachDraft.findFirst({ where: { id: draftId, tenantId }, include: { lead: true } });
+  if (!draft) return { outcome: 'noop' };
+  const target = draft.lead.email ?? `info@${draft.lead.placeId}.example.jp`;
+  const suppression = await prisma.suppressionList.findMany({ where: { tenantId, channel: 'email' } });
+  const blocked = isSuppressed(
+    suppression.map((s) => ({ channel: s.channel, value: s.value })),
+    'email',
+    target,
+  );
+
+  // (2a) write-ahead: 送信ログを **1件だけ** 確保する。ApprovalRequest 行を FOR UPDATE で直列化し、
+  //      並行実行・retry でも重複ログを作らない（provider 送信自体はこの tx の外・rollback 不能なため）。
+  const sendLog = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "ApprovalRequest" WHERE id = ${approvalId} AND "tenantId" = ${tenantId} FOR UPDATE`;
+    const existing = await tx.outreachSendLog.findFirst({ where: { tenantId, draftId }, orderBy: { createdAt: 'desc' } });
+    if (existing) return existing;
+    return tx.outreachSendLog.create({
+      data: {
+        tenantId,
+        draftId,
+        channel: 'email',
+        toAddress: target,
+        fromAddress: process.env.MAIL_FROM ?? 'sales@dreexy.example.jp',
+        subject: draft.subject,
+        body: draft.body,
+        status: blocked ? 'suppressed' : 'queued',
+        provider: 'log',
+        approvedById: userId ?? null,
+      },
+    });
+  });
+
+  if (opts.__faultAfterSendLogForTest) opts.__faultAfterSendLogForTest(); // W1
+
+  // (2b) provider 送信: queued→sending の CAS 勝者だけが provider を呼ぶ（exactly-once）。
+  let logStatus: string = sendLog.status;
+  if (!blocked) {
+    if (sendLog.status === 'queued' && isExternalSendEnabled()) {
+      // queued→sending を claim（並行/再実行の二重送信防止 barrier）。
+      const claim = await prisma.outreachSendLog.updateMany({ where: { id: sendLog.id, status: 'queued' }, data: { status: 'sending' } });
+      if (claim.count === 1) {
+        const email = opts.__emailProviderForTest ?? getEmailProvider();
+        const res = await email.send({ to: target, from: sendLog.fromAddress, subject: draft.subject, text: draft.body });
+        if (opts.__faultAfterProviderForTest) opts.__faultAfterProviderForTest(); // W2
+        logStatus = res.status;
+        await prisma.outreachSendLog.update({ where: { id: sendLog.id }, data: { status: res.status, provider: res.provider } });
+      } else {
+        // 並行敗者: provider は勝者が呼ぶ。draft/lead も勝者が確定するのでここで終了（副作用なし）。
+        return { outcome: 'noop' };
+      }
+    } else if (sendLog.status === 'queued') {
+      // 外部送信無効: provider を呼ばず queued→logged（CAS で1回だけ）。
+      const claim = await prisma.outreachSendLog.updateMany({ where: { id: sendLog.id, status: 'queued' }, data: { status: 'logged', provider: 'log' } });
+      if (claim.count !== 1) return { outcome: 'noop' };
+      logStatus = 'logged';
+    } else if (sendLog.status === 'sending') {
+      // W2 crash retry: 'sending' は provider 呼び出し直前で立てる → provider は呼び出し済み。
+      // 二重送信せず sent へ確定する（durable 再開状態・retry で送信重複も永久停止も起きない）。
+      await prisma.outreachSendLog.updateMany({ where: { id: sendLog.id, status: 'sending' }, data: { status: 'sent' } });
+      logStatus = 'sent';
+    } else {
+      // terminal（logged/sent/failed）: provider 済み。
+      logStatus = sendLog.status;
+    }
+  }
+
+  if (opts.__faultBeforeDraftLeadForTest) opts.__faultBeforeDraftLeadForTest(); // W3
+
+  // (2c) 非課金の利用量記録（idempotencyKey=SendLog id で二重計上防止）。suppressed/failed は emit しない。
+  if (logStatus === 'logged' || logStatus === 'sent') {
+    await recordUsageEvent({
+      tenantId,
+      actorId: userId ?? null,
+      actorType: 'user',
+      eventType: 'external_send.outreach',
+      category: 'external_send',
+      billing: 'usage_only',
+      unit: 'count',
+      quantity: 1,
+      sourceType: 'OutreachSendLog',
+      sourceId: sendLog.id,
+      idempotencyKey: `usage:external_send.outreach:${sendLog.id}`,
+      metadata: { channel: 'email', status: logStatus },
+    });
+  }
+
+  // (2d) draft/lead 確定（idempotent・tenant scope）。
+  await prisma.outreachDraft.updateMany({
+    where: { id: draftId, tenantId, status: { in: ['PENDING_APPROVAL', 'APPROVED'] } },
+    data: { status: blocked ? 'APPROVED' : 'SENT' },
+  });
+  await prisma.localBusinessLead.updateMany({
+    where: { id: draft.leadId, tenantId },
+    data: { stage: blocked ? 'EXCLUDED' : 'SENT' },
+  });
+
+  // (2e) 実行完了 anchor（Phase 1-7 の executionStatus を流用・二重実行の観測点）。
+  await prisma.approvalRequest.updateMany({
+    where: { id: approvalId, tenantId },
+    data: { executionStatus: 'executed', executedAt: new Date(), executedById: userId ?? null },
+  });
+
+  return { outcome: blocked ? 'suppressed' : 'sent' };
+}
+
 export async function decideApprovalAction(formData: FormData) {
   const user = await requireUser();
   const approvalId = String(formData.get('approvalId') ?? '');
@@ -68,7 +268,34 @@ export async function decideApprovalAction(formData: FormData) {
   const approval = await prisma.approvalRequest.findFirst({
     where: { id: approvalId, tenantId: user.tenantId, status: 'PENDING' },
   });
-  if (!approval) redirect('/approvals');
+  if (!approval) {
+    // E-01: outreach_send の送信状態機械は決定 CAS 後にある。前回が送信途中で落ちた場合、
+    // 再 submit 時は approval が既に APPROVED（≠PENDING）のため上の findFirst は null になる。
+    // この場合だけ core を再入して送信状態機械を再開する（core は idempotent：provider 送信は最大1回）。
+    const decidedOutreach = await prisma.approvalRequest.findFirst({
+      where: { id: approvalId, tenantId: user.tenantId, type: 'outreach_send', status: 'APPROVED' },
+      select: { title: true },
+    });
+    if (decidedOutreach) {
+      try {
+        await decideOutreachApprovalCore({
+          tenantId: user.tenantId,
+          userId: user.userId,
+          approvalId,
+          decision: 'approve',
+          note,
+          approvalTitle: decidedOutreach.title,
+        });
+      } catch {
+        revalidatePath('/approvals');
+        redirect('/approvals?error=outreach_transition');
+      }
+      revalidatePath('/approvals');
+      revalidatePath('/leadmap');
+      redirect('/approvals');
+    }
+    redirect('/approvals');
+  }
 
   // v6.9（Codex r3565885992）: content_review は「ApprovalRequest CAS → ContentAsset 更新 count===1 →
   // 監査」を単一 transaction で確定する（承認だけ確定して対象が pending のまま残る不整合を禁止）。
@@ -205,107 +432,37 @@ export async function decideApprovalAction(formData: FormData) {
     redirect('/approvals'); // decided / already（冪等）とも一覧へ
   }
 
+  // E-01 営業メール送信承認: 決定（内部状態）を atomic 化し、送信副作用を再開可能な状態機械で exactly-once に。
+  // 従来の「汎用 CAS を先に commit → その後 write-ahead log / draft / lead を別 write」だと途中 fault の
+  // retry が CAS no-op になり `APPROVED + queued/未作成 log + PENDING_APPROVAL` で停止し得た。core に集約。
+  if (approval.type === 'outreach_send') {
+    try {
+      await decideOutreachApprovalCore({
+        tenantId: user.tenantId,
+        userId: user.userId,
+        approvalId,
+        decision: decision === 'approve' ? 'approve' : 'reject',
+        note,
+        approvalTitle: approval.title,
+      });
+    } catch {
+      // provider 送信は最大1回・SendLog は durable。実 DB 失敗時は PENDING/再開可能状態のまま UI へ理由を返す。
+      revalidatePath('/approvals');
+      redirect('/approvals?error=outreach_transition');
+    }
+    revalidatePath('/approvals');
+    revalidatePath('/leadmap');
+    redirect('/approvals');
+  }
+
   const status = decision === 'approve' ? 'APPROVED' : 'REJECTED';
   // 決定は原子的 CAS（PENDING のときのみ→決定）。二重 submit / 同時決定は count===0 で弾き、
-  // 副作用（送信・状態遷移）は CAS の勝者だけが実行する＝1回だけ反映（冪等）。
-  // 外部送信を伴う type（outreach_send 等）の副作用は DB transaction に入れない（メール送信は
-  // rollback 不能な外部作用のため・従来どおり CAS 勝者が transaction 外で実行）。
+  // 副作用（状態遷移）は CAS の勝者だけが実行する＝1回だけ反映（冪等）。
   const decided = await prisma.approvalRequest.updateMany({
     where: { id: approvalId, tenantId: user.tenantId, status: 'PENDING' },
     data: { status, decidedById: user.userId, decidedAt: new Date(), decisionNote: note },
   });
   if (decided.count === 0) redirect('/approvals'); // 既に決定済み（別 submit が反映済み）。
-
-  // 承認対象が営業メール送信の場合の処理（送信ゲート）
-  if (approval.type === 'outreach_send' && approval.entityId) {
-    const draft = await prisma.outreachDraft.findFirst({
-      where: { id: approval.entityId, tenantId: user.tenantId },
-      include: { lead: true },
-    });
-    if (draft) {
-      await prisma.outreachApproval.updateMany({
-        where: { draftId: draft.id, tenantId: user.tenantId, status: 'PENDING' },
-        data: { status, approverId: user.userId, decidedAt: new Date(), note },
-      });
-
-      if (status === 'APPROVED') {
-        const target = draft.lead.email ?? `info@${draft.lead.placeId}.example.jp`;
-        const suppression = await prisma.suppressionList.findMany({
-          where: { tenantId: user.tenantId, channel: 'email' },
-        });
-        const blocked = isSuppressed(
-          suppression.map((s) => ({ channel: s.channel, value: s.value })),
-          'email',
-          target,
-        );
-
-        // 送信記録の write-ahead: 外部送信の前に OutreachSendLog を確保（suppressed/queued）し、送信後に結果へ更新する。
-        // 「送信→記録」の順だと送信成功後クラッシュでコンプラ送信記録が欠落する（メール実送信は取り消せない）ため、
-        // 先にログを確保して「送ったのに記録なし」を構造的に排除する。
-        const outreachLog = await prisma.outreachSendLog.create({
-          data: {
-            tenantId: user.tenantId,
-            draftId: draft.id,
-            channel: 'email',
-            toAddress: target,
-            fromAddress: process.env.MAIL_FROM ?? 'sales@dreexy.example.jp',
-            subject: draft.subject,
-            body: draft.body,
-            status: blocked ? 'suppressed' : 'queued',
-            provider: 'log',
-            approvedById: user.userId,
-          },
-        });
-
-        let sendStatus: string = blocked ? 'suppressed' : 'logged';
-        let provider = 'log';
-        if (!blocked && isExternalSendEnabled()) {
-          const email = getEmailProvider();
-          const res = await email.send({
-            to: target,
-            from: process.env.MAIL_FROM ?? 'sales@dreexy.example.jp',
-            subject: draft.subject,
-            text: draft.body,
-          });
-          sendStatus = res.status;
-          provider = res.provider;
-        }
-        if (!blocked) {
-          await prisma.outreachSendLog.update({ where: { id: outreachLog.id }, data: { status: sendStatus, provider } });
-        }
-        // Phase 1-29: 非課金の利用量記録（outreach 送信が logged/sent として確定した事実のみ）。課金ではない・billing=usage_only 固定。
-        // suppressed / failed は emit しない（抑止・失敗はユーザーに課金しない＝never_billable 相当）。
-        // metadata は非PIIの channel/status のみ（toAddress/subject/body/draftId/leadId/顧客情報/金額は入れない）。
-        // 記録失敗は承認・送信の主処理を壊さない（recordUsageEvent は例外を投げず ok:false を返すだけ）。
-        if (sendStatus === 'logged' || sendStatus === 'sent') {
-          await recordUsageEvent({
-            tenantId: user.tenantId,
-            actorId: user.userId,
-            actorType: 'user',
-            eventType: 'external_send.outreach',
-            category: 'external_send',
-            billing: 'usage_only',
-            unit: 'count',
-            quantity: 1,
-            sourceType: 'OutreachSendLog',
-            sourceId: outreachLog.id,
-            idempotencyKey: `usage:external_send.outreach:${outreachLog.id}`,
-            metadata: { channel: 'email', status: sendStatus },
-          });
-        }
-        await prisma.outreachDraft.update({
-          where: { id: draft.id },
-          data: { status: sendStatus === 'suppressed' ? 'APPROVED' : 'SENT' },
-        });
-        await prisma.localBusinessLead.update({
-          where: { id: draft.leadId },
-          data: { stage: sendStatus === 'suppressed' ? 'EXCLUDED' : 'SENT' },
-        });
-      } else {
-        await prisma.outreachDraft.update({ where: { id: draft.id }, data: { status: 'REJECTED' } });
-      }
-    }
-  }
 
   await writeAudit({
     tenantId: user.tenantId,

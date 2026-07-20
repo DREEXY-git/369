@@ -27,11 +27,13 @@ import {
   calculateEventProfitability,
   completeEventProject,
   assignEventStaff,
+  assignAssetToEvent,
+  recordLeaseDamage,
   createEventRisk,
   updateEventRiskStatus,
 } from '@/lib/domains/operations/events';
 import { bridgeEventProjectToFinance } from '@/lib/domains/finance/finance-bridge';
-import { applyInventoryMovement, applyInventoryMovementTx } from '@/lib/operations';
+import { applyInventoryMovement } from '@/lib/operations';
 
 // ============================ 在庫移動 ============================
 
@@ -192,19 +194,10 @@ export async function recordLeaseDamageAction(formData: FormData) {
   const assetId = String(formData.get('assetId') ?? '');
   const cost = Math.max(0, Number(formData.get('cost') ?? 0) || 0);
   const note = String(formData.get('note') ?? '');
-  const asset = await prisma.productAsset.findFirst({ where: { id: assetId, tenantId: user.tenantId } });
-  if (!asset) redirect('/inventory/lease');
   // 破損記録＋在庫 status 変更 Movement を単一 $transaction で all-or-nothing（記録だけ／status だけの片欠けを防ぐ）。
-  await prisma.$transaction(async (tx) => {
-    await tx.damageLossRecord.create({ data: { tenantId: user.tenantId, assetId, type: 'damage', cost, note } });
-    await applyInventoryMovementTx(tx, {
-      tenantId: user.tenantId,
-      actorId: user.userId,
-      assetId,
-      type: 'damage',
-      note: note || '破損記録',
-    });
-  });
+  // 業務ロジックは lib/domains/operations/events.ts の recordLeaseDamage（testable core）。
+  const result = await recordLeaseDamage({ tenantId: user.tenantId, userId: user.userId }, { assetId, cost, note });
+  if (!result.ok) redirect('/inventory/lease');
   revalidatePath('/inventory/lease');
   redirect('/inventory/lease?damaged=1');
 }
@@ -331,41 +324,12 @@ export async function assignAssetToEventAction(formData: FormData) {
   const eventId = String(formData.get('eventId') ?? '');
   const assetId = String(formData.get('assetId') ?? '');
   const quantity = Math.max(1, Number(formData.get('quantity') ?? 1) || 1);
-  const [event, asset] = await Promise.all([
-    prisma.eventProject.findFirst({ where: { id: eventId, tenantId: user.tenantId } }),
-    prisma.productAsset.findFirst({ where: { id: assetId, tenantId: user.tenantId } }),
-  ]);
-  if (!event || !asset) redirect(`/operations/events/${eventId}?error=notfound`);
 
   // 使用記録＋在庫予約 Movement を単一 $transaction で all-or-nothing（reserve 失敗で孤児 usage を作らない・
   // Asset FOR UPDATE ロック下で確定）。growth は commit 後（非クリティカル）。
-  await prisma.$transaction(async (tx) => {
-    await tx.eventProductUsage.create({
-      data: { tenantId: user.tenantId, eventId, assetId, assetName: asset!.name, quantity },
-    });
-    await applyInventoryMovementTx(tx, {
-      tenantId: user.tenantId,
-      actorId: user.userId,
-      assetId,
-      type: 'reserve',
-      quantity,
-      eventId,
-      note: `イベント割当: ${event!.name}`,
-    });
-  });
-  await emitGrowthEvent({
-    tenantId: user.tenantId,
-    type: 'event.equipment.assigned',
-    title: `備品割当: ${asset!.name} → ${event!.name}`,
-    actorId: user.userId,
-    entityType: 'EventProject',
-    entityId: eventId,
-    alsoDomainEvent: {
-      domainType: 'EVENT_EQUIPMENT_ASSIGNED' as DomainEventType,
-      aggregateType: 'EventProject',
-      aggregateId: eventId,
-    },
-  });
+  // 業務ロジックは lib/domains/operations/events.ts の assignAssetToEvent（testable core）。
+  const result = await assignAssetToEvent({ tenantId: user.tenantId, userId: user.userId }, { eventId, assetId, quantity });
+  if (!result.ok) redirect(`/operations/events/${eventId}?error=notfound`);
   revalidatePath(`/operations/events/${eventId}`);
   redirect(`/operations/events/${eventId}?assigned=1`);
 }

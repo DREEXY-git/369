@@ -11,9 +11,10 @@ export async function updateDealStageAction(formData: FormData) {
   const dealId = String(formData.get('dealId') ?? '');
   const stage = String(formData.get('stage') ?? '');
   const expectedStage = String(formData.get('expectedStage') ?? '');
+  const lostReason = String(formData.get('lostReason') ?? '');
   if (!hasPermission(user, 'deal', 'update')) redirect(`/deals/${dealId}?denied=1`);
 
-  const result = await updateDealStageCore({ tenantId: user.tenantId, userId: user.userId }, { dealId, stage, expectedStage });
+  const result = await updateDealStageCore({ tenantId: user.tenantId, userId: user.userId }, { dealId, stage, expectedStage, lostReason });
   if (!result.ok && result.reason === 'invalid-stage') redirect(`/deals/${dealId}?error=stage`);
   if (!result.ok && result.reason === 'notfound') redirect('/deals/kanban');
   // stale = 画面表示後に別担当がステージを進めた（古い画面からの上書きを拒否）。再読込を促す。

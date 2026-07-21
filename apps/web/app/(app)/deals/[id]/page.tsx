@@ -13,6 +13,9 @@ import { canSeeCustomerLabel } from '@/lib/security/customer-visibility';
 
 export const dynamic = 'force-dynamic';
 
+// 失注理由の選択肢（M3-3・学習/傾向分析用）。集計の一貫性のためここを唯一の書き手とする。
+const LOST_REASONS = ['価格・予算', '競合に決定', 'タイミング・見送り', '社内決裁が通らず', '機能・仕様不足', '音信不通', 'その他'] as const;
+
 export default async function DealDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
@@ -101,15 +104,25 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           <Card>
             <CardHeader><CardTitle>ステージ変更</CardTitle></CardHeader>
             <CardContent>
-              <div className="mb-2"><Badge tone="blue">現在: {DEAL_STAGE_LABEL[deal.stage]}</Badge></div>
-              <form action={updateDealStageAction} className="flex gap-2">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <Badge tone="blue">現在: {DEAL_STAGE_LABEL[deal.stage]}</Badge>
+                {deal.stage === 'LOST' && deal.lostReason ? <Badge tone="red">失注理由: {deal.lostReason}</Badge> : null}
+              </div>
+              <form action={updateDealStageAction} className="space-y-2">
                 <input type="hidden" name="dealId" value={deal.id} />
                 {/* 画面表示時の stage を CAS 条件として送る（別担当が進めた後の古い画面からの上書きを server 側で拒否）。 */}
                 <input type="hidden" name="expectedStage" value={deal.stage} />
-                <Select name="stage" defaultValue={deal.stage} className="flex-1">
-                  {DEAL_STAGES.map((s) => <option key={s} value={s}>{DEAL_STAGE_LABEL[s]}</option>)}
+                <div className="flex gap-2">
+                  <Select name="stage" defaultValue={deal.stage} className="flex-1">
+                    {DEAL_STAGES.map((s) => <option key={s} value={s}>{DEAL_STAGE_LABEL[s]}</option>)}
+                  </Select>
+                  <Button type="submit">変更</Button>
+                </div>
+                {/* 失注理由: 「失注」を選んだ場合のみ core 側で保存（他 stage では無視・後方互換）。傾向分析に使う。 */}
+                <Select name="lostReason" defaultValue={deal.lostReason ?? ''} className="w-full text-xs">
+                  <option value="">失注理由（「失注」を選んだ場合のみ）</option>
+                  {LOST_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
                 </Select>
-                <Button type="submit">変更</Button>
               </form>
             </CardContent>
           </Card>

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
@@ -28,8 +29,18 @@ export default async function MorningReportPage() {
   const canViewFinance = hasPermission(user, 'finance', 'read');
   // 承認待ち件数も Topbar / /approvals ページゲートと同一条件で redact（存在シグナルの遮断・WIP-5 追補）。
   const canViewApprovals = hasPermission(user, 'approval', 'approve');
+  // M3-2: 要追客リードの詳細（氏名・導線）は leadmap:read 保有者のみ。件数は非財務シグナルとして全 dashboard:read に表示。
+  const canViewLeadmap = hasPermission(user, 'leadmap', 'read');
+  // 要追客 = 追客ボードと同条件（送信済み未反応で最終接触から5日以上／記録なし）。
+  const followupOverdueBefore = new Date(Date.now() - 5 * 86_400_000);
+  const FOLLOWUP_STAGES = ['SENT', 'OPENED', 'CLICKED'] as const;
+  const followupWhere = {
+    tenantId: t,
+    stage: { in: [...FOLLOWUP_STAGES] },
+    OR: [{ lastContactAt: { lt: followupOverdueBefore } }, { lastContactAt: null }],
+  };
 
-  const [dealSum, target, overdue, unhandledLeads, pendingApprovals, stalledDeals, tasks, prevMargin, complaints, expiring] =
+  const [dealSum, target, overdue, unhandledLeads, pendingApprovals, stalledDeals, tasks, prevMargin, complaints, expiring, followupOverdueCount, followupOverdueTop] =
     await Promise.all([
       prisma.deal.aggregate({ where: { tenantId: t, stage: { not: 'LOST' } }, _sum: { amount: true, cost: true } }),
       prisma.systemSetting.findUnique({ where: { tenantId_key: { tenantId: t, key: 'sales_target_monthly' } } }),
@@ -43,6 +54,8 @@ export default async function MorningReportPage() {
       Promise.resolve(38),
       prisma.customerComplaint.count({ where: { tenantId: t, status: 'open' } }),
       prisma.contract.count({ where: { tenantId: t, renewalDate: { lt: new Date(Date.now() + 60 * 86400000) } } }),
+      prisma.localBusinessLead.count({ where: followupWhere }),
+      prisma.localBusinessLead.findMany({ where: followupWhere, orderBy: [{ lastContactAt: 'asc' }], select: { id: true, name: true, stage: true, lastContactAt: true }, take: 5 }),
     ]);
 
   // 財務指標は finance:read 非保有者には redact（0/neutral）。AI 入力・異常検知・画面のすべてに redact 後の値を使う。
@@ -111,6 +124,31 @@ export default async function MorningReportPage() {
         <ListCard title="🗺️ 本日対応すべきリード" items={report.leadmapTodo} tone="blue" />
         <ListCard title="❓ 社長確認事項" items={report.confirmations} tone="amber" />
       </div>
+
+      {/* M3-2: 追客ボードの「要追客」を朝礼に前出し。送信後の取りこぼしを毎朝ゼロにするための導線。 */}
+      {followupOverdueCount > 0 ? (
+        <Card className="mt-4 border-amber-300 bg-amber-50/50 dark:bg-amber-950/20">
+          <CardHeader><CardTitle>🔔 今日追うべきリード（要追客 {followupOverdueCount}件）</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-xs text-muted-foreground">送信済みで5日以上反応が無いリードです。追客メール（下書き→承認）や商談化で取りこぼしを防ぎましょう。</p>
+            {canViewLeadmap ? (
+              <>
+                <ul className="space-y-1 text-sm">
+                  {followupOverdueTop.map((l) => (
+                    <li key={l.id} className="flex items-center justify-between gap-2">
+                      <Link href={`/leadmap/leads/${l.id}`} className="truncate hover:underline">{l.name}</Link>
+                      <span className="shrink-0 text-xs text-muted-foreground">最終接触 {l.lastContactAt ? formatDate(l.lastContactAt) : '記録なし'}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Link href="/leadmap/followup" className="inline-block text-xs text-primary hover:underline">→ 追客ボードを開く</Link>
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground">詳細はリードマップの閲覧権限を持つ担当者が対応します。</p>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card className="mt-4">
         <CardHeader><CardTitle>⚠️ 経営異常検知（ルールベース + AI説明）</CardTitle></CardHeader>

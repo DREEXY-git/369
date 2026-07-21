@@ -23,8 +23,8 @@ function extractHrefs(src: string): string[] {
 
 // v6.1 で main(63) から追加された「復旧4導線」。これらが欠けると red。
 const RECOVERED_HREFS = ['/growth/control-tower', '/marketing/ads', '/marketing/content', '/ai-office'];
-const EXPECTED_NAV_COUNT = 68; // P3-Q2C-B: 売掛エイジング（/finance/receivables）を追加
-const MAIN_BASELINE_COUNT = 64; // 63 + 売掛エイジング（恒久導線として baseline に編入）
+const EXPECTED_NAV_COUNT = 69; // M3: 追客ボード（/leadmap/followup）を追加
+const MAIN_BASELINE_COUNT = 65; // 64 + 追客ボード（恒久導線として baseline に編入）
 
 // v6.2 WIP-5: OWNER が見る href の**明示契約**（順序込み）。1件を別 route へ置換すると件数が同じでも red になる。
 const EXPECTED_HREFS: readonly string[] = [
@@ -32,7 +32,7 @@ const EXPECTED_HREFS: readonly string[] = [
   '/growth', '/growth/control-tower', '/growth/events',
   '/marketing', '/marketing/ads', '/marketing/content', '/dx',
   '/customers', '/deals', '/deals/kanban',
-  '/leadmap/campaigns', '/leadmap/leads', '/leadmap/map', '/leadmap/pipeline', '/leadmap/routes',
+  '/leadmap/campaigns', '/leadmap/leads', '/leadmap/map', '/leadmap/pipeline', '/leadmap/followup', '/leadmap/routes',
   '/quotes', '/contracts', '/invoices',
   '/finance', '/finance/bridge', '/finance/journal-candidates', '/finance/invoice-candidates',
   '/finance/cashflow', '/finance/receivables', '/finance/profit-leaks',
@@ -105,7 +105,7 @@ describe('NAV 静的契約（v6.1 多機能復旧の恒久ガード）', () => {
 describe('NAV RBAC フィルタ契約（非表示≠消失）', () => {
   const all = extractHrefs(navSrc);
 
-  it('全権限（can=常に true）なら 67 件すべて許可＝フィルタが集合を壊さない', () => {
+  it('全権限（can=常に true）なら全件許可＝フィルタが集合を壊さない', () => {
     const allowed = filterAllowedHrefs(all, () => true);
     expect(allowed).toEqual(all);
   });

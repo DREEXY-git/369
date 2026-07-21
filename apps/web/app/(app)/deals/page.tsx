@@ -3,7 +3,7 @@ import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
-import { Card, Table, Th, Td, Badge, Button, EmptyState } from '@/components/ui';
+import { Card, CardContent, CardHeader, CardTitle, Table, Th, Td, Badge, Button, EmptyState } from '@/components/ui';
 import { AccessDenied } from '@/components/access-denied';
 import { DEAL_STAGE_LABEL } from '@/components/badges';
 import { formatJpy, formatDate, computeQuoteTotals } from '@hokko/shared';
@@ -32,6 +32,15 @@ export default async function DealsPage() {
   });
   // 顧客名は CRM の閲覧境界（WIP1）に従う（deal:read はあるが顧客ラベル不可視の閲覧者には出さない）。
   const canReadCustomer = hasPermission(user, 'customer', 'read');
+
+  // M3-3: 失注理由の傾向（学習用）。LOST 案件の lostReason を集計（一般理由＝PII非依存・deal:read 配下）。
+  const lostDeals = await prisma.deal.findMany({ where: { tenantId: user.tenantId, stage: 'LOST' }, select: { lostReason: true } });
+  const lostReasonCounts = new Map<string, number>();
+  for (const d of lostDeals) {
+    const r = d.lostReason?.trim() || '（理由未記録）';
+    lostReasonCounts.set(r, (lostReasonCounts.get(r) ?? 0) + 1);
+  }
+  const topLostReasons = [...lostReasonCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
 
   return (
     <div>
@@ -68,6 +77,24 @@ export default async function DealsPage() {
             </tbody>
           </Table>
         )}
+      </Card>
+
+      <Card className="mt-4">
+        <CardHeader><CardTitle>失注理由の傾向</CardTitle></CardHeader>
+        <CardContent>
+          {topLostReasons.length === 0 ? (
+            <p className="text-sm text-muted-foreground">失注はまだ記録されていません。案件を「失注」にする際に理由を選ぶと、ここに傾向が出ます。</p>
+          ) : (
+            <ul className="space-y-1 text-sm">
+              {topLostReasons.map(([reason, count]) => (
+                <li key={reason} className="flex items-center justify-between">
+                  <span>{reason}</span>
+                  <Badge tone="slate">{count}件</Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
       </Card>
     </div>
   );

@@ -27,7 +27,7 @@ export type UpdateDealStageResult =
  */
 export async function updateDealStageCore(
   actor: { tenantId: string; userId?: string | null },
-  input: { dealId: string; stage: string; expectedStage?: string },
+  input: { dealId: string; stage: string; expectedStage?: string; lostReason?: string },
   opts: DealStageTestHooks = {},
 ): Promise<UpdateDealStageResult> {
   if (!(DEAL_STAGES as readonly string[]).includes(input.stage)) return { ok: false, reason: 'invalid-stage' };
@@ -42,9 +42,11 @@ export async function updateDealStageCore(
   const outcome = await prisma.$transaction(async (tx) => {
     // 対象 Deal を FOR UPDATE で直列化してから、expected を CAS 条件にする（lease.ts と同型の barrier）。
     await tx.$queryRaw`SELECT id FROM "Deal" WHERE id = ${input.dealId} AND "tenantId" = ${actor.tenantId} FOR UPDATE`;
+    // LOST への遷移時のみ失注理由を記録（Deal.lostReason は既存 field・migration 不要）。他 stage では触らない（後方互換）。
+    const lostReason = input.stage === 'LOST' && input.lostReason ? input.lostReason.slice(0, 200) : undefined;
     const claim = await tx.deal.updateMany({
       where: { id: input.dealId, tenantId: actor.tenantId, stage: expected },
-      data: { stage: input.stage as DealStage },
+      data: { stage: input.stage as DealStage, ...(lostReason ? { lostReason } : {}) },
     });
     if (claim.count !== 1) {
       // 敗者: lock 下で現 stage を確定読み。target 済み=already（冪等 no-op）／それ以外=stale（画面が古い＝要再読込）。

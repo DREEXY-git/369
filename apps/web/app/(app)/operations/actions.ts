@@ -282,7 +282,7 @@ export async function convertLeaseReservationToEventProjectAction(formData: Form
 
 export async function createEventProjectAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'create')) redirect('/operations/events?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'inventory', 'create')) redirect('/operations/events?denied=1');
   const name = String(formData.get('name') ?? '').trim();
   const venue = String(formData.get('venue') ?? '').trim() || null;
   const customerId = String(formData.get('customerId') ?? '') || null;
@@ -336,7 +336,7 @@ export async function assignAssetToEventAction(formData: FormData) {
 
 export async function recordEventCostAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
   const eventId = String(formData.get('eventId') ?? '');
   const category = String(formData.get('category') ?? '').trim() || 'その他';
   const amount = Math.max(0, Number(formData.get('amount') ?? 0) || 0);
@@ -347,7 +347,7 @@ export async function recordEventCostAction(formData: FormData) {
 
 export async function recordEventRevenueAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
   const eventId = String(formData.get('eventId') ?? '');
   const revenue = Math.max(0, Number(formData.get('revenue') ?? 0) || 0);
   await recordEventRevenue({ tenantId: user.tenantId, userId: user.userId }, eventId, revenue);
@@ -357,7 +357,7 @@ export async function recordEventRevenueAction(formData: FormData) {
 
 export async function calculateEventProfitabilityAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
   const eventId = String(formData.get('eventId') ?? '');
   await calculateEventProfitability({ tenantId: user.tenantId, userId: user.userId }, eventId);
   revalidatePath(`/operations/events/${eventId}`);
@@ -366,7 +366,7 @@ export async function calculateEventProfitabilityAction(formData: FormData) {
 
 export async function completeEventProjectAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
   const eventId = String(formData.get('eventId') ?? '');
   await completeEventProject({ tenantId: user.tenantId, userId: user.userId }, eventId);
   revalidatePath(`/operations/events/${eventId}`);
@@ -401,7 +401,7 @@ function fakeNextProposal(event: { name: string; venue: string | null }): string
 /** イベント終了後の次回提案を AI 生成（安全処理付き・下書き保存）。 */
 export async function createEventNextProposalAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'create')) redirect('/operations/events?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'inventory', 'create')) redirect('/operations/events?denied=1');
   const eventId = String(formData.get('eventId') ?? '');
   const event = await prisma.eventProject.findFirst({ where: { id: eventId, tenantId: user.tenantId } });
   if (!event) redirect('/operations/events');
@@ -455,7 +455,7 @@ export async function createEventNextProposalAction(formData: FormData) {
 /** イベントに人員を割り当て、人件費を EventCost に反映。 */
 export async function assignEventStaffAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
   const eventId = String(formData.get('eventId') ?? '');
   const name = String(formData.get('name') ?? '').trim() || '担当者';
   const role = String(formData.get('role') ?? 'staff');
@@ -469,7 +469,7 @@ export async function assignEventStaffAction(formData: FormData) {
 
 export async function createEventRiskAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
   const eventId = String(formData.get('eventId') ?? '');
   await createEventRisk(
     { tenantId: user.tenantId, userId: user.userId },
@@ -487,7 +487,7 @@ export async function createEventRiskAction(formData: FormData) {
 
 export async function updateEventRiskStatusAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
   const riskId = String(formData.get('riskId') ?? '');
   const status = String(formData.get('status') ?? 'open');
   const eventId = await updateEventRiskStatus({ tenantId: user.tenantId, userId: user.userId }, riskId, status);

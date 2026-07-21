@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
+  isHumanUser,
   canTransitionLogistics,
   growthTypeOfLogisticsCompletion,
   isLogisticsTaskType,
@@ -20,7 +21,7 @@ const STANDARD_FLOW: LogisticsTaskType[] = ['delivery', 'setup', 'teardown', 'pi
 /** イベント案件から配送/設営/撤去/回収の標準タスクを一括作成。 */
 export async function createEventLogisticsTasksAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'create')) redirect('/operations/logistics?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'inventory', 'create')) redirect('/operations/logistics?denied=1');
   const eventId = String(formData.get('eventId') ?? '');
   const event = await prisma.eventProject.findFirst({ where: { id: eventId, tenantId: user.tenantId } });
   if (!event) redirect('/operations/logistics');
@@ -52,7 +53,7 @@ export async function createEventLogisticsTasksAction(formData: FormData) {
 
 export async function createLogisticsTaskAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'create')) redirect('/operations/logistics?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'inventory', 'create')) redirect('/operations/logistics?denied=1');
   const type = String(formData.get('type') ?? '');
   const title = String(formData.get('title') ?? '').trim();
   const eventId = String(formData.get('eventId') ?? '') || null;
@@ -84,7 +85,7 @@ export async function createLogisticsTaskAction(formData: FormData) {
 /** 物流タスクの状態を更新。done で完了イベント（種別別 GrowthEvent + DomainEvent）。 */
 export async function updateLogisticsTaskStatusAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/logistics?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'inventory', 'update')) redirect('/operations/logistics?denied=1');
   const taskId = String(formData.get('taskId') ?? '');
   const to = String(formData.get('status') ?? '') as LogisticsStatus;
   const task = await prisma.logisticsTask.findFirst({ where: { id: taskId, tenantId: user.tenantId } });

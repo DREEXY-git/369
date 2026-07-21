@@ -20,7 +20,10 @@ import { decideAiGateCore, type GateBridgeDb } from '@/lib/ai-gate-bridge';
 export async function decideAiGateAction(formData: FormData) {
   const user = await requireUser();
   // 判断は人間のみ（AI は approval:approve が誤設定で付与されていても action 境界で拒否）。
-  if (!hasPermission(user, 'approval', 'approve') || user.isAi) redirect('/approvals?denied=1');
+  // Codex D [P1]: decideApprovalAction と同型の三重ガードに揃える。isAi boolean（User.isAiAgent 由来・
+  // role と整合制約なし）単独では、AI role 混在で isAiAgent=false のセッションを弾けない。role 由来の
+  // isHumanUser（AI_AGENT/AI_ASSISTANT を1つでも含む混在・空 roles を拒否）で DB 接触前に fail-closed する。
+  if (!hasPermission(user, 'approval', 'approve') || user.isAi || !isHumanUser({ roles: user.roles })) redirect('/approvals?denied=1');
 
   const gateId = String(formData.get('gateId') ?? '').trim();
   const decision = String(formData.get('decision') ?? '');

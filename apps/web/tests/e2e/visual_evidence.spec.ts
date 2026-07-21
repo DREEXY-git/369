@@ -23,14 +23,14 @@ test('OWNER desktop: NAV 全体・AI社員一覧/詳細・3D選択の証拠＋bu
   await page.setViewportSize(DESKTOP);
   await login(page, 'ceo@ikezaki.local');
 
-  // NAV 全体（サイドバー）。68 導線。build badge は OWNER に表示。
+  // NAV 全体（サイドバー）。69 導線。build badge は OWNER に表示。
   await page.goto('/dashboard');
   await expect(page.getByTestId('build-info')).toBeVisible();
   await expectNoHorizontalOverflow(page);
   // v6.9 WIP-3: 内部 overflow scroll に隠れた導線が写らない問題を、viewport 拡大＋隠れゼロ assert で解消。
-  // 68 導線すべてが1枚の artifact に写る（DOM 件数と内部 scroll 残ゼロを機械検証してから撮影）。
+  // 69 導線すべてが1枚の artifact に写る（DOM 件数と内部 scroll 残ゼロを機械検証してから撮影）。
   const aside = page.locator('aside');
-  await expect(aside.getByRole('link')).toHaveCount(68);
+  await expect(aside.getByRole('link')).toHaveCount(69);
   await captureFullNav(page, aside, aside.locator('nav'), 'test-results/nav-owner-desktop-full.png');
 
   // AI社員 一覧。
@@ -77,8 +77,8 @@ test('OWNER mobile: NAV ドロワー・AI社員一覧/詳細・3D選択の証拠
   const drawer = page.getByTestId('mobile-nav-drawer');
   await expect(drawer).toBeVisible();
   await expectNoHorizontalOverflow(page);
-  // v6.9 WIP-3: drawer も 68 導線を内部 scroll 隠れゼロで1枚に撮影（機械検証付き）。
-  await expect(drawer.getByRole('link')).toHaveCount(68);
+  // v6.9 WIP-3: drawer も 69 導線を内部 scroll 隠れゼロで1枚に撮影（機械検証付き）。
+  await expect(drawer.getByRole('link')).toHaveCount(69);
   await captureFullNav(page, drawer, drawer.locator('nav'), 'test-results/nav-owner-mobile-full.png');
   await page.keyboard.press('Escape');
 

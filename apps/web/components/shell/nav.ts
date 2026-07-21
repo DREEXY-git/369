@@ -101,6 +101,7 @@ export const NAV: NavGroup[] = [
       { label: 'リード一覧', href: '/leadmap/leads', icon: Users },
       { label: '地図CRM', href: '/leadmap/map', icon: MapPin },
       { label: 'パイプライン', href: '/leadmap/pipeline', icon: KanbanSquare },
+      { label: '追客ボード', href: '/leadmap/followup', icon: CalendarClock },
       { label: '訪問ルート', href: '/leadmap/routes', icon: Route },
     ],
   },

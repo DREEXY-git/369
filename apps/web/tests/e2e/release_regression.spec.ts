@@ -5,7 +5,7 @@ import { NAV } from '../../components/shell/nav';
 // v7.2 Lane E — 機能消失防止の回帰ハードニング（release regression hardening）。
 // 既存テストの削除・弱体化はせず**追加のみ**。脆い全面 pixel snapshot は使わず、DOM 実測＋
 // 要素単位 screenshot＋artifact で検証する。
-// 対象: 全 route/nav inventory（68導線の実 GET 到達）・role 差分（OWNER/ADMIN/EXECUTIVE/READ_ONLY）・
+// 対象: 全 route/nav inventory（69導線の実 GET 到達）・role 差分（OWNER/ADMIN/EXECUTIVE/READ_ONLY）・
 // 320/375/768/1440px・Bell/ユーザーメニュー/テーマ・戻る/進む・deep link。
 // AI社員8名 parity / canvas nonblank / WebGL fallback / NAV 67 契約は既存 spec
 // （ai_agents_parity / visual_evidence / nav_permissions / nav-contract）が正本（重複させない）。
@@ -61,10 +61,10 @@ test.describe('v7.2 Lane E — 機能消失防止回帰', () => {
     await prisma.$disconnect();
   });
 
-  test('route inventory: OWNER で 68 導線すべてが実 GET 200・login リダイレクトなし（消えた route 0）', async ({ page }) => {
+  test('route inventory: OWNER で 69 導線すべてが実 GET 200・login リダイレクトなし（消えた route 0）', async ({ page }) => {
     test.setTimeout(180_000);
     await login(page, 'ceo@ikezaki.local');
-    expect(ALL_HREFS.length).toBe(68); // nav-contract と同じ導線数（契約はあちらが正本・ここは実到達）
+    expect(ALL_HREFS.length).toBe(69); // nav-contract と同じ導線数（契約はあちらが正本・ここは実到達）。追客ボード追加で 68→69。
     const broken: string[] = [];
     for (const href of ALL_HREFS) {
       const resp = await page.request.get(href);
@@ -97,7 +97,7 @@ test.describe('v7.2 Lane E — 機能消失防止回帰', () => {
       await page.context().clearCookies();
     }
     // READ_ONLY は OWNER より狭い（フィルタが機能している・全ロール同数=フィルタ死の検出）。
-    expect(results[RO_EMAIL]!).toBeLessThan(68);
+    expect(results[RO_EMAIL]!).toBeLessThan(69);
   });
 
   test('viewport 回帰: 320/375/768/1440px で topbar 必須 control が viewport 内・横スクロール 0（要素 screenshot 付き）', async ({ page }) => {

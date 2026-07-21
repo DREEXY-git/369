@@ -160,14 +160,15 @@ export const JOB_HANDLERS: Record<JobName, Handler> = {
   OUTREACH_REPLY_CLASSIFICATION_JOB: async ({ tenantId, draftId, body }) => {
     const text = String(body ?? '');
     const cls = await classifyOutreachReply(text);
-    if (draftId) {
-      await prisma.outreachReply.create({ data: { tenantId, draftId: String(draftId), body: text, classification: cls.classification, confidence: cls.confidence } });
-      if (cls.classification === 'unsubscribe') {
-        const draft = await prisma.outreachDraft.findFirst({ where: { id: String(draftId) }, include: { lead: true } });
-        if (draft?.lead.email) {
-          await prisma.suppressionList.create({ data: { tenantId, channel: 'email', value: draft.lead.email, reason: '返信で配信停止希望' } }).catch(() => {});
-        }
-      }
+    if (!draftId) return cls;
+    // Codex B-06: draft を **tenantId スコープで先に確定**してから reply/suppression を書く。
+    // job payload に foreign draftId が来ても、他 tenant の lead email を読み出したり自 tenant の
+    // SuppressionList/Reply へ書き込んだりしない（不一致 enqueue による越境を無害化・fail-closed）。
+    const draft = await prisma.outreachDraft.findFirst({ where: { id: String(draftId), tenantId }, include: { lead: true } });
+    if (!draft) return { skipped: true };
+    await prisma.outreachReply.create({ data: { tenantId, draftId: draft.id, body: text, classification: cls.classification, confidence: cls.confidence } });
+    if (cls.classification === 'unsubscribe' && draft.lead.email) {
+      await prisma.suppressionList.create({ data: { tenantId, channel: 'email', value: draft.lead.email, reason: '返信で配信停止希望' } }).catch(() => {});
     }
     return cls;
   },

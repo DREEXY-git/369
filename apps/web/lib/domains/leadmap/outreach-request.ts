@@ -64,7 +64,9 @@ export async function requestOutreachApprovalCore(
       },
     });
     if (opts.__faultAfterApprovalRequestForTest) opts.__faultAfterApprovalRequestForTest();
-    await tx.localBusinessLead.update({ where: { id: draft.leadId }, data: { stage: 'PENDING_APPROVAL' } });
+    // Codex B-02: id 単独の update だと foreign lead の stage を書き換え得る。updateMany に tenantId を
+    // 足して自 tenant のみに限定（count!==1 の foreign は無害な no-op・防御多重化）。
+    await tx.localBusinessLead.updateMany({ where: { id: draft.leadId, tenantId }, data: { stage: 'PENDING_APPROVAL' } });
     if (opts.__faultAfterLeadForTest) opts.__faultAfterLeadForTest();
     await tx.auditLog.create({
       data: { tenantId, actorId: userId ?? null, actorType: 'user', action: 'create', entityType: 'ApprovalRequest', entityId: draftId, summary: `営業メール送信の承認を申請: ${draft.lead.name}` },

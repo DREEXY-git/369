@@ -7,6 +7,7 @@ import { classifyBusinessRelevance } from '@hokko/shared';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
 import { safeAiInput } from '@/lib/ai-safety-server';
+import { decideTempItemCore } from '@/lib/domains/communications/temp-item';
 
 /** Mockコネクタから取り込み、AIで業務関連性を判定して二段階保存に振り分ける。 */
 export async function ingestMockMessagesAction(formData: FormData) {
@@ -93,25 +94,10 @@ export async function decideTempItemAction(formData: FormData) {
   if (!hasPermission(user, 'communication', 'update')) redirect('/communications/temp?denied=1');
   const itemId = String(formData.get('itemId') ?? '');
   const decision = String(formData.get('decision') ?? '');
-  const item = await prisma.temporaryIngestionItem.findFirst({ where: { id: itemId, tenantId: user.tenantId } });
-  if (!item) redirect('/communications/temp');
 
-  if (decision === 'save') {
-    await prisma.temporaryIngestionItem.update({ where: { id: itemId }, data: { status: 'saved' } });
-    await prisma.communicationThread.create({
-      data: { tenantId: user.tenantId, channel: item.channel, subject: item.preview.split(' — ')[0] ?? item.preview, relevance: 'relevant' },
-    });
-  } else {
-    await prisma.temporaryIngestionItem.update({ where: { id: itemId }, data: { status: 'discarded' } });
-  }
-  await writeAudit({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    action: 'update',
-    entityType: 'TemporaryIngestionItem',
-    entityId: itemId,
-    summary: `一時保管アイテムを${decision === 'save' ? '保存' : '破棄'}`,
-  });
+  const result = await decideTempItemCore({ tenantId: user.tenantId, userId: user.userId }, { itemId, decision });
+  if (!result.ok && result.reason === 'notfound') redirect('/communications/temp');
+  if (!result.ok && result.reason === 'already') redirect('/communications/temp?already=1');
   revalidatePath('/communications/temp');
   redirect('/communications/temp');
 }

@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
 import { executeApprovedAction } from '@/lib/approval';
-import { requestInvoiceExternalSend, executeInvoiceExternalSend } from '@/lib/domains/finance/invoice-send';
+import { requestInvoiceExternalSend, executeInvoiceExternalSend, issueInvoiceCore } from '@/lib/domains/finance/invoice-send';
 import { recordInvoicePayment } from '@/lib/domains/finance/payments';
 import { createDunningDraft, requestDunningSend, executeDunningSend } from '@/lib/domains/finance/dunning';
 import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
@@ -108,16 +108,10 @@ export async function issueInvoiceAction(formData: FormData) {
   // 発行は DRAFT→ISSUED ＋ 売掛起票＝財務状態の確定（finance 機密）。server 側で finance:read も必須化
   // （STAFF は invoice:update を持つが finance:read 非保有のため直叩き遮断・dunning/invoice_send/payment と統一）。
   if (!hasPermission(user, 'invoice', 'update') || !hasPermission(user, 'finance', 'read')) redirect(`/invoices/${id}?denied=1`);
-  const inv = await prisma.invoice.findFirst({ where: { id, tenantId: user.tenantId } });
-  if (!inv || inv.status !== 'DRAFT') redirect(`/invoices/${id}`);
-
-  await prisma.invoice.update({ where: { id }, data: { status: 'ISSUED', issueDate: new Date() } });
-  await prisma.receivable.upsert({
-    where: { invoiceId: id },
-    create: { tenantId: user.tenantId, invoiceId: id, amount: inv.total, dueDate: inv.dueDate, status: 'open' },
-    update: { amount: inv.total, dueDate: inv.dueDate },
-  });
-  await writeAudit({ tenantId: user.tenantId, actorId: user.userId, action: 'update', entityType: 'Invoice', entityId: id, summary: `請求書 ${inv.number} を発行（売掛起票）` });
+  // 発行=ISSUED 遷移・売掛起票・監査は単一 $transaction ＋ status CAS で all-or-nothing／並行1本収束。
+  // ロジックは issueInvoiceCore（invoice-send.ts）に集約（E-03 の並行/rollback を fault hook 付きで spec 実証可能にするため）。
+  const res = await issueInvoiceCore({ tenantId: user.tenantId, userId: user.userId }, id);
+  if (!res.ok) redirect(`/invoices/${id}`);
   revalidatePath(`/invoices/${id}`);
   redirect(`/invoices/${id}?issued=1`);
 }

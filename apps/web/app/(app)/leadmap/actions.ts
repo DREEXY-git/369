@@ -16,6 +16,7 @@ import { safeAiInput, saveAIOutputStandard } from '@/lib/ai-safety-server';
 import { prepareExternalPayload } from '@/lib/safe-external-send';
 import { updateLeadStage } from '@/lib/domains/crm/lead-stage';
 import { convertLeadToCustomer, repairLeadLinks } from '@/lib/domains/crm/lead-convert';
+import { requestOutreachApprovalCore, updateOutreachDraftCore, applyUnsubscribeCore } from '@/lib/domains/leadmap/outreach-request';
 
 const ADVANCE_ON: Record<string, true> = { interested: true, quote: true, doc: true, later: true, forward: true, appointment: true };
 
@@ -131,19 +132,13 @@ export async function updateOutreachDraftAction(formData: FormData) {
   const leadId = String(formData.get('leadId') ?? '');
   const subject = String(formData.get('subject') ?? '');
   const body = String(formData.get('body') ?? '');
-  const draft = await prisma.outreachDraft.findFirst({ where: { id: draftId, tenantId: user.tenantId } });
-  if (!draft) redirect(`/leadmap/leads/${leadId}/outreach`);
-  if (draft.status !== 'SENT') {
-    await prisma.outreachDraft.update({ where: { id: draftId }, data: { subject, body, status: 'DRAFT' } });
-    await writeAudit({
-      tenantId: user.tenantId,
-      actorId: user.userId,
-      action: 'update',
-      entityType: 'OutreachDraft',
-      entityId: draftId,
-      summary: '営業メール下書きを人手で編集',
-    });
+  // 承認後に内容を差し替えて「承認内容≠送信内容」を作れないよう、人間かつ leadmap:update のみ編集可。
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'leadmap', 'update')) {
+    redirect(`/leadmap/leads/${leadId}/outreach?denied=1`);
   }
+  // E-04: 編集と承認送信の競合を決定論化（core が ApprovalRequest PENDING CAS で決定 CAS と直列化）。
+  const r = await updateOutreachDraftCore({ tenantId: user.tenantId, userId: user.userId, draftId, subject, body });
+  if (r.outcome === 'conflict') redirect(`/leadmap/leads/${leadId}/outreach?error=edit-conflict`);
   revalidatePath(`/leadmap/leads/${leadId}/outreach`);
   redirect(`/leadmap/leads/${leadId}/outreach`);
 }
@@ -152,6 +147,11 @@ export async function requestOutreachApprovalAction(formData: FormData) {
   const user = await requireUser();
   const draftId = String(formData.get('draftId') ?? '');
   const leadId = String(formData.get('leadId') ?? '');
+  // 外部送信パイプラインの起点（draft→PENDING・lead stage 変更）。人間かつ leadmap:update 保持者のみ。
+  // AI主体/権限なし者が送信承認フローを駆動・lead stage を変更するのを DB 接触前に遮断（role 由来判定）。
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'leadmap', 'update')) {
+    redirect(`/leadmap/leads/${leadId}?denied=1`);
+  }
   const draft = await prisma.outreachDraft.findFirst({
     where: { id: draftId, tenantId: user.tenantId },
     include: { lead: true },
@@ -171,34 +171,9 @@ export async function requestOutreachApprovalAction(formData: FormData) {
     purpose: 'leadmap_outreach_send',
   });
 
-  await prisma.outreachDraft.update({ where: { id: draftId }, data: { status: 'PENDING_APPROVAL' } });
-  await prisma.outreachApproval.create({ data: { tenantId: user.tenantId, draftId, status: 'PENDING' } });
-  await prisma.approvalRequest.create({
-    data: {
-      tenantId: user.tenantId,
-      type: 'outreach_send',
-      title: `営業メール送信承認: ${draft.lead.name}`,
-      summary: draft.subject,
-      entityType: 'OutreachDraft',
-      entityId: draftId,
-      requestedById: user.userId,
-      assigneeRole: 'DEPARTMENT_MANAGER',
-      riskLevel: 'MEDIUM',
-      status: 'PENDING',
-    },
-  });
-  await prisma.localBusinessLead.update({
-    where: { id: draft.leadId },
-    data: { stage: 'PENDING_APPROVAL' },
-  });
-  await writeAudit({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    action: 'create',
-    entityType: 'ApprovalRequest',
-    entityId: draftId,
-    summary: `営業メール送信の承認を申請: ${draft.lead.name}`,
-  });
+  // E-04: DRAFT→PENDING_APPROVAL の CAS を barrier に、draft→PENDING・OutreachApproval・ApprovalRequest・
+  // lead stage・監査を単一 transaction で all-or-nothing 化（並行申請の重複承認セット・片欠けを構造的に排除）。
+  await requestOutreachApprovalCore({ tenantId: user.tenantId, userId: user.userId, draftId });
   revalidatePath('/approvals');
   redirect(`/leadmap/leads/${draft.leadId}/outreach`);
 }
@@ -252,10 +227,9 @@ export async function classifyReplyAction(formData: FormData) {
   let stageNote = '';
   if (cls.classification === 'unsubscribe') {
     const target = draft.lead.email ?? `info@${draft.lead.placeId}.example.jp`;
-    await prisma.suppressionList
-      .create({ data: { tenantId: user.tenantId, channel: 'email', value: target, reason: '返信で配信停止希望' } })
-      .catch(() => {});
-    await prisma.localBusinessLead.update({ where: { id: draft.leadId }, data: { stage: 'UNSUBSCRIBED' } });
+    // 抑止リスト登録＋ステージ更新を単一 $transaction で確定（core に集約）。upsert で冪等化し、
+    // 抑止の記録に失敗したら stage も UNSUBSCRIBED にしない＝送信ゲート isSuppressed をすり抜けさせない（fail-closed）。
+    await applyUnsubscribeCore({ tenantId: user.tenantId, leadId: draft.leadId, target });
     stageNote = '配信停止リストに追加し、ステージを配信停止に更新しました。';
   } else if (cls.classification === 'complaint') {
     await prisma.localBusinessLead.update({ where: { id: draft.leadId }, data: { stage: 'EXCLUDED' } });

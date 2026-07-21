@@ -66,7 +66,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const invoice = await prisma.invoice.findFirst({
     where: { id, tenantId: user.tenantId },
     // 顧客は宛先表示の name と可視判定の label のみ取得（連絡先等 PII の over-fetch 防止）。
-    include: { lineItems: true, payments: { orderBy: { paidAt: 'desc' } }, customer: { select: { name: true, label: true } }, receivable: true, quote: { select: { id: true, number: true } }, receipt: { select: { id: true, number: true } } },
+    // to-many の子（自前 tenantId 保持）は tenantId で明示スコープ（防御多重化）。to-one は Prisma が where 非対応のため親スコープに委譲。
+    include: { lineItems: { where: { tenantId: user.tenantId } }, payments: { where: { tenantId: user.tenantId }, orderBy: { paidAt: 'desc' } }, customer: { select: { name: true, label: true } }, receivable: true, quote: { select: { id: true, number: true } }, receipt: { select: { id: true, number: true } } },
   });
   if (!invoice) notFound();
   const canUpdate = hasPermission(user, 'invoice', 'update');

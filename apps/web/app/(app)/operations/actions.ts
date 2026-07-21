@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import {
   isInventoryMovementType,
   isLargeInventoryAdjustment,
+  isHumanUser,
   type DomainEventType,
 } from '@hokko/shared';
 import {
@@ -26,6 +27,8 @@ import {
   calculateEventProfitability,
   completeEventProject,
   assignEventStaff,
+  assignAssetToEvent,
+  recordLeaseDamage,
   createEventRisk,
   updateEventRiskStatus,
 } from '@/lib/domains/operations/events';
@@ -37,7 +40,7 @@ import { applyInventoryMovement } from '@/lib/operations';
 /** 在庫移動を記録（入庫/移動/予約/出庫/返却/破損/メンテ開始・完了）。adjust は専用アクションへ。 */
 export async function createInventoryMovementAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/inventory-movements?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'inventory', 'update')) redirect('/operations/inventory-movements?denied=1');
   const assetId = String(formData.get('assetId') ?? '');
   const type = String(formData.get('type') ?? '');
   const quantity = Number(formData.get('quantity') ?? 1) || 1;
@@ -63,7 +66,7 @@ export async function createInventoryMovementAction(formData: FormData) {
 /** 在庫数量の調整。大幅調整（|Δ|≥閾値）は承認必須（直接適用しない）。 */
 export async function adjustInventoryQuantityAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/inventory-movements?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'inventory', 'update')) redirect('/operations/inventory-movements?denied=1');
   const assetId = String(formData.get('assetId') ?? '');
   const newQuantity = Math.max(0, Number(formData.get('newQuantity') ?? 0) || 0);
   const note = String(formData.get('note') ?? '');
@@ -191,16 +194,10 @@ export async function recordLeaseDamageAction(formData: FormData) {
   const assetId = String(formData.get('assetId') ?? '');
   const cost = Math.max(0, Number(formData.get('cost') ?? 0) || 0);
   const note = String(formData.get('note') ?? '');
-  const asset = await prisma.productAsset.findFirst({ where: { id: assetId, tenantId: user.tenantId } });
-  if (!asset) redirect('/inventory/lease');
-  await prisma.damageLossRecord.create({ data: { tenantId: user.tenantId, assetId, type: 'damage', cost, note } });
-  await applyInventoryMovement({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    assetId,
-    type: 'damage',
-    note: note || '破損記録',
-  });
+  // 破損記録＋在庫 status 変更 Movement を単一 $transaction で all-or-nothing（記録だけ／status だけの片欠けを防ぐ）。
+  // 業務ロジックは lib/domains/operations/events.ts の recordLeaseDamage（testable core）。
+  const result = await recordLeaseDamage({ tenantId: user.tenantId, userId: user.userId }, { assetId, cost, note });
+  if (!result.ok) redirect('/inventory/lease');
   revalidatePath('/inventory/lease');
   redirect('/inventory/lease?damaged=1');
 }
@@ -323,42 +320,16 @@ export async function createEventProjectAction(formData: FormData) {
 
 export async function assignAssetToEventAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'inventory', 'update')) redirect('/operations/events?denied=1');
   const eventId = String(formData.get('eventId') ?? '');
   const assetId = String(formData.get('assetId') ?? '');
   const quantity = Math.max(1, Number(formData.get('quantity') ?? 1) || 1);
-  const [event, asset] = await Promise.all([
-    prisma.eventProject.findFirst({ where: { id: eventId, tenantId: user.tenantId } }),
-    prisma.productAsset.findFirst({ where: { id: assetId, tenantId: user.tenantId } }),
-  ]);
-  if (!event || !asset) redirect(`/operations/events/${eventId}?error=notfound`);
 
-  await prisma.eventProductUsage.create({
-    data: { tenantId: user.tenantId, eventId, assetId, assetName: asset!.name, quantity },
-  });
-  // 案件用に在庫を予約状態へ
-  await applyInventoryMovement({
-    tenantId: user.tenantId,
-    actorId: user.userId,
-    assetId,
-    type: 'reserve',
-    quantity,
-    eventId,
-    note: `イベント割当: ${event!.name}`,
-  });
-  await emitGrowthEvent({
-    tenantId: user.tenantId,
-    type: 'event.equipment.assigned',
-    title: `備品割当: ${asset!.name} → ${event!.name}`,
-    actorId: user.userId,
-    entityType: 'EventProject',
-    entityId: eventId,
-    alsoDomainEvent: {
-      domainType: 'EVENT_EQUIPMENT_ASSIGNED' as DomainEventType,
-      aggregateType: 'EventProject',
-      aggregateId: eventId,
-    },
-  });
+  // 使用記録＋在庫予約 Movement を単一 $transaction で all-or-nothing（reserve 失敗で孤児 usage を作らない・
+  // Asset FOR UPDATE ロック下で確定）。growth は commit 後（非クリティカル）。
+  // 業務ロジックは lib/domains/operations/events.ts の assignAssetToEvent（testable core）。
+  const result = await assignAssetToEvent({ tenantId: user.tenantId, userId: user.userId }, { eventId, assetId, quantity });
+  if (!result.ok) redirect(`/operations/events/${eventId}?error=notfound`);
   revalidatePath(`/operations/events/${eventId}`);
   redirect(`/operations/events/${eventId}?assigned=1`);
 }

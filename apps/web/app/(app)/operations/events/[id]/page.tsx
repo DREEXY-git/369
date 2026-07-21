@@ -54,13 +54,15 @@ export default async function EventDetailPage({ params, searchParams }: { params
   const event = await prisma.eventProject.findFirst({
     where: { id, tenantId: user.tenantId },
     include: {
-      productUsages: true,
-      costs: true,
-      grossSnapshots: { orderBy: { createdAt: 'desc' }, take: 1 },
-      nextProposals: { orderBy: { createdAt: 'desc' } },
-      staffAssignments: { orderBy: { createdAt: 'desc' } },
-      risks: { orderBy: { createdAt: 'desc' } },
-      logisticsTasks: { orderBy: { scheduledAt: 'asc' } },
+      // 子はいずれも自前 tenantId を持つが単一列 FK のため親スコープだけでは越境行を排除できない。
+      // 各 include を tenantId で明示スコープする（防御多重化・#69/#74 と同型）。
+      productUsages: { where: { tenantId: user.tenantId } },
+      costs: { where: { tenantId: user.tenantId } },
+      grossSnapshots: { where: { tenantId: user.tenantId }, orderBy: { createdAt: 'desc' }, take: 1 },
+      nextProposals: { where: { tenantId: user.tenantId }, orderBy: { createdAt: 'desc' } },
+      staffAssignments: { where: { tenantId: user.tenantId }, orderBy: { createdAt: 'desc' } },
+      risks: { where: { tenantId: user.tenantId }, orderBy: { createdAt: 'desc' } },
+      logisticsTasks: { where: { tenantId: user.tenantId }, orderBy: { scheduledAt: 'asc' } },
     },
   });
   if (!event) notFound();

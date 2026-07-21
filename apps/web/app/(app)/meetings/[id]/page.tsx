@@ -16,10 +16,11 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
   const meeting = await prisma.meeting.findFirst({
     where: { id, tenantId: user.tenantId },
     include: {
-      minutes: { orderBy: { createdAt: 'desc' }, take: 1 },
-      decisions: true,
-      actionItems: true,
-      transcripts: { include: { segments: { orderBy: { startSec: 'asc' } } }, take: 1 },
+      // 子はいずれも自前 tenantId を持つ。単一列 FK のため親スコープだけでは越境行を排除できないので明示スコープ（防御多重化）。
+      minutes: { where: { tenantId: user.tenantId }, orderBy: { createdAt: 'desc' }, take: 1 },
+      decisions: { where: { tenantId: user.tenantId } },
+      actionItems: { where: { tenantId: user.tenantId } },
+      transcripts: { where: { tenantId: user.tenantId }, include: { segments: { where: { tenantId: user.tenantId }, orderBy: { startSec: 'asc' } } }, take: 1 },
     },
   });
   if (!meeting) notFound();

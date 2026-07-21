@@ -104,6 +104,8 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
               <div className="mb-2"><Badge tone="blue">現在: {DEAL_STAGE_LABEL[deal.stage]}</Badge></div>
               <form action={updateDealStageAction} className="flex gap-2">
                 <input type="hidden" name="dealId" value={deal.id} />
+                {/* 画面表示時の stage を CAS 条件として送る（別担当が進めた後の古い画面からの上書きを server 側で拒否）。 */}
+                <input type="hidden" name="expectedStage" value={deal.stage} />
                 <Select name="stage" defaultValue={deal.stage} className="flex-1">
                   {DEAL_STAGES.map((s) => <option key={s} value={s}>{DEAL_STAGE_LABEL[s]}</option>)}
                 </Select>

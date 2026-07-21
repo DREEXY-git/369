@@ -17,6 +17,7 @@ import {
   executeApprovedDunningSendAction,
   issueReceiptAction,
   requestInvoiceVoidApprovalAction,
+  requestPaymentReversalApprovalAction,
 } from '../actions';
 import { PaymentIdempotencyKeyField } from '../idempotency-key-field';
 import { canIssueReceipt } from '@hokko/shared';
@@ -82,7 +83,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       : '';
 
   // 送信承認の状態（承認済みかつ未実行なら送信実行可能）と関連 FinanceEvent、VOID申請の有無。
-  const [sendApproval, financeEvents, voidPending] = await Promise.all([
+  const [sendApproval, financeEvents, voidPending, reversalPending] = await Promise.all([
     prisma.approvalRequest.findFirst({
       where: { tenantId: user.tenantId, entityType: 'Invoice', entityId: invoice.id, requestedForAction: 'invoice_send' },
       orderBy: { createdAt: 'desc' },
@@ -92,9 +93,17 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       where: { tenantId: user.tenantId, type: 'invoice_void', entityId: invoice.id, status: 'PENDING' },
       select: { id: true },
     }),
+    prisma.approvalRequest.findMany({
+      where: { tenantId: user.tenantId, type: 'payment_reversal', entityId: invoice.id, status: 'PENDING' },
+      select: { payloadAfter: true },
+    }),
   ]);
   // 未入金（paidAmount=0）かつ発行済み（DRAFT/VOID/PAID 以外）のみ VOID 申請可能（承認必須・AI不可）。
   const voidable = toNumber(invoice.paidAmount) === 0 && !['DRAFT', 'VOID', 'PAID'].includes(invoice.status);
+  // 取消申請中の入金 id 集合（該当入金には申請ボタンを出さず「取消承認待ち」を表示）。
+  const reversalPendingPaymentIds = new Set(
+    reversalPending.map((a) => (a.payloadAfter as { paymentId?: string } | null)?.paymentId).filter(Boolean),
+  );
   const canSend = canSendInvoice(invoice.status);
   const sendApproved = sendApproval?.status === 'APPROVED' && !sendApproval.executedAt;
   const sendPending = sendApproval?.status === 'PENDING';
@@ -275,10 +284,30 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
 
           <Card>
             <CardHeader><CardTitle>入金履歴</CardTitle></CardHeader>
-            <CardContent className="space-y-1 text-sm">
+            <CardContent className="space-y-1 text-sm" data-testid="invoice-payments">
               {invoice.payments.length === 0 ? <EmptyState title="入金なし" /> : invoice.payments.map((p) => (
-                <div key={p.id} className="flex items-center justify-between"><span>{formatJpy(toNumber(p.amount))}（{p.method}）</span><span className="text-xs text-muted-foreground">{formatDate(p.paidAt)}</span></div>
+                <div key={p.id} className="flex items-center justify-between gap-2">
+                  <span>{formatJpy(toNumber(p.amount))}（{p.method}）</span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">{formatDate(p.paidAt)}</span>
+                    {/* Wave2: 入金取消（誤記録の巻き戻し）。承認必須・AIは不可。実際の取消は承認で実行。 */}
+                    {canViewFinance && canUpdate && invoice.status !== 'VOID' ? (
+                      reversalPendingPaymentIds.has(p.id) ? (
+                        <Badge tone="amber" data-testid={`payment-reversal-pending-${p.id}`}>取消承認待ち</Badge>
+                      ) : (
+                        <form action={requestPaymentReversalApprovalAction}>
+                          <input type="hidden" name="id" value={invoice.id} />
+                          <input type="hidden" name="paymentId" value={p.id} />
+                          <Button type="submit" variant="outline" className="h-6 px-2 text-[11px]" data-testid={`payment-reversal-request-${p.id}`}>取消申請</Button>
+                        </form>
+                      )
+                    ) : null}
+                  </span>
+                </div>
               ))}
+              {canViewFinance && invoice.payments.length > 0 ? (
+                <p className="pt-1 text-[11px] text-muted-foreground">入金取消は承認後に反映され、入金額・売掛・資金実績を巻き戻します（AIは取消しません）。</p>
+              ) : null}
             </CardContent>
           </Card>
 

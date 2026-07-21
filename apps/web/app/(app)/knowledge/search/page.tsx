@@ -1,6 +1,7 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth/current-user';
+import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma } from '@/lib/db';
+import { AccessDenied } from '@/components/access-denied';
 import { writeAIDataAccess } from '@/lib/audit';
 import { safeAiInput } from '@/lib/ai-safety-server';
 import { PageHeader } from '@/components/page-header';
@@ -21,6 +22,18 @@ const EXAMPLES = [
 
 export default async function KnowledgeSearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const user = await requireUser();
+  // ページ基礎権限（knowledge:read）を fetch 前に適用する（sibling brain/catalog・WIP-4 と同型）。
+  // 機密ラベルの per-chunk フィルタ（canAccessLabel）に加え、ナレッジ機能自体の閲覧権限を持たない
+  // ロールがナレッジ横断の AI Q&A を実行できないよう、取得前に遮断する（多層防御）。
+  if (!hasPermission(user, 'knowledge', 'read')) {
+    return (
+      <AccessDenied
+        title="ナレッジ検索・AI Q&A"
+        reason="社内ナレッジの閲覧にはナレッジの閲覧権限（knowledge:read）が必要です"
+        breadcrumb={[{ label: 'ナレッジ', href: '/knowledge/search' }]}
+      />
+    );
+  }
   const sp = await searchParams;
   const q = (sp.q ?? '').trim();
 

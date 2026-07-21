@@ -10,7 +10,7 @@ import { recordInvoicePayment } from '@/lib/domains/finance/payments';
 import { createDunningDraft, requestDunningSend, executeDunningSend } from '@/lib/domains/finance/dunning';
 import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
 import { toNumber } from '@/lib/utils';
-import { canIssueReceipt } from '@hokko/shared';
+import { canIssueReceipt, isHumanUser } from '@hokko/shared';
 import { issueReceiptCore, type ReceiptBridgeDb } from '@/lib/receipt-bridge';
 
 interface LineInput {
@@ -221,7 +221,10 @@ export async function requestPaymentReversalApprovalAction(formData: FormData) {
 export async function executeApprovedInvoiceExternalSendAction(formData: FormData) {
   const user = await requireUser();
   // 承認済み請求書の外部送信実行は finance 機密。server 側で finance:read も必須化（STAFF 直叩き遮断）。
-  if (!hasPermission(user, 'invoice', 'update') || !hasPermission(user, 'finance', 'read')) redirect('/invoices?denied=1');
+  // Codex D-03 [P1]: 外部送信の実行は「AI は外部送信を持たない」不変条件（rbac）を Action 層でも固定する。
+  // 業務権限（invoice:update / finance:read）だけだと AI role 混在（+OWNER 等）が role 権限和集合で通過し、
+  // 承認済み ApprovalRequest を指定して実送信 claim を取得し得た。user.isAi ＋ role 由来 isHumanUser で fail-closed。
+  if (!hasPermission(user, 'invoice', 'update') || !hasPermission(user, 'finance', 'read') || user.isAi || !isHumanUser({ roles: user.roles })) redirect('/invoices?denied=1');
   const approvalId = String(formData.get('approvalId') ?? '');
   const req = await prisma.approvalRequest.findFirst({ where: { id: approvalId, tenantId: user.tenantId, requestedForAction: 'invoice_send' } });
   if (!req) redirect('/invoices?error=notfound');
@@ -330,7 +333,10 @@ export async function requestDunningSendApprovalAction(formData: FormData) {
 export async function executeApprovedDunningSendAction(formData: FormData) {
   const user = await requireUser();
   // 承認済み督促の送信実行。server 側で finance:read を必須化（STAFF 直叩き遮断）。
-  if (!hasPermission(user, 'invoice', 'update') || !hasPermission(user, 'finance', 'read')) redirect('/invoices?denied=1');
+  // Codex D-03 [P1]: 外部送信の実行は「AI は外部送信を持たない」不変条件（rbac）を Action 層でも固定する。
+  // 業務権限（invoice:update / finance:read）だけだと AI role 混在（+OWNER 等）が role 権限和集合で通過し、
+  // 承認済み ApprovalRequest を指定して実送信 claim を取得し得た。user.isAi ＋ role 由来 isHumanUser で fail-closed。
+  if (!hasPermission(user, 'invoice', 'update') || !hasPermission(user, 'finance', 'read') || user.isAi || !isHumanUser({ roles: user.roles })) redirect('/invoices?denied=1');
   const approvalId = String(formData.get('approvalId') ?? '');
   const req = await prisma.approvalRequest.findFirst({ where: { id: approvalId, tenantId: user.tenantId, entityType: 'CollectionReminder', requestedForAction: 'dunning_send' } });
   if (!req) redirect('/invoices?error=notfound');

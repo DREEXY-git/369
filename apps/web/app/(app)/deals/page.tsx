@@ -42,13 +42,38 @@ export default async function DealsPage() {
   }
   const topLostReasons = [...lostReasonCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
 
+  // M3-4: 停滞案件（受注前ステージで次アクション期限切れ）を JS 抽出（既取得の deals を再利用・追加クエリなし）。
+  const now = new Date();
+  const STALLED_STAGES: readonly string[] = ['CONTACT', 'HEARING', 'PROPOSAL', 'QUOTE', 'NEGOTIATION', 'INTERNAL_REVIEW'];
+  const isStalled = (d: (typeof deals)[number]) => STALLED_STAGES.includes(d.stage) && d.nextActionAt !== null && new Date(d.nextActionAt) < now;
+  const stalledDeals = deals.filter(isStalled);
+
   return (
     <div>
       <PageHeader
         title="案件管理"
-        description={`${deals.length} 件の案件`}
+        description={`${deals.length} 件の案件${stalledDeals.length > 0 ? ` ・ ⏰ 停滞 ${stalledDeals.length} 件` : ''}`}
         action={<Link href="/deals/kanban"><Button>カンバン表示</Button></Link>}
       />
+
+      {stalledDeals.length > 0 ? (
+        <Card className="mb-4 border-red-300 bg-red-50/50 dark:bg-red-950/20">
+          <CardHeader><CardTitle>⏰ 停滞案件（次アクション期限切れ {stalledDeals.length}件）</CardTitle></CardHeader>
+          <CardContent className="space-y-1.5">
+            <p className="text-xs text-muted-foreground">受注前の案件で次アクションの期限が過ぎています。放置は失注につながります。早めに対応しましょう。</p>
+            {stalledDeals.slice(0, 8).map((d) => {
+              const days = d.nextActionAt ? Math.floor((now.getTime() - new Date(d.nextActionAt).getTime()) / 86_400_000) : 0;
+              return (
+                <div key={d.id} className="flex items-center justify-between gap-2 text-sm">
+                  <Link href={`/deals/${d.id}`} className="truncate hover:underline">{d.title}</Link>
+                  <span className="shrink-0 text-xs text-red-600">{DEAL_STAGE_LABEL[d.stage]}・{days}日超過</span>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         {deals.length === 0 ? (
           <div className="p-6"><EmptyState title="案件がありません" /></div>
@@ -70,7 +95,10 @@ export default async function DealsPage() {
                     <Td className="font-medium">{formatJpy(amount)}</Td>
                     <Td><Badge tone={gm < 15 ? 'red' : gm < 25 ? 'amber' : 'green'}>{gm}%</Badge></Td>
                     <Td>{d.probability}%</Td>
-                    <Td className="text-xs text-muted-foreground">{d.nextAction}（{formatDate(d.nextActionAt)}）</Td>
+                    <Td className="text-xs text-muted-foreground">
+                      {d.nextAction}（{formatDate(d.nextActionAt)}）
+                      {isStalled(d) ? <span className="ml-1"><Badge tone="red">要対応</Badge></span> : null}
+                    </Td>
                   </tr>
                 );
               })}

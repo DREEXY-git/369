@@ -62,3 +62,30 @@
 
 - 2026-07-20: 初版。ラウンド1 = M1-b（PR #77 @ `1be06b5`）の独立監査を A〜G へ割当。
 - 2026-07-20: ラウンド2。対象を `bb9ef05`（M1-b＋7証拠spec＋E-01/E-02/E-04 修正＋core 移設）へ更新。E は v2 で再監査。
+
+---
+
+## ラウンド3（2026-07-21・write 権限復旧後・最新 main 再監査＋独立監査）
+
+**前提**: Codex A〜G の M1-b 監査は `bb9ef05`（M1-b 修正**前**）が対象。一部 findings は Claude が final main で既に解消済み（**stale**）:
+- deal-stage「勝者2」→ expectedStage CAS 化で解消（#77）
+- human-only 境界 timeout / stage3_e2e 赤 → toLowerCase 修正で **CI 全 green**（final main `80b1fc5`）
+
+**Codex の 403（push 不可）復旧後、git 経由で以下を依頼:**
+
+### Codex（独立監査）への依頼
+1. **未 push の監査を push**: `git push origin codex/m1b-{B,C,D,G}-audit-v2`（E-v2/F-v2 は push 済み）。Claude が読み取り→取り込み。
+2. **最新 main `80b1fc5` を再監査**（bb9ef05 の stale 判定をやり直す）。deliverable: `docs/audit/codex_reaudit_<lane>_80b1fc5.md` ＋ branch `codex/reaudit-<lane>` を push。判定は監査時 SHA を明記。
+3. **Claude が単独 merge した money/core を独立監査**（自己監査の盲点補完）:
+   - #83 入金取消（`payment_reversal` 分岐・`decideApprovalAction`）
+   - M3-3 deal-stage `lostReason`（`lib/domains/deals/deal-stage.ts`）
+   - #93 `decideAiGateAction` の `isHumanUser` ガード
+   観点: AI境界 / 原子性 / tenant越境 / 承認バイパス / 後方互換。
+
+### Claude（実装・並行）
+- Codex D [P1] `decideAiGateAction` isHumanUser → **#93 で対応済み**。
+- D の残り [P1] 調査＋修正: 承認済み invoice/dunning 送信の AI role 遮断 / I5 見送りの event/logistics → Outbox → webhook 外部 POST の AI 主体遮断。
+- 機能: ①今日の打ち手 統合ビュー ②入金遅れ回収。
+
+### 取り込み記録
+Claude は各 findings 取り込み時に PR コメント/§7 へ **CLAUDE_INTEGRATED（監査 SHA・対応 PR）** を記録。前進のみ・stale は「解消済み」と明記して close。

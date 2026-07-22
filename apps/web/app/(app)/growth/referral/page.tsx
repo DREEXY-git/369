@@ -159,6 +159,10 @@ export default async function ReferralPage({
         description="既存の顧客・成約データから紹介元候補を分析します。候補の算出と下書きプレビューまでで、紹介依頼の送信・報酬の付与・外部連携はすべて封印中です（人間の承認 Gate）。"
       />
 
+      <div className="mb-4 flex flex-wrap items-center gap-3 text-sm">
+        <Link href="/growth/referral/records" className="text-primary underline" data-testid="referral-records-link">→ 受けた紹介の記録・追跡（受領→商談→成約）へ</Link>
+      </div>
+
       {previewDenied ? (
         <div className="mb-4 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900" data-testid="referral-preview-denied">
           AI ロールは下書きプレビューを生成できません（閲覧分析までは可能です・生成は人間のみ）。

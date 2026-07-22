@@ -3461,3 +3461,21 @@ model AISafetyLog {
   @@index([tenantId, createdAt])
   @@index([tenantId, check])
 }
+
+// Phase 3.5: 顧客紹介の記録・追跡（紹介者→紹介先→成約）。tenantId はスカラ（Tenant への relation は張らない）。
+// status は String（received/in_progress/won/lost）＝ packages/shared の状態機械（canTransitionReferralRecord）で検証。
+model CustomerReferral {
+  id              String   @id @default(cuid())
+  tenantId        String
+  referrerName    String
+  referredName    String
+  referredContact String?
+  estimatedValue  Decimal? @db.Decimal(14, 2)
+  status          String   @default("received")
+  note            String?
+  ownerId         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId, status])
+}

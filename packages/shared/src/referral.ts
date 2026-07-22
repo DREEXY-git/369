@@ -149,3 +149,83 @@ export function buildReferralDraft(channel: Extract<ReferralChannelKey, 'referra
   ].join('\n\n');
   return { subject, body };
 }
+
+// ============================================================================
+// Phase 3.5: 紹介記録（CustomerReferral）の状態機械・集計 — DB 非依存の純ロジック。
+// 「紹介元候補の分析（上記）」に対し、こちらは「実際に受けた紹介を成約まで追跡」する側。
+// ============================================================================
+
+export const REFERRAL_RECORD_STATUSES = ['received', 'in_progress', 'won', 'lost'] as const;
+export type ReferralRecordStatus = (typeof REFERRAL_RECORD_STATUSES)[number];
+
+export const REFERRAL_RECORD_STATUS_LABEL: Record<ReferralRecordStatus, string> = {
+  received: '受領',
+  in_progress: '商談中',
+  won: '成約',
+  lost: '不成立',
+};
+
+export function isReferralRecordStatus(s: string): s is ReferralRecordStatus {
+  return (REFERRAL_RECORD_STATUSES as readonly string[]).includes(s);
+}
+
+// 許可する状態遷移。received→(商談中/成約/不成立)、商談中→(成約/不成立)、不成立→商談中（再挑戦）。成約は終端。
+const REFERRAL_RECORD_TRANSITIONS: Record<ReferralRecordStatus, ReferralRecordStatus[]> = {
+  received: ['in_progress', 'won', 'lost'],
+  in_progress: ['won', 'lost'],
+  won: [],
+  lost: ['in_progress'],
+};
+
+/** 紹介記録の状態遷移可否（不正・同一・終端からの遷移は false＝fail-closed）。 */
+export function canTransitionReferralRecord(from: string, to: string): boolean {
+  if (!isReferralRecordStatus(from) || !isReferralRecordStatus(to) || from === to) return false;
+  return REFERRAL_RECORD_TRANSITIONS[from].includes(to);
+}
+
+export interface ReferralRecordSummaryInput {
+  status: string;
+  estimatedValue: number | null;
+}
+
+export interface ReferralRecordSummary {
+  total: number;
+  received: number;
+  inProgress: number;
+  won: number;
+  lost: number;
+  /** 成約率 = 成約 /（成約＋不成立）・0-100（未決着は分母に含めない）。 */
+  winRate: number;
+  /** 進行中（受領＋商談中）の見込み金額合計。 */
+  pipelineValue: number;
+  /** 成約の見込み金額合計。 */
+  wonValue: number;
+}
+
+/** 紹介記録を状況別に集計（件数・成約率・見込み金額）。DB 非依存。 */
+export function summarizeReferralRecords(records: ReferralRecordSummaryInput[]): ReferralRecordSummary {
+  let received = 0;
+  let inProgress = 0;
+  let won = 0;
+  let lost = 0;
+  let pipelineValue = 0;
+  let wonValue = 0;
+  for (const r of records) {
+    const v = Math.max(0, r.estimatedValue ?? 0);
+    if (r.status === 'received') {
+      received++;
+      pipelineValue += v;
+    } else if (r.status === 'in_progress') {
+      inProgress++;
+      pipelineValue += v;
+    } else if (r.status === 'won') {
+      won++;
+      wonValue += v;
+    } else if (r.status === 'lost') {
+      lost++;
+    }
+  }
+  const decided = won + lost;
+  const winRate = decided > 0 ? Math.round((won / decided) * 1000) / 10 : 0;
+  return { total: records.length, received, inProgress, won, lost, winRate, pipelineValue, wonValue };
+}

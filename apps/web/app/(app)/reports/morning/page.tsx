@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, Badge } from '@/components/ui
 import { AccessDenied } from '@/components/access-denied';
 import { SeverityBadge } from '@/components/badges';
 import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
+import { getCashflowShortageProjection } from '@/lib/domains/finance/cashflow';
 import { generateMorningReport } from '@hokko/ai';
 import { detectAnomalies, formatDate, classifyReferralSource, GROWTH_CHANNELS, channelDataState, diagnoseSeoContent } from '@hokko/shared';
 
@@ -129,6 +130,10 @@ export default async function MorningReportPage() {
   }
   const showMarketingCard = canViewReferral && (channelsConnected > 0 || pendingSuggestions > 0 || seoWarnings > 0);
 
+  // 資金ショート予兆（実データ・ライブ予測）。finance:read 保有者のみ。ショート予測 or 残高が薄い時だけ朝礼に前出し。
+  const shortageProj = canViewFinance ? await getCashflowShortageProjection(user.tenantId) : null;
+  const showShortageAlert = !!shortageProj && (shortageProj.result.shortageDate != null || shortageProj.result.minBalance < 1_500_000);
+
   // 財務指標は finance:read 非保有者には redact（0/neutral）。AI 入力・異常検知・画面のすべてに redact 後の値を使う。
   const sales = canViewFinance ? toNumber(dealSum._sum.amount) : 0;
   const cost = canViewFinance ? toNumber(dealSum._sum.cost) : 0;
@@ -187,6 +192,27 @@ export default async function MorningReportPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* 資金ショート予兆（実データ・ライブ予測）を朝礼の最上部に前出し。経営者が最初に見るべき最重要シグナル。 */}
+      {showShortageAlert && shortageProj ? (
+        <Card className={`mb-4 ${shortageProj.result.shortageDate ? 'border-2 border-red-400 bg-red-50/60 dark:bg-red-950/20' : 'border-amber-300 bg-amber-50/50 dark:bg-amber-950/20'}`}>
+          <CardHeader>
+            <CardTitle className="flex flex-wrap items-center gap-2">
+              {shortageProj.result.shortageDate ? '🚨 資金ショート予兆' : '⚠️ 資金繰り 要注意'}
+              {shortageProj.result.shortageDate ? <Badge tone="red">{formatDate(shortageProj.result.shortageDate)} 予測</Badge> : <Badge tone="amber">残高薄め</Badge>}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            {shortageProj.result.shortageDate ? (
+              <p>現在の現預金＋今日以降の予定入出金で試算すると、<span className="font-bold">{formatDate(shortageProj.result.shortageDate)}</span> ごろに残高がマイナスになる見込みです。入金の前倒し・支払の繰延・短期借入などの手当てを早めにご検討ください。</p>
+            ) : (
+              <p>予測期間内に資金ショートはありませんが、最低残高が薄くなる時期があります。大きな支払い予定の前に資金繰りをご確認ください。</p>
+            )}
+            <p className="text-xs text-muted-foreground">予測最低残高: {shortageProj.result.minBalance.toLocaleString('ja-JP')}円（今日以降の予定 {shortageProj.lineCount}件を反映・予定ベースの機械計算）。</p>
+            <Link href="/finance/cashflow" className="inline-block text-xs text-primary hover:underline">→ 資金繰り予測を開く</Link>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <ListCard title="📌 今日の重要タスク" items={report.todayTasks} />

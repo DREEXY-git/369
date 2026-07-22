@@ -11,6 +11,9 @@ import {
   canTransitionReferralRecord,
   deriveReferralSummary,
   summarizeReferrersByName,
+  isReferralStale,
+  referralStaleBefore,
+  REFERRAL_STALE_DAYS,
   formatDate,
   type ReferralRecordStatus,
 } from '@hokko/shared';
@@ -64,10 +67,13 @@ export default async function ReferralRecordsPage({
 
   const LIST_LIMIT = 200;
   const LEADERBOARD_LIMIT = 10;
-  // KPI（総数・成約率・見込み金額）と紹介元ランキングは全件を DB aggregate で算出（take した標本に依存しない・Codex R4-07）。一覧は最新 LIST_LIMIT 件のみ表示。
-  const [grouped, referrerGroups, records] = await Promise.all([
+  const now = new Date();
+  // KPI（総数・成約率・見込み金額）・紹介元ランキング・要フォロー件数は全件を DB aggregate で算出（take した標本に依存しない・Codex R4-07）。一覧は最新 LIST_LIMIT 件のみ表示。
+  const [grouped, referrerGroups, staleFollowUps, records] = await Promise.all([
     prisma.customerReferral.groupBy({ by: ['status'], where: { tenantId: user.tenantId }, _count: { _all: true }, _sum: { estimatedValue: true } }),
     prisma.customerReferral.groupBy({ by: ['referrerName', 'status'], where: { tenantId: user.tenantId }, _count: { _all: true }, _sum: { estimatedValue: true } }),
+    // 要フォロー = 未決着（受領/商談中）のまま REFERRAL_STALE_DAYS 日以上 動きが無い件数（全件・updatedAt 基準）。
+    prisma.customerReferral.count({ where: { tenantId: user.tenantId, status: { in: ['received', 'in_progress'] }, updatedAt: { lt: referralStaleBefore(now) } } }),
     prisma.customerReferral.findMany({ where: { tenantId: user.tenantId }, orderBy: [{ createdAt: 'desc' }], take: LIST_LIMIT }),
   ]);
   const gcount = (s: string) => grouped.find((x) => x.status === s)?._count._all ?? 0;
@@ -111,6 +117,11 @@ export default async function ReferralRecordsPage({
 
       {flash ? <div className="mb-3 rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">{flash}</div> : null}
       {errorMsg ? <div className="mb-3 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900">{errorMsg}</div> : null}
+      {staleFollowUps > 0 ? (
+        <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          ⚠️ 要フォローの紹介が <span className="font-bold">{staleFollowUps}件</span> あります（受領・商談中のまま{REFERRAL_STALE_DAYS}日以上 動きがありません）。紹介は放置すると冷めます。下の一覧で「要フォロー」の紹介に連絡・状況更新をしましょう。
+        </div>
+      ) : null}
 
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">紹介の総数</div><div className="text-2xl font-bold">{summary.total}件</div></CardContent></Card>
@@ -199,6 +210,7 @@ export default async function ReferralRecordsPage({
                     <span className="text-muted-foreground">→</span>
                     <span className="font-medium">{r.referredName}</span>
                     <Badge tone={STATUS_TONE[status] ?? 'slate'}>{REFERRAL_RECORD_STATUS_LABEL[status] ?? r.status}</Badge>
+                    {isReferralStale(r.status, r.updatedAt, now) ? <Badge tone="amber">要フォロー（{REFERRAL_STALE_DAYS}日+放置）</Badge> : null}
                     {r.estimatedValue != null ? <Badge tone="slate">見込み {yen(toNumber(r.estimatedValue))}</Badge> : null}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">

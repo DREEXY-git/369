@@ -8,7 +8,7 @@ import { AccessDenied } from '@/components/access-denied';
 import { SeverityBadge } from '@/components/badges';
 import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
 import { generateMorningReport } from '@hokko/ai';
-import { detectAnomalies, formatDate, classifyReferralSource } from '@hokko/shared';
+import { detectAnomalies, formatDate, classifyReferralSource, GROWTH_CHANNELS, channelDataState, diagnoseSeoContent } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,6 +102,32 @@ export default async function MorningReportPage() {
       metadata: { scanned: referralCustomers.length, candidates: referralCandidateCount },
     });
   }
+
+  // B1: 広告・SEO の気づきを朝礼に前出し（marketing:read のみ・既存 channelDataState/diagnoseSeoContent 再利用・schema 非変更）。
+  let channelsConnected = 0;
+  let pendingSuggestions = 0;
+  let seoWarnings = 0;
+  if (canViewReferral) {
+    const [mktCampaigns, pending, mktContents] = await Promise.all([
+      prisma.marketingCampaign.findMany({ where: { tenantId: t }, select: { channel: true, metrics: { select: { id: true } } } }),
+      prisma.marketingSuggestion.count({ where: { tenantId: t, approvalStatus: 'pending' } }),
+      prisma.contentAsset.findMany({ where: { tenantId: t }, select: { title: true, body: true }, take: 100 }),
+    ]);
+    pendingSuggestions = pending;
+    const mktByChannel = new Map<string, { campaigns: number; metrics: number }>();
+    for (const c of mktCampaigns) {
+      const cur = mktByChannel.get(c.channel) ?? { campaigns: 0, metrics: 0 };
+      cur.campaigns += 1;
+      cur.metrics += c.metrics.length;
+      mktByChannel.set(c.channel, cur);
+    }
+    channelsConnected = GROWTH_CHANNELS.filter((ch) => {
+      const a = mktByChannel.get(ch) ?? { campaigns: 0, metrics: 0 };
+      return channelDataState(a.campaigns, a.metrics) === 'connected_data';
+    }).length;
+    seoWarnings = mktContents.filter((c) => diagnoseSeoContent({ title: c.title, body: c.body }).length > 0).length;
+  }
+  const showMarketingCard = canViewReferral && (channelsConnected > 0 || pendingSuggestions > 0 || seoWarnings > 0);
 
   // 財務指標は finance:read 非保有者には redact（0/neutral）。AI 入力・異常検知・画面のすべてに redact 後の値を使う。
   const sales = canViewFinance ? toNumber(dealSum._sum.amount) : 0;
@@ -202,6 +228,24 @@ export default async function MorningReportPage() {
           <CardContent className="space-y-2">
             <p className="text-xs text-muted-foreground">成約実績のある active 顧客から算出した「紹介元候補」です。紹介は最も安く成約率の高いリード源。既存顧客への一声から増やしましょう（依頼文の下書きは分析ページ・送信は既存の承認導線のみ）。</p>
             <Link href="/growth/referral" className="inline-block text-xs text-primary hover:underline">→ 紹介・リファラル分析を開く</Link>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* B1: 広告・SEO の気づきを朝礼に前出し。分析ページ（pull）を毎朝の push に。marketing:read のみ表示。 */}
+      {showMarketingCard ? (
+        <Card className="mt-4 border-sky-300 bg-sky-50/50 dark:bg-sky-950/20">
+          <CardHeader><CardTitle>📣 広告・SEO の気づき</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <ul className="space-y-1">
+              <li>広告データ接続済みチャネル：<b>{channelsConnected}</b> / {GROWTH_CHANNELS.length}（未接続は分析ページで計画値を入力）</li>
+              {pendingSuggestions > 0 ? <li>AI 広告改善案 <b>{pendingSuggestions}件</b> が承認待ち</li> : null}
+              {seoWarnings > 0 ? <li>SEO 要確認コンテンツ <b>{seoWarnings}件</b>（重複タイトル・禁止表現など）</li> : null}
+            </ul>
+            <div className="flex flex-wrap gap-3">
+              <Link href="/marketing/ads" className="text-xs text-primary hover:underline">→ 広告・チャネル分析</Link>
+              <Link href="/marketing/content" className="text-xs text-primary hover:underline">→ SEO・コンテンツ</Link>
+            </div>
           </CardContent>
         </Card>
       ) : null}

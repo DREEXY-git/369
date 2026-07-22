@@ -4,6 +4,7 @@ import {
   isReferralRecordStatus,
   summarizeReferralRecords,
   deriveReferralSummary,
+  summarizeReferrersByName,
   validateReferralRecordInput,
   REFERRAL_RECORD_STATUS_LABEL,
 } from '../referral';
@@ -93,6 +94,34 @@ describe('紹介記録の入力検証（server 側・Codex R4-04/08）', () => {
     expect(validateReferralRecordInput({ ...base, estimatedValue: '1.234' })).toBeNull(); // 小数3桁
     expect(validateReferralRecordInput({ ...base, estimatedValue: '9999999999999' })).toBeNull(); // 13桁（範囲外）
     expect(validateReferralRecordInput({ ...base, estimatedValue: 'abc' })).toBeNull();
+  });
+});
+
+describe('紹介元ランキング（summarizeReferrersByName・誰が成約に繋がったか）', () => {
+  it('紹介者ごとに紹介数・成約・成約率・成約金額を集計し、成約金額の多い順に並べる', () => {
+    const rows = summarizeReferrersByName([
+      { referrerName: 'A社', status: 'won', count: 2, wonValue: 500000 },
+      { referrerName: 'A社', status: 'lost', count: 1, wonValue: 0 },
+      { referrerName: 'A社', status: 'received', count: 1, wonValue: 0 },
+      { referrerName: 'B社', status: 'won', count: 1, wonValue: 800000 },
+      { referrerName: 'C社', status: 'in_progress', count: 3, wonValue: 0 }, // 未決着のみ＝成約率0
+    ]);
+    // 成約金額 B社(800000) > A社(500000) > C社(0) の順
+    expect(rows.map((r) => r.referrerName)).toEqual(['B社', 'A社', 'C社']);
+    const a = rows.find((r) => r.referrerName === 'A社')!;
+    expect(a.total).toBe(4); // won2 + lost1 + received1
+    expect(a.won).toBe(2);
+    expect(a.lost).toBe(1);
+    expect(a.winRate).toBe(66.7); // 2/(2+1)
+    expect(a.wonValue).toBe(500000);
+    const c = rows.find((r) => r.referrerName === 'C社')!;
+    expect(c.winRate).toBe(0); // 決着ゼロは0除算せず0
+    expect(c.total).toBe(3);
+    expect(c.wonValue).toBe(0);
+  });
+
+  it('空入力は空配列（決定論・0除算なし）', () => {
+    expect(summarizeReferrersByName([])).toEqual([]);
   });
 });
 

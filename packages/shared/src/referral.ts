@@ -241,6 +241,65 @@ export function summarizeReferralRecords(records: ReferralRecordSummaryInput[]):
   return deriveReferralSummary(c);
 }
 
+// ---- 紹介元ランキング（誰が実際に紹介してくれたか・成約に繋がったか） ----
+// 「紹介元候補（誰に頼むか）」の予測分析に対し、こちらは CustomerReferral の実績を紹介者ごとに集計する。
+// DB の groupBy(['referrerName','status']) 1本の結果を渡す想定の純ロジック（PII は名前のみ・件数/金額の実測）。
+
+/** groupBy(['referrerName','status']) の1行に対応（count と 成約金額の合計）。 */
+export interface ReferrerGroupRow {
+  referrerName: string;
+  status: string;
+  count: number;
+  /** この (referrerName,status) の estimatedValue 合計（成約金額として使うのは status==='won' の行のみ）。 */
+  wonValue: number;
+}
+
+export interface ReferrerLeaderRow {
+  referrerName: string;
+  total: number;
+  won: number;
+  lost: number;
+  /** 成約率 = 成約 /（成約＋不成立）・0-100（未決着は分母に含めない）。 */
+  winRate: number;
+  /** 成約（won）の見込み金額合計。 */
+  wonValue: number;
+}
+
+/**
+ * 紹介者ごとの実績集計（紹介数・成約・成約率・成約金額）。DB 非依存の純関数。
+ * 並びは「成約金額の多い順 → 成約数 → 紹介総数 → 名前昇順」の決定論ソート（同一入力→同一出力）。
+ * 成約率は決着（成約＋不成立）が 0 なら 0（0除算しない）。金額は won の行の合計のみ計上（負値は 0 に丸めず入力側で検証済み前提だが安全に max(0)）。
+ */
+export function summarizeReferrersByName(rows: ReferrerGroupRow[]): ReferrerLeaderRow[] {
+  const byName = new Map<string, { total: number; won: number; lost: number; wonValue: number }>();
+  for (const r of rows) {
+    const acc = byName.get(r.referrerName) ?? { total: 0, won: 0, lost: 0, wonValue: 0 };
+    const count = Math.max(0, r.count);
+    acc.total += count;
+    if (r.status === 'won') {
+      acc.won += count;
+      acc.wonValue += Math.max(0, r.wonValue);
+    } else if (r.status === 'lost') {
+      acc.lost += count;
+    }
+    byName.set(r.referrerName, acc);
+  }
+  const out: ReferrerLeaderRow[] = [];
+  for (const [referrerName, a] of byName) {
+    const decided = a.won + a.lost;
+    const winRate = decided > 0 ? Math.round((a.won / decided) * 1000) / 10 : 0;
+    out.push({ referrerName, total: a.total, won: a.won, lost: a.lost, winRate, wonValue: a.wonValue });
+  }
+  out.sort(
+    (x, y) =>
+      y.wonValue - x.wonValue ||
+      y.won - x.won ||
+      y.total - x.total ||
+      x.referrerName.localeCompare(y.referrerName, 'ja'),
+  );
+  return out;
+}
+
 /** 紹介記録の作成入力（検証済み）。 */
 export interface ReferralRecordDraftInput {
   referrerName: string;

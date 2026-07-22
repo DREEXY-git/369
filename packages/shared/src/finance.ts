@@ -64,6 +64,27 @@ export interface CashflowResult {
 }
 
 /** 資金繰り予測: 期首残高と各日の入出金から残高推移と資金ショートを算出。 */
+/**
+ * 予定 FinanceEvent（{dueAt, amount, direction}）を資金繰り予測の1行（CashflowInputLine）へ変換する純関数。
+ * dueAt が無い予定は日付未確定＝予測に載せられないため null（呼び出し側で除外）。金額は負を 0 に丸める。
+ * direction が inflow/outflow 以外（neutral 等）は資金移動なし（inflow=outflow=0）として扱う。
+ */
+export function financeEventToCashflowLine(e: {
+  dueAt: Date | null;
+  amount: number;
+  direction: string;
+  note?: string | null;
+}): CashflowInputLine | null {
+  if (e.dueAt == null) return null;
+  const amt = Math.max(0, e.amount);
+  return {
+    date: e.dueAt,
+    inflow: e.direction === 'inflow' ? amt : 0,
+    outflow: e.direction === 'outflow' ? amt : 0,
+    note: e.note ?? undefined,
+  };
+}
+
 export function forecastCashflow(opening: number, lines: CashflowInputLine[]): CashflowResult {
   let balance = opening;
   let minBalance = opening;

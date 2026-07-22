@@ -119,9 +119,8 @@ export default async function M2ReadinessPage() {
           <ul className="space-y-1.5">
             <li className="flex items-start gap-2"><Badge tone="green">済</Badge><span>外部送信は既定 OFF（<code>EXTERNAL_SEND_ENABLED</code> 未設定＝安全）。ON でも送信は承認後のみ。</span></li>
             <li className="flex items-start gap-2"><Badge tone="green">済</Badge><span>AI は外部送信・承認・削除の主体になれない（RBAC＋<code>assertAiToolAllowed</code> の多重防御）。上のブロック実績が証跡。</span></li>
-            <li className="flex items-start gap-2"><Badge tone="green">済</Badge><span>請求書送信は exactly-once（write-ahead claim → provider → finalize の3相・E-01）。送信中クレームは上のカードで監視。</span></li>
+            <li className="flex items-start gap-2"><Badge tone="green">済</Badge><span>外部送信の3経路（請求書 E-01・営業メール E-04・督促 dunning）はすべて exactly-once（write-ahead claim → provider → finalize の3相）で二重送信ゼロ。送信中クレームは上のカードで監視。</span></li>
             <li className="flex items-start gap-2"><Badge tone="green">済</Badge><span>送信前に配信停止（SuppressionList）・同意（ConsentRecord）を確認。配信停止希望は自動で抑止リストへ。</span></li>
-            <li className="flex items-start gap-2"><Badge tone="amber">残</Badge><span>他の送信経路（督促 dunning 等）の exactly-once ハードニング（Codex C-01/C-02 の残指摘）を本番 ON 前に締める。</span></li>
             <li className="flex items-start gap-2"><Badge tone="amber">残</Badge><span>実LLM/実Maps は API キー投入とレート/課金の上限設計が前提（コスト・規約の人間判断）。</span></li>
           </ul>
           <div className="flex flex-wrap gap-3 pt-2 text-xs">

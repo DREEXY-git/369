@@ -41,6 +41,7 @@ export default async function AdminPage() {
             <Row label="AI注入検出 / PIIマスク" value={<Badge tone="green">全AI経路で有効</Badge>} />
             <Row label="AIによる外部送信" value={<Badge tone="red">禁止</Badge>} />
             <div className="flex flex-wrap gap-3 pt-1 text-xs">
+              <Link href="/admin/m2-readiness" className="text-primary hover:underline">M2 実運用 準備状況 →</Link>
               <Link href="/admin/audit" className="text-primary hover:underline">監査ログ →</Link>
               <Link href="/admin/ai-safety" className="text-primary hover:underline">AI安全ログ →</Link>
               <Link href="/admin/ai-outputs" className="text-primary hover:underline">AI出力ログ →</Link>

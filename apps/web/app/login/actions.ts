@@ -28,7 +28,12 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
       return { error: 'メールアドレスまたはパスワードが正しくありません。' };
     }
 
-    const roles = user.userRoles.map((ur) => ur.role.key as RoleKey);
+    // Codex B-01: relation の外部キーは単一IDで、親子 tenant の一致を DB が保証しない。
+    // session へ role を載せる前に UserRole / Role の tenantId が本人と一致する行だけへ fail-closed に絞る。
+    // 正常データ（全て自 tenant）では挙動不変。壊れた越境 UserRole があっても foreign role を session に載せない。
+    const roles = user.userRoles
+      .filter((ur) => ur.tenantId === user.tenantId && ur.role.tenantId === user.tenantId)
+      .map((ur) => ur.role.key as RoleKey);
     const token = await signSession({
       userId: user.id,
       tenantId: user.tenantId,

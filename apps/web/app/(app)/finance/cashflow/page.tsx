@@ -3,7 +3,7 @@ import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Table, Th, Td, Badge, Stat, EmptyState } from '@/components/ui';
 import { formatJpy, formatDate, formatDateTime } from '@hokko/shared';
-import { getCashflowBridgeData, getCashflowUnifiedData, getTenantScopedCashflowForecast, getCashflowShortageProjection } from '@/lib/domains/finance/cashflow';
+import { getCashflowBridgeData, getCashflowUnifiedData, getTenantScopedCashflowForecast, getCashflowShortageProjection, SHORTAGE_PROJECTION_LIMIT } from '@/lib/domains/finance/cashflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,19 +47,30 @@ export default async function CashflowPage() {
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2">
             資金ショート予兆（実データ・ライブ予測）
-            {proj.result.shortageDate ? <Badge tone="red">要対応</Badge> : proj.lineCount > 0 ? <Badge tone="green">予測期間内 ショートなし</Badge> : null}
+            {proj.currentlyNegative || proj.result.shortageDate ? <Badge tone="red">要対応</Badge> : proj.truncated ? <Badge tone="amber">一部予定は未反映</Badge> : proj.lineCount > 0 ? <Badge tone="green">予測期間内 ショートなし</Badge> : null}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Stat label="現在の現預金" value={formatJpy(proj.opening)} />
+            <Stat label="現在の現預金" value={formatJpy(proj.opening)} tone={proj.currentlyNegative ? 'red' : 'slate'} />
             <Stat label="予測 最低残高" value={formatJpy(proj.result.minBalance)} tone={proj.result.minBalance < 0 ? 'red' : proj.result.minBalance < 1_500_000 ? 'amber' : 'emerald'} />
-            <Stat label="資金ショート予測日" value={proj.result.shortageDate ? formatDate(proj.result.shortageDate) : 'なし'} tone={proj.result.shortageDate ? 'red' : 'emerald'} />
-            <Stat label="対象の予定" value={`${proj.lineCount}件`} sub="今日以降・確定日" />
+            <Stat label="資金ショート予測日" value={proj.currentlyNegative ? '現在マイナス' : proj.result.shortageDate ? formatDate(proj.result.shortageDate) : 'なし'} tone={proj.currentlyNegative || proj.result.shortageDate ? 'red' : 'emerald'} />
+            <Stat label="対象の予定" value={`${proj.lineCount}件`} sub={proj.truncated ? '上限500件で打切り' : '今日以降・確定日'} tone={proj.truncated ? 'amber' : 'slate'} />
           </div>
-          {proj.result.shortageDate ? (
+          {/* Codex B-CF-02: opening が既にマイナス＝現時点で資金ショート中。将来予兆と別に最優先で警告。 */}
+          {proj.currentlyNegative ? (
+            <div className="mb-3 rounded-md border border-red-400 bg-red-50 p-3 text-sm text-red-900">
+              🚨 現在の現預金が <span className="font-bold">マイナス（{formatJpy(proj.opening)}）</span> です。すでに資金ショート状態の可能性があります。至急、資金手当て（入金前倒し・借入枠の確認など）をご検討ください。
+            </div>
+          ) : proj.result.shortageDate ? (
             <div className="mb-3 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900">
               ⚠️ このままだと <span className="font-bold">{formatDate(proj.result.shortageDate)}</span> ごろに現預金がマイナスになる見込みです（現在の現預金＋今日以降の予定入出金ベース）。入金の前倒し・支払の繰延・短期借入などの手当てを早めに検討してください。
+            </div>
+          ) : null}
+          {/* Codex B-CF-03: take 上限で後続予定が未反映。「ショートなし」を断定せずカバレッジ不足を明示。 */}
+          {proj.truncated ? (
+            <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              予定入出金が多く、先頭{SHORTAGE_PROJECTION_LIMIT}件までで試算しています。それ以降の予定は反映していないため、「ショートなし」と断定できません（後続の大きな支払いがある場合は別途ご確認ください）。
             </div>
           ) : null}
           {proj.lineCount === 0 ? (

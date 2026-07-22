@@ -195,20 +195,23 @@ export default async function MorningReportPage() {
 
       {/* 資金ショート予兆（実データ・ライブ予測）を朝礼の最上部に前出し。経営者が最初に見るべき最重要シグナル。 */}
       {showShortageAlert && shortageProj ? (
-        <Card className={`mb-4 ${shortageProj.result.shortageDate ? 'border-2 border-red-400 bg-red-50/60 dark:bg-red-950/20' : 'border-amber-300 bg-amber-50/50 dark:bg-amber-950/20'}`}>
+        <Card className={`mb-4 ${shortageProj.currentlyNegative || shortageProj.result.shortageDate ? 'border-2 border-red-400 bg-red-50/60 dark:bg-red-950/20' : 'border-amber-300 bg-amber-50/50 dark:bg-amber-950/20'}`}>
           <CardHeader>
             <CardTitle className="flex flex-wrap items-center gap-2">
-              {shortageProj.result.shortageDate ? '🚨 資金ショート予兆' : '⚠️ 資金繰り 要注意'}
-              {shortageProj.result.shortageDate ? <Badge tone="red">{formatDate(shortageProj.result.shortageDate)} 予測</Badge> : <Badge tone="amber">残高薄め</Badge>}
+              {shortageProj.currentlyNegative ? '🚨 資金ショート（現在マイナス）' : shortageProj.result.shortageDate ? '🚨 資金ショート予兆' : '⚠️ 資金繰り 要注意'}
+              {shortageProj.currentlyNegative ? <Badge tone="red">現在マイナス</Badge> : shortageProj.result.shortageDate ? <Badge tone="red">{formatDate(shortageProj.result.shortageDate)} 予測</Badge> : <Badge tone="amber">残高薄め</Badge>}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-1 text-sm">
-            {shortageProj.result.shortageDate ? (
+            {/* Codex B-CF-02: opening が既にマイナス＝現在ショート中を最優先で明示（将来予測日と別扱い）。 */}
+            {shortageProj.currentlyNegative ? (
+              <p>現在の現預金が <span className="font-bold">マイナス（{shortageProj.opening.toLocaleString('ja-JP')}円）</span> です。すでに資金ショート状態の可能性があります。至急、資金手当てをご検討ください。</p>
+            ) : shortageProj.result.shortageDate ? (
               <p>現在の現預金＋今日以降の予定入出金で試算すると、<span className="font-bold">{formatDate(shortageProj.result.shortageDate)}</span> ごろに残高がマイナスになる見込みです。入金の前倒し・支払の繰延・短期借入などの手当てを早めにご検討ください。</p>
             ) : (
               <p>予測期間内に資金ショートはありませんが、最低残高が薄くなる時期があります。大きな支払い予定の前に資金繰りをご確認ください。</p>
             )}
-            <p className="text-xs text-muted-foreground">予測最低残高: {shortageProj.result.minBalance.toLocaleString('ja-JP')}円（今日以降の予定 {shortageProj.lineCount}件を反映・予定ベースの機械計算）。</p>
+            <p className="text-xs text-muted-foreground">予測最低残高: {shortageProj.result.minBalance.toLocaleString('ja-JP')}円（今日以降の予定 {shortageProj.lineCount}件を反映{shortageProj.truncated ? '・予定多数のため先頭500件で試算' : ''}・予定ベースの機械計算）。</p>
             <Link href="/finance/cashflow" className="inline-block text-xs text-primary hover:underline">→ 資金繰り予測を開く</Link>
           </CardContent>
         </Card>

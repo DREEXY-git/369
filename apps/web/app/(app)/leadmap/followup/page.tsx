@@ -68,6 +68,10 @@ export default async function LeadFollowupPage() {
         breadcrumb={[{ label: 'リードマップAI', href: '/leadmap/leads' }, { label: '追客ボード', href: '/leadmap/followup' }]}
       />
 
+      <div className="mb-4 flex flex-wrap items-center gap-3 text-sm">
+        <Link href="/leadmap/attention" className="text-primary underline">取りこぼし検知（下書き未送信・返信後放置なども）→</Link>
+      </div>
+
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3">
         <Stat label="追客対象" value={`${rows.length}件`} />
         <Stat label={`要追客（${OVERDUE_DAYS}日以上）`} value={`${overdue.length}件`} tone={overdue.length > 0 ? 'red' : 'green'} />

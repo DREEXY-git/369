@@ -300,6 +300,32 @@ export function summarizeReferrersByName(rows: ReferrerGroupRow[]): ReferrerLead
   return out;
 }
 
+// ---- 紹介の「要フォロー」検知（放置された紹介を取りこぼさない） ----
+// 未決着（受領・商談中）のまま一定日数 動きが無い紹介を炙り出す。updatedAt は状況更新で前進するため
+// 「最後に進捗してから N 日」の代理指標になる。won/lost（終端）はフォロー不要＝対象外。DB 非依存の純関数。
+
+/** 要フォロー判定のしきい値（日）。受領/商談中のまま この日数 動きが無ければ「放置」とみなす。 */
+export const REFERRAL_STALE_DAYS = 14;
+
+/** 未決着（受領/商談中）＝まだ追える紹介の状況。 */
+const REFERRAL_OPEN_STATUSES: readonly string[] = ['received', 'in_progress'];
+
+/**
+ * 紹介が「要フォロー（放置）」か判定する純関数。
+ * - 対象は未決着（受領/商談中）のみ。won/lost（終端）は常に false（フォロー不要）。
+ * - updatedAt が (now - thresholdDays) より前なら true。しきい値ちょうどは放置に含めない（境界は安全側）。
+ */
+export function isReferralStale(status: string, updatedAt: Date, now: Date, thresholdDays: number = REFERRAL_STALE_DAYS): boolean {
+  if (!REFERRAL_OPEN_STATUSES.includes(status)) return false;
+  const ageMs = now.getTime() - updatedAt.getTime();
+  return ageMs > thresholdDays * 24 * 60 * 60 * 1000;
+}
+
+/** 放置とみなす基準日時（now - thresholdDays）。DB クエリの updatedAt: { lt } に渡す用途。 */
+export function referralStaleBefore(now: Date, thresholdDays: number = REFERRAL_STALE_DAYS): Date {
+  return new Date(now.getTime() - thresholdDays * 24 * 60 * 60 * 1000);
+}
+
 /** 紹介記録の作成入力（検証済み）。 */
 export interface ReferralRecordDraftInput {
   referrerName: string;

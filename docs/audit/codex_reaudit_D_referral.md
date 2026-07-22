@@ -19,7 +19,7 @@
   - `apps/web/app/(app)/growth/referral/records/page.tsx:68-78`
   - `apps/web/app/(app)/growth/referral/records/page.tsx:120-123`
   - `apps/web/app/(app)/growth/referral/records/page.tsx:197-213`
-- 種別: **集合集合の不一致 / actionability / bounded list**
+- 種別: **集合の不一致 / actionability / bounded list**
 - なぜ実害か:
   - `staleFollowUps` は tenant 内の全件を `count` する一方、バッジを描画する `records` は `createdAt desc` の最新200件に限定される。
   - 201件以上あり、要フォロー対象が古い201件目以降にある場合、バナーは「要フォローがN件」と警告するが、案内どおり「下の一覧」を見ても該当行が1件も現れない。
@@ -39,7 +39,7 @@
 - 種別: **決定論ソート / tie-break不足**
 - なぜ実害か:
   - 金額・成約数・紹介総数が同じ場合の最終比較は `referrerName.localeCompare(..., 'ja')` だけである。日本語照合では別文字列でも同値になる組があり、監査環境の Node では `A` と `Ａ`、`は` と `ハ` がいずれも比較結果0だった。
-  - DB の `groupBy(['referrerName','status'])` には `orderBy` がなく入力順は保証されない。比較結果0では stable sort がその不定な入力順を保持するため、「同一入力→同一出力」という関数コメントを満たさず、同率が上位10件の境界にあると表示メンバーも揺れ得る。
+  - DB の `groupBy(['referrerName','status'])` には `orderBy` がなく入力順は保証されない。比較結果0では stable sort がその不定な入力順を保持するため、同じ集合集計でも順位を一意に決められず、同率が上位10件の境界にあると表示メンバーも揺れ得る。
   - 現在の unit test は金額差による順序と空配列しか確認せず、同率の全 tie-break を実証していない。
 - 重大度: **LOW**
 - 修正案:

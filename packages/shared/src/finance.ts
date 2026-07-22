@@ -191,7 +191,8 @@ export type FinanceEventType =
   | 'payment_expected'
   | 'payment_received'
   | 'journal_candidate'
-  | 'cashflow_expected';
+  | 'cashflow_expected'
+  | 'payment_reversal';
 
 export type FinanceDirection = 'inflow' | 'outflow' | 'neutral';
 
@@ -210,6 +211,7 @@ export function financeEventDirection(type: FinanceEventType): FinanceDirection 
     case 'event_cost':
     case 'purchase_order':
     case 'purchase_order_received':
+    case 'payment_reversal':
       return 'outflow';
     default:
       return 'neutral';
@@ -378,7 +380,8 @@ export interface CashflowActualExpected {
 // 予定として数える状態（確定前の見込み）／実績として数える状態（posted）。
 const CF_EXPECTED_STATUSES = new Set(['draft', 'pending_approval', 'approved']);
 // 資金繰りの対象とする FinanceEvent 種別（予定/実績の金額イベント）。
-const CF_FLOW_TYPES = new Set(['cashflow_expected', 'payment_expected', 'payment_received']);
+// payment_reversal は入金取消の実績 outflow（posted）＝ netActual から差し引く（Codex C-01）。
+const CF_FLOW_TYPES = new Set(['cashflow_expected', 'payment_expected', 'payment_received', 'payment_reversal']);
 
 /** FinanceEvent を「予定 vs 実績」で入金/支払別に集計（資金繰り統合用）。 */
 export function summarizeCashflowActualVsExpected(

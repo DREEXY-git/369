@@ -77,6 +77,24 @@ describe('Cashflow — actual vs expected', () => {
     ]);
     expect(s.paymentShortfallWarning).toBe(true);
   });
+
+  it('入金取消(payment_reversal)を実績 outflow として netActual から差し引く（Codex C-01）', () => {
+    // 5,000円入金後に全額取消 → 純入金 0。取消が集計に入らず inflow だけ残る回帰を検出。
+    const full = summarizeCashflowActualVsExpected([
+      { type: 'payment_received', direction: 'inflow', amount: 5000, status: 'posted' },
+      { type: 'payment_reversal', direction: 'outflow', amount: 5000, status: 'posted' },
+    ]);
+    expect(full.inflowActual).toBe(5000);
+    expect(full.outflowActual).toBe(5000);
+    expect(full.netActual).toBe(0);
+
+    // 一部取消（5,000 入金 → 3,000 取消）→ 純入金 2,000。
+    const partial = summarizeCashflowActualVsExpected([
+      { type: 'payment_received', direction: 'inflow', amount: 5000, status: 'posted' },
+      { type: 'payment_reversal', direction: 'outflow', amount: 3000, status: 'posted' },
+    ]);
+    expect(partial.netActual).toBe(2000);
+  });
 });
 
 describe('P3-Q2C — 見積発行承認の決定後ステータス', () => {

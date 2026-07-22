@@ -47,8 +47,9 @@ export default async function ReferralRecordsPage({
       />
     );
   }
-  const canCreate = hasPermission(user, 'marketing', 'create');
-  const canUpdate = hasPermission(user, 'marketing', 'update');
+  // Codex R4-01: Action と同じ actor 判定（AI 主体＝role/isAi 不整合含む は書き込み UI を出さない）。
+  const canCreate = !user.isAi && hasPermission(user, 'marketing', 'create');
+  const canUpdate = !user.isAi && hasPermission(user, 'marketing', 'update');
   const sp = (await searchParams) ?? {};
   const flash = typeof sp.created === 'string' ? '紹介を記録しました。' : typeof sp.updated === 'string' ? '状況を更新しました。' : '';
   const errorMsg =

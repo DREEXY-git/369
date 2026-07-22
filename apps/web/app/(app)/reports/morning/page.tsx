@@ -68,7 +68,7 @@ export default async function MorningReportPage() {
   const referralCustomers = canViewReferral
     ? await prisma.customer.findMany({
         where: { tenantId: t, label: { in: visibleCustomerLabels(user.roles) } },
-        select: { id: true, rank: true, status: true, satisfaction: true, churnRisk: true, lastContactAt: true, deals: { select: { stage: true } } },
+        select: { id: true, rank: true, status: true, satisfaction: true, churnRisk: true, lastContactAt: true, deals: { where: { tenantId: t }, select: { stage: true } } },
         take: 50,
       })
     : [];

@@ -1,13 +1,14 @@
 import Link from 'next/link';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
-import { prisma } from '@/lib/db';
+import { prisma, writeDataAccess } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge } from '@/components/ui';
 import { AccessDenied } from '@/components/access-denied';
 import { SeverityBadge } from '@/components/badges';
+import { visibleCustomerLabels } from '@/lib/security/customer-visibility';
 import { generateMorningReport } from '@hokko/ai';
-import { detectAnomalies, formatDate } from '@hokko/shared';
+import { detectAnomalies, formatDate, classifyReferralSource } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +32,10 @@ export default async function MorningReportPage() {
   const canViewApprovals = hasPermission(user, 'approval', 'approve');
   // M3-2: 要追客リードの詳細（氏名・導線）は leadmap:read 保有者のみ。件数は非財務シグナルとして全 dashboard:read に表示。
   const canViewLeadmap = hasPermission(user, 'leadmap', 'read');
+  // Phase 3.5: 紹介候補ハイライト。紹介分析ページ（/growth/referral）と同じ marketing:read ゲート。
+  const canViewReferral = hasPermission(user, 'marketing', 'read');
+  // 「成約以降」とみなす Deal stage（DealStage に WON 無し・紹介分析ページと同一定義）。
+  const REFERRAL_WON_STAGES = ['CONTRACT', 'DELIVERY', 'INVOICE', 'FOLLOW_UP'];
   // 要追客 = 追客ボードと同条件（送信済み未反応で最終接触から5日以上／記録なし）。
   const followupOverdueBefore = new Date(Date.now() - 5 * 86_400_000);
   const FOLLOWUP_STAGES = ['SENT', 'OPENED', 'CLICKED'] as const;
@@ -57,6 +62,44 @@ export default async function MorningReportPage() {
       prisma.localBusinessLead.count({ where: followupWhere }),
       prisma.localBusinessLead.findMany({ where: followupWhere, orderBy: [{ lastContactAt: 'asc' }], select: { id: true, name: true, stage: true, lastContactAt: true }, take: 5 }),
     ]);
+
+  // Phase 3.5: 紹介元候補の件数を朝礼に前出し（既存 classifyReferralSource・氏名は出さず件数と導線のみ）。
+  // marketing:read 保有時のみ機密射影（satisfaction/churnRisk）を取得し、取得時は metadata-only で監査する。
+  const referralCustomers = canViewReferral
+    ? await prisma.customer.findMany({
+        where: { tenantId: t, label: { in: visibleCustomerLabels(user.roles) } },
+        select: { id: true, rank: true, status: true, satisfaction: true, churnRisk: true, lastContactAt: true, deals: { select: { stage: true } } },
+        take: 50,
+      })
+    : [];
+  const referralNow = new Date();
+  const referralCandidateCount = referralCustomers.filter((c) =>
+    classifyReferralSource(
+      {
+        customerId: c.id,
+        rank: c.rank,
+        status: c.status,
+        satisfaction: c.satisfaction,
+        churnRisk: c.churnRisk,
+        wonDeals: c.deals.filter((d) => REFERRAL_WON_STAGES.includes(d.stage)).length,
+        lastContactAt: c.lastContactAt,
+      },
+      referralNow,
+    ).eligible,
+  ).length;
+  // 機密射影（satisfaction/churnRisk）を判定に使うため metadata-only で監査（氏名・本文は入れない・紹介分析ページと同型）。
+  if (canViewReferral && referralCustomers.length > 0) {
+    await writeDataAccess({
+      tenantId: t,
+      actorId: user.userId,
+      actorType: user.isAi ? 'ai_agent' : 'user',
+      entityType: 'ReferralAnalysis',
+      action: 'read',
+      label: 'INTERNAL',
+      purpose: 'morning_referral_highlight',
+      metadata: { scanned: referralCustomers.length, candidates: referralCandidateCount },
+    });
+  }
 
   // 財務指標は finance:read 非保有者には redact（0/neutral）。AI 入力・異常検知・画面のすべてに redact 後の値を使う。
   const sales = canViewFinance ? toNumber(dealSum._sum.amount) : 0;
@@ -146,6 +189,17 @@ export default async function MorningReportPage() {
             ) : (
               <p className="text-xs text-muted-foreground">詳細はリードマップの閲覧権限を持つ担当者が対応します。</p>
             )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* Phase 3.5: 紹介元候補を朝礼に前出し。最も安く成約率の高いリード源＝紹介を、既存顧客への一声から増やす導線。 */}
+      {canViewReferral && referralCandidateCount > 0 ? (
+        <Card className="mt-4 border-emerald-300 bg-emerald-50/50 dark:bg-emerald-950/20">
+          <CardHeader><CardTitle>🤝 今日、紹介を頼める優良顧客（{referralCandidateCount}件）</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-xs text-muted-foreground">成約実績のある active 顧客から算出した「紹介元候補」です。紹介は最も安く成約率の高いリード源。既存顧客への一声から増やしましょう（依頼文の下書きは分析ページ・送信は既存の承認導線のみ）。</p>
+            <Link href="/growth/referral" className="inline-block text-xs text-primary hover:underline">→ 紹介・リファラル分析を開く</Link>
           </CardContent>
         </Card>
       ) : null}

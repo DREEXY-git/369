@@ -89,3 +89,35 @@
 
 ### 取り込み記録
 Claude は各 findings 取り込み時に PR コメント/§7 へ **CLAUDE_INTEGRATED（監査 SHA・対応 PR）** を記録。前進のみ・stale は「解消済み」と明記して close。
+
+---
+
+## ラウンド4（2026-07-22・Phase 3.5 紹介スライスの独立監査）
+
+**対象 SHA**: 最新 main `0ba767a`（#98/#99 セキュリティ＋ #100/#101 Phase 3.5 紹介 反映済み）。
+**依頼**: Claude が実装・単独 merge した「紹介」スライスを、Codex が独立監査（自己監査の盲点補完）。read-only・指摘のみ・実装は Claude。
+
+### 監査対象（#100 / #101）
+1. **#101 紹介記録テーブル**（新規 `CustomerReferral` ＋ migration `20260722071500_phase35_customer_referral`）
+   - `apps/web/app/(app)/growth/referral/records/actions.ts`（create / status 更新）
+   - `apps/web/app/(app)/growth/referral/records/page.tsx`（一覧・フォーム・遷移）
+   - `packages/shared/src/referral.ts`（`canTransitionReferralRecord` / `summarizeReferralRecords`）
+   - `packages/db/prisma/schema.prisma`（`CustomerReferral`）＋ migration SQL
+2. **#100 朝礼 紹介候補カード**（`apps/web/app/(app)/reports/morning/page.tsx` の追加分・`classifyReferralSource` 利用）
+3. **フレーキー修正**（`apps/web/tests/e2e/m1b_tenant_ai_boundary_evidence.spec.ts:577` を poll 化）が **security 検査を弱めていないか**（count===1 のままか）。
+
+### 観点
+- **tenant 越境**: `CustomerReferral` は tenantId スカラ。actions の `findFirst({id, tenantId})` / `updateMany({id, tenantId})`、page の `findMany({tenantId})` で越境 read/write が無いか。migration の index/型が schema と一致か。
+- **AI 境界**: `AI_AGENT` は `marketing:create` を持つ。両 action の `isHumanUser` ガードで AI 主体の作成/更新が確実に遮断されるか（人間 role のみ・isAiAgent 不整合も）。
+- **原子性/一貫性**: status 更新は read(status)→`canTransitionReferralRecord`→`updateMany` の TOCTOU。並行更新で不正遷移や二重確定が起き得るか（CAS 化の要否）。create の冪等性（requestKey 無し）の実害度。
+- **権限**: `marketing:read/create/update` の付与（OWNER/DEPT_MANAGER/STAFF）と画面ゲートの整合。
+- **入力検証/PII**: estimatedValue の parse・maxLength、#100 が氏名を出さず件数のみ・DataAccessLog が metadata-only か。
+
+### 成果物（git へ）
+`docs/audit/codex_reaudit_referral_0ba767a.md`（各 finding = file:line / class / なぜ実害 / 重大度 / 修正案）＋ branch `codex/reaudit-referral` を push。判定は監査 SHA `0ba767a` を明記。
+
+**禁止**: main への直接 push/merge・本番・DB・Secrets・外部送信・課金の有効化。これらは人間 Gate。既知未完（D-04/D-05・B/C defense-in-depth）は重複起票しない。
+
+### 更新履歴（追補）
+- 2026-07-22: ラウンド3 完了（B/C/D/G 再監査を Claude が取り込み: #93/#95/#96/#97＋#98 B-01＋#99 C-01/D-R3-01）。
+- 2026-07-22: ラウンド4。Phase 3.5 紹介スライス（#100/#101）を対象 `0ba767a` で独立監査依頼。

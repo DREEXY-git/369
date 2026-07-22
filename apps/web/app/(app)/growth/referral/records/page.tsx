@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
-import { prisma } from '@/lib/db';
+import { prisma, writeDataAccess } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Badge, EmptyState } from '@/components/ui';
@@ -9,7 +9,7 @@ import {
   REFERRAL_RECORD_STATUSES,
   REFERRAL_RECORD_STATUS_LABEL,
   canTransitionReferralRecord,
-  summarizeReferralRecords,
+  deriveReferralSummary,
   formatDate,
   type ReferralRecordStatus,
 } from '@hokko/shared';
@@ -61,14 +61,35 @@ export default async function ReferralRecordsPage({
           ? 'その状態には変更できません。'
           : '';
 
-  const records = await prisma.customerReferral.findMany({
-    where: { tenantId: user.tenantId },
-    orderBy: [{ createdAt: 'desc' }],
-    take: 200,
+  const LIST_LIMIT = 200;
+  // KPI（総数・成約率・見込み金額）は全件を DB aggregate で算出（take した標本に依存しない・Codex R4-07）。一覧は最新 LIST_LIMIT 件のみ表示。
+  const [grouped, records] = await Promise.all([
+    prisma.customerReferral.groupBy({ by: ['status'], where: { tenantId: user.tenantId }, _count: { _all: true }, _sum: { estimatedValue: true } }),
+    prisma.customerReferral.findMany({ where: { tenantId: user.tenantId }, orderBy: [{ createdAt: 'desc' }], take: LIST_LIMIT }),
+  ]);
+  const gcount = (s: string) => grouped.find((x) => x.status === s)?._count._all ?? 0;
+  const gsum = (s: string) => toNumber(grouped.find((x) => x.status === s)?._sum.estimatedValue ?? 0);
+  const summary = deriveReferralSummary({
+    received: gcount('received'),
+    inProgress: gcount('in_progress'),
+    won: gcount('won'),
+    lost: gcount('lost'),
+    pipelineValue: gsum('received') + gsum('in_progress'),
+    wonValue: gsum('won'),
   });
-  const summary = summarizeReferralRecords(
-    records.map((r) => ({ status: r.status, estimatedValue: r.estimatedValue == null ? null : toNumber(r.estimatedValue) })),
-  );
+  // Codex R4-05: 一覧は氏名・連絡先（PII）を表示するため、参照を metadata-only で監査（値は入れない）。
+  if (records.length > 0) {
+    await writeDataAccess({
+      tenantId: user.tenantId,
+      actorId: user.userId,
+      actorType: user.isAi ? 'ai_agent' : 'user',
+      entityType: 'CustomerReferral',
+      action: 'read',
+      label: 'INTERNAL',
+      purpose: 'referral_records_list',
+      metadata: { shown: records.length, total: summary.total, fields: ['referrerName', 'referredName', 'referredContact', 'note'] },
+    });
+  }
 
   return (
     <div className="animate-fade-in">
@@ -125,7 +146,7 @@ export default async function ReferralRecordsPage({
       ) : null}
 
       <Card>
-        <CardHeader><CardTitle>紹介一覧</CardTitle></CardHeader>
+        <CardHeader><CardTitle>紹介一覧{summary.total > records.length ? ` — 最新${records.length}件を表示（全${summary.total}件）` : ''}</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           {records.length === 0 ? (
             <EmptyState title="まだ紹介の記録がありません" hint="既存顧客から紹介を受けたら、上のフォームで記録して成約まで追跡しましょう。" />

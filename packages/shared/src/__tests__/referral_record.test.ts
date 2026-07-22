@@ -3,6 +3,8 @@ import {
   canTransitionReferralRecord,
   isReferralRecordStatus,
   summarizeReferralRecords,
+  deriveReferralSummary,
+  validateReferralRecordInput,
   REFERRAL_RECORD_STATUS_LABEL,
 } from '../referral';
 
@@ -63,5 +65,51 @@ describe('紹介記録の集計（件数・成約率・見込み金額）', () =
     expect(s.pipelineValue).toBe(0);
     expect(s.wonValue).toBe(0);
     expect(s.total).toBe(2);
+  });
+});
+
+describe('紹介記録の入力検証（server 側・Codex R4-04/08）', () => {
+  const base = { referrerName: '紹介太郎', referredName: '被紹介商事', referredContact: 'a@example.jp', note: 'メモ', estimatedValue: '50000' };
+
+  it('正常入力を parse（金額は数値・空の連絡先/noteは null）', () => {
+    const v = validateReferralRecordInput(base);
+    expect(v).not.toBeNull();
+    expect(v!.referrerName).toBe('紹介太郎');
+    expect(v!.estimatedValue).toBe(50000);
+    const v2 = validateReferralRecordInput({ ...base, referredContact: '', note: '', estimatedValue: '' });
+    expect(v2!.referredContact).toBeNull();
+    expect(v2!.note).toBeNull();
+    expect(v2!.estimatedValue).toBeNull();
+  });
+
+  it('必須欠落・長さ超過・不正金額は null（丸めず fail-closed）', () => {
+    expect(validateReferralRecordInput({ ...base, referrerName: '' })).toBeNull();
+    expect(validateReferralRecordInput({ ...base, referredName: '   ' })).toBeNull();
+    expect(validateReferralRecordInput({ ...base, referrerName: 'あ'.repeat(101) })).toBeNull();
+    expect(validateReferralRecordInput({ ...base, referredContact: 'x'.repeat(121) })).toBeNull();
+    expect(validateReferralRecordInput({ ...base, note: 'x'.repeat(501) })).toBeNull();
+    expect(validateReferralRecordInput({ ...base, estimatedValue: '-1' })).toBeNull(); // 負値
+    expect(validateReferralRecordInput({ ...base, estimatedValue: '1e6' })).toBeNull(); // 指数表記
+    expect(validateReferralRecordInput({ ...base, estimatedValue: '1.234' })).toBeNull(); // 小数3桁
+    expect(validateReferralRecordInput({ ...base, estimatedValue: '9999999999999' })).toBeNull(); // 13桁（範囲外）
+    expect(validateReferralRecordInput({ ...base, estimatedValue: 'abc' })).toBeNull();
+  });
+});
+
+describe('紹介記録の集計（DB aggregate 経路・deriveReferralSummary・Codex R4-07）', () => {
+  it('カウント・金額から成約率/総数/金額を導出し、array 集計と一致する', () => {
+    const d = deriveReferralSummary({ received: 1, inProgress: 1, won: 2, lost: 1, pipelineValue: 300000, wonValue: 450000 });
+    expect(d.total).toBe(5);
+    expect(d.winRate).toBe(66.7);
+    expect(d.pipelineValue).toBe(300000);
+    expect(d.wonValue).toBe(450000);
+    const arr = summarizeReferralRecords([
+      { status: 'received', estimatedValue: 100000 },
+      { status: 'in_progress', estimatedValue: 200000 },
+      { status: 'won', estimatedValue: 300000 },
+      { status: 'won', estimatedValue: 150000 },
+      { status: 'lost', estimatedValue: 999999 },
+    ]);
+    expect(arr).toEqual(d);
   });
 });

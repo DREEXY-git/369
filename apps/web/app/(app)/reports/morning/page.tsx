@@ -69,6 +69,8 @@ export default async function MorningReportPage() {
     ? await prisma.customer.findMany({
         where: { tenantId: t, label: { in: visibleCustomerLabels(user.roles) } },
         select: { id: true, rank: true, status: true, satisfaction: true, churnRisk: true, lastContactAt: true, deals: { where: { tenantId: t }, select: { stage: true } } },
+        // Codex R4-07: 標本を決定的にする（rank 昇順→更新新しい順）。上位50件（優良顧客）中の候補数を朝礼に出す。
+        orderBy: [{ rank: 'asc' }, { updatedAt: 'desc' }],
         take: 50,
       })
     : [];

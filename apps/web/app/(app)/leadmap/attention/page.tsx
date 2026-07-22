@@ -61,16 +61,19 @@ export default async function LeadAttentionPage() {
     LEAD_STALL_BUCKETS.map(async (bucket) => {
       const stages = stagesForLeadStallBucket(bucket) as LeadStage[];
       const cutoff = leadStallCutoff(now, bucket);
+      // Codex C-LM-01: classifyLeadStall は「N日以上（境界含む）＝isStale」なので DB も lte（境界含む）で揃える。
+      // lt だと cutoff ちょうどのリードを純関数は要対応、DB は非対象とし件数が食い違う。
       const where = {
         tenantId: t,
         stage: { in: stages },
-        OR: [{ lastContactAt: { lt: cutoff } }, { lastContactAt: null, updatedAt: { lt: cutoff } }],
+        OR: [{ lastContactAt: { lte: cutoff } }, { lastContactAt: null, updatedAt: { lte: cutoff } }],
       };
+      // Codex C-LM-03: 同優先度の tie-break に id を加え、上位 LIST_PER_BUCKET 件の選択を決定論化（同値で表示が揺れない）。
       const [count, leads] = await Promise.all([
         prisma.localBusinessLead.count({ where }),
         prisma.localBusinessLead.findMany({
           where,
-          orderBy: [{ priority: 'desc' }, { lastContactAt: 'asc' }, { updatedAt: 'asc' }],
+          orderBy: [{ priority: 'desc' }, { lastContactAt: 'asc' }, { updatedAt: 'asc' }, { id: 'asc' }],
           take: LIST_PER_BUCKET,
           select: { id: true, name: true, industry: true, city: true, stage: true, priority: true, updatedAt: true, lastContactAt: true },
         }),
@@ -115,7 +118,9 @@ export default async function LeadAttentionPage() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {buckets.filter((b) => b.count > 0).map((b) => (
+          {/* Codex C-LM-02: count と list は別 statement で瞬間的にズレ得るため、詳細カードは list（表示行）有無で出す。
+              count=0 でも表示行があればカードを隠さず、count>0 でも行が無ければ空カードを出さない（自己矛盾を防ぐ）。 */}
+          {buckets.filter((b) => b.leads.length > 0).map((b) => (
             <Card key={b.bucket}>
               <CardHeader>
                 <CardTitle className="flex flex-wrap items-center gap-2">
@@ -148,7 +153,7 @@ export default async function LeadAttentionPage() {
                   );
                 })}
                 {b.count > b.leads.length ? (
-                  <p className="pt-1 text-xs text-muted-foreground">ほか {b.count - b.leads.length}件（優先度の高い順に{LIST_PER_BUCKET}件を表示）。<Link href="/leadmap/leads" className="text-primary underline">リード一覧</Link>で確認できます。</p>
+                  <p className="pt-1 text-xs text-muted-foreground">ほか {Math.max(0, b.count - b.leads.length)}件（優先度の高い順に{LIST_PER_BUCKET}件を表示）。<Link href="/leadmap/leads" className="text-primary underline">リード一覧</Link>で確認できます。</p>
                 ) : null}
               </CardContent>
             </Card>

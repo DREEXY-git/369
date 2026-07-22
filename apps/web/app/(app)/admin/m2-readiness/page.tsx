@@ -60,7 +60,9 @@ export default async function M2ReadinessPage() {
     prisma.consentRecord.count({ where: { tenantId: t } }),
     prisma.consentRecord.count({ where: { tenantId: t, consent: true } }),
     prisma.outreachSendLog.groupBy({ by: ['status'], where: { tenantId: t }, _count: { _all: true } }),
-    prisma.financeEvent.count({ where: { tenantId: t, status: 'pending_send' } }),
+    // Codex E-01: 請求書クレームは status だけでなく論理 identity（type=payment_expected・sourceType=Invoice）まで限定し、
+    // 非Invoice由来/将来writer の pending_send を請求書として過大計上しない。
+    prisma.financeEvent.count({ where: { tenantId: t, type: 'payment_expected', sourceType: 'Invoice', status: 'pending_send' } }),
     prisma.collectionReminder.count({ where: { tenantId: t, status: 'sending' } }),
     prisma.outreachSendLog.count({ where: { tenantId: t, status: { in: ['queued', 'sending'] } } }),
     // AIの外部送信を遮断した回数（AIは送信主体になれない多重防御の実測）。
@@ -125,7 +127,8 @@ export default async function M2ReadinessPage() {
           <ul className="space-y-1.5">
             <li className="flex items-start gap-2"><Badge tone="green">済</Badge><span>外部送信は既定 OFF（<code>EXTERNAL_SEND_ENABLED</code> 未設定＝安全）。ON でも送信は承認後のみ。</span></li>
             <li className="flex items-start gap-2"><Badge tone="green">済</Badge><span>AI は外部送信・承認・削除の主体になれない（RBAC＋<code>assertAiToolAllowed</code> の多重防御）。上のブロック実績が証跡。</span></li>
-            <li className="flex items-start gap-2"><Badge tone="green">済</Badge><span>外部送信の3経路（請求書 E-01・営業メール E-04・督促 dunning）はすべて exactly-once（write-ahead claim → provider → finalize の3相）で二重送信ゼロ。送信中クレームは上のカードで監視。</span></li>
+            <li className="flex items-start gap-2"><Badge tone="green">済</Badge><span>外部送信の3経路（請求書・営業メール・督促）は write-ahead claim → provider → finalize の3相で<strong>二重送信ゼロ（at-most-once）</strong>。※厳密な exactly-once ではありません：送信直前クラッシュ時は「未送信のまま確定」になり得ます（二重送信の回避を優先）。上のカードの送信中クレームが滞留したら、provider 側の送達記録を照合してから再送/確定してください。</span></li>
+            <li className="flex items-start gap-2"><Badge tone="amber">残</Badge><span>厳密な exactly-once（送信の取りこぼしゼロ）が必要なら、provider の idempotency key・送達照合・再送キューの追加が本番 ON 前の宿題。</span></li>
             <li className="flex items-start gap-2"><Badge tone="green">済</Badge><span>送信前に配信停止（SuppressionList）・同意（ConsentRecord）を確認。配信停止希望は自動で抑止リストへ。</span></li>
             <li className="flex items-start gap-2"><Badge tone="amber">残</Badge><span>実LLM/実Maps は API キー投入とレート/課金の上限設計が前提（コスト・規約の人間判断）。</span></li>
           </ul>

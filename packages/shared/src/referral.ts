@@ -202,30 +202,83 @@ export interface ReferralRecordSummary {
   wonValue: number;
 }
 
-/** 紹介記録を状況別に集計（件数・成約率・見込み金額）。DB 非依存。 */
+/** 状況別カウント・金額（DB groupBy でも array 集計でも作れる中間形）。 */
+export interface ReferralRecordCounts {
+  received: number;
+  inProgress: number;
+  won: number;
+  lost: number;
+  pipelineValue: number; // 受領＋商談中の見込み金額合計
+  wonValue: number; // 成約の見込み金額合計
+}
+
+/** カウント・金額から集計（件数・成約率）を導出。DB aggregate 経路と array 経路の共通ロジック（Codex R4-07）。 */
+export function deriveReferralSummary(c: ReferralRecordCounts): ReferralRecordSummary {
+  const decided = c.won + c.lost;
+  const winRate = decided > 0 ? Math.round((c.won / decided) * 1000) / 10 : 0;
+  return {
+    total: c.received + c.inProgress + c.won + c.lost,
+    received: c.received,
+    inProgress: c.inProgress,
+    won: c.won,
+    lost: c.lost,
+    winRate,
+    pipelineValue: c.pipelineValue,
+    wonValue: c.wonValue,
+  };
+}
+
+/** 紹介記録の配列を状況別に集計（件数・成約率・見込み金額）。DB 非依存。 */
 export function summarizeReferralRecords(records: ReferralRecordSummaryInput[]): ReferralRecordSummary {
-  let received = 0;
-  let inProgress = 0;
-  let won = 0;
-  let lost = 0;
-  let pipelineValue = 0;
-  let wonValue = 0;
+  const c: ReferralRecordCounts = { received: 0, inProgress: 0, won: 0, lost: 0, pipelineValue: 0, wonValue: 0 };
   for (const r of records) {
     const v = Math.max(0, r.estimatedValue ?? 0);
-    if (r.status === 'received') {
-      received++;
-      pipelineValue += v;
-    } else if (r.status === 'in_progress') {
-      inProgress++;
-      pipelineValue += v;
-    } else if (r.status === 'won') {
-      won++;
-      wonValue += v;
-    } else if (r.status === 'lost') {
-      lost++;
-    }
+    if (r.status === 'received') { c.received++; c.pipelineValue += v; }
+    else if (r.status === 'in_progress') { c.inProgress++; c.pipelineValue += v; }
+    else if (r.status === 'won') { c.won++; c.wonValue += v; }
+    else if (r.status === 'lost') { c.lost++; }
   }
-  const decided = won + lost;
-  const winRate = decided > 0 ? Math.round((won / decided) * 1000) / 10 : 0;
-  return { total: records.length, received, inProgress, won, lost, winRate, pipelineValue, wonValue };
+  return deriveReferralSummary(c);
+}
+
+/** 紹介記録の作成入力（検証済み）。 */
+export interface ReferralRecordDraftInput {
+  referrerName: string;
+  referredName: string;
+  referredContact: string | null;
+  note: string | null;
+  estimatedValue: number | null;
+}
+
+// DECIMAL(14,2) の整数部上限（12桁）。
+const REFERRAL_MAX_ESTIMATED_VALUE = 999_999_999_999.99;
+
+/**
+ * 紹介記録の作成入力を server 側で検証（HTML 制約に依存しない・Codex R4-04/08）。DB 非依存の純関数。
+ * 氏名 1..100 / 連絡先 0..120 / note 0..500、金額は 10進・0以上・DECIMAL(14,2) 範囲。範囲外は丸めず null（＝入力エラー）。
+ */
+export function validateReferralRecordInput(raw: {
+  referrerName?: string | null;
+  referredName?: string | null;
+  referredContact?: string | null;
+  note?: string | null;
+  estimatedValue?: string | null;
+}): ReferralRecordDraftInput | null {
+  const referrerName = String(raw.referrerName ?? '').trim();
+  const referredName = String(raw.referredName ?? '').trim();
+  const referredContact = String(raw.referredContact ?? '').trim();
+  const note = String(raw.note ?? '').trim();
+  const estRaw = String(raw.estimatedValue ?? '').trim();
+  if (referrerName.length < 1 || referrerName.length > 100) return null;
+  if (referredName.length < 1 || referredName.length > 100) return null;
+  if (referredContact.length > 120) return null;
+  if (note.length > 500) return null;
+  let estimatedValue: number | null = null;
+  if (estRaw) {
+    if (!/^\d{1,12}(\.\d{1,2})?$/.test(estRaw)) return null; // 指数表記・記号・桁溢れを弾く
+    const v = Number(estRaw);
+    if (!Number.isFinite(v) || v < 0 || v > REFERRAL_MAX_ESTIMATED_VALUE) return null;
+    estimatedValue = v;
+  }
+  return { referrerName, referredName, referredContact: referredContact || null, note: note || null, estimatedValue };
 }

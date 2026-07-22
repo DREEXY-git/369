@@ -295,7 +295,10 @@ export function summarizeReferrersByName(rows: ReferrerGroupRow[]): ReferrerLead
       y.wonValue - x.wonValue ||
       y.won - x.won ||
       y.total - x.total ||
-      x.referrerName.localeCompare(y.referrerName, 'ja'),
+      x.referrerName.localeCompare(y.referrerName, 'ja') ||
+      // Codex D-REF-02: localeCompare('ja') は別文字列でも 0 を返す組があるため、最終 fallback に
+      // code-point 全順序を加えて一意に決定（groupBy は入力順不定なので stable sort だけでは揺れる）。
+      (x.referrerName < y.referrerName ? -1 : x.referrerName > y.referrerName ? 1 : 0),
   );
   return out;
 }

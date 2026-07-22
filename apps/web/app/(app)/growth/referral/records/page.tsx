@@ -66,14 +66,19 @@ export default async function ReferralRecordsPage({
           : '';
 
   const LIST_LIMIT = 200;
+  const STALE_LIST_LIMIT = 100;
   const LEADERBOARD_LIMIT = 10;
   const now = new Date();
+  // 要フォロー = 未決着（受領/商談中）のまま REFERRAL_STALE_DAYS 日以上 動きが無い紹介（updatedAt 基準）。count と一覧で同一 predicate。
+  const stalePredicate = { tenantId: user.tenantId, status: { in: ['received', 'in_progress'] }, updatedAt: { lt: referralStaleBefore(now) } };
   // KPI（総数・成約率・見込み金額）・紹介元ランキング・要フォロー件数は全件を DB aggregate で算出（take した標本に依存しない・Codex R4-07）。一覧は最新 LIST_LIMIT 件のみ表示。
-  const [grouped, referrerGroups, staleFollowUps, records] = await Promise.all([
+  const [grouped, referrerGroups, staleFollowUps, staleRecords, records] = await Promise.all([
     prisma.customerReferral.groupBy({ by: ['status'], where: { tenantId: user.tenantId }, _count: { _all: true }, _sum: { estimatedValue: true } }),
     prisma.customerReferral.groupBy({ by: ['referrerName', 'status'], where: { tenantId: user.tenantId }, _count: { _all: true }, _sum: { estimatedValue: true } }),
-    // 要フォロー = 未決着（受領/商談中）のまま REFERRAL_STALE_DAYS 日以上 動きが無い件数（全件・updatedAt 基準）。
-    prisma.customerReferral.count({ where: { tenantId: user.tenantId, status: { in: ['received', 'in_progress'] }, updatedAt: { lt: referralStaleBefore(now) } } }),
+    prisma.customerReferral.count({ where: stalePredicate }),
+    // Codex D-REF-01: 要フォロー件数は全件 count だが一覧は最新200件のため、201件目以降の放置紹介に到達できなかった。
+    // 放置紹介を古い順（更新が最も止まっている順）に別途取得し、専用カードで到達・更新可能にする。
+    prisma.customerReferral.findMany({ where: stalePredicate, orderBy: [{ updatedAt: 'asc' }], take: STALE_LIST_LIMIT }),
     prisma.customerReferral.findMany({ where: { tenantId: user.tenantId }, orderBy: [{ createdAt: 'desc' }], take: LIST_LIMIT }),
   ]);
   const gcount = (s: string) => grouped.find((x) => x.status === s)?._count._all ?? 0;
@@ -103,6 +108,41 @@ export default async function ReferralRecordsPage({
       metadata: { shown: records.length, total: summary.total, fields: ['referrerName', 'referredName', 'referredContact', 'note'] },
     });
   }
+
+  // 紹介1件の行（要フォロー一覧と全体一覧で共用）。状況更新フォームは権限保持者にのみ表示（Action 側でも fail-closed）。
+  const renderReferralRow = (r: (typeof records)[number]) => {
+    const status = r.status as ReferralRecordStatus;
+    const nexts = REFERRAL_RECORD_STATUSES.filter((s) => canTransitionReferralRecord(r.status, s));
+    return (
+      <div key={r.id} className="rounded-md border p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-medium">{r.referrerName}</span>
+          <span className="text-muted-foreground">→</span>
+          <span className="font-medium">{r.referredName}</span>
+          <Badge tone={STATUS_TONE[status] ?? 'slate'}>{REFERRAL_RECORD_STATUS_LABEL[status] ?? r.status}</Badge>
+          {isReferralStale(r.status, r.updatedAt, now) ? <Badge tone="amber">要フォロー（{REFERRAL_STALE_DAYS}日+放置）</Badge> : null}
+          {r.estimatedValue != null ? <Badge tone="slate">見込み {yen(toNumber(r.estimatedValue))}</Badge> : null}
+        </div>
+        <div className="mt-1 text-xs text-muted-foreground">
+          {r.referredContact ? <span className="mr-2">連絡先: {r.referredContact}</span> : null}
+          記録日: {formatDate(r.createdAt)}
+        </div>
+        {r.note ? <p className="mt-1 text-sm">{r.note}</p> : null}
+        {canUpdate && nexts.length > 0 ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground">状況を更新:</span>
+            {nexts.map((s) => (
+              <form key={s} action={updateReferralRecordStatusAction}>
+                <input type="hidden" name="id" value={r.id} />
+                <input type="hidden" name="status" value={s} />
+                <button type="submit" className="rounded-md border px-2.5 py-1 text-xs hover:bg-secondary/60">{REFERRAL_RECORD_STATUS_LABEL[s]}へ</button>
+              </form>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
 
   return (
     <div className="animate-fade-in">
@@ -194,45 +234,24 @@ export default async function ReferralRecordsPage({
         </Card>
       ) : null}
 
+      {/* Codex D-REF-01: 放置紹介（要フォロー）を古い順に到達・更新可能にする専用一覧。全件 count の警告からここへ辿り着ける。 */}
+      {staleRecords.length > 0 ? (
+        <Card className="mb-4 border-amber-300 bg-amber-50/40 dark:bg-amber-950/10">
+          <CardHeader><CardTitle>🔔 要フォローの紹介（動きが止まっている順）{staleFollowUps > staleRecords.length ? ` — ${staleRecords.length}件を表示（全${staleFollowUps}件）` : ''}</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-muted-foreground">受領・商談中のまま{REFERRAL_STALE_DAYS}日以上 動きがない紹介です。連絡して状況を更新しましょう。</p>
+            {staleRecords.map(renderReferralRow)}
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader><CardTitle>紹介一覧{summary.total > records.length ? ` — 最新${records.length}件を表示（全${summary.total}件）` : ''}</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           {records.length === 0 ? (
             <EmptyState title="まだ紹介の記録がありません" hint="既存顧客から紹介を受けたら、上のフォームで記録して成約まで追跡しましょう。" />
           ) : (
-            records.map((r) => {
-              const status = r.status as ReferralRecordStatus;
-              const nexts = REFERRAL_RECORD_STATUSES.filter((s) => canTransitionReferralRecord(r.status, s));
-              return (
-                <div key={r.id} className="rounded-md border p-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">{r.referrerName}</span>
-                    <span className="text-muted-foreground">→</span>
-                    <span className="font-medium">{r.referredName}</span>
-                    <Badge tone={STATUS_TONE[status] ?? 'slate'}>{REFERRAL_RECORD_STATUS_LABEL[status] ?? r.status}</Badge>
-                    {isReferralStale(r.status, r.updatedAt, now) ? <Badge tone="amber">要フォロー（{REFERRAL_STALE_DAYS}日+放置）</Badge> : null}
-                    {r.estimatedValue != null ? <Badge tone="slate">見込み {yen(toNumber(r.estimatedValue))}</Badge> : null}
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {r.referredContact ? <span className="mr-2">連絡先: {r.referredContact}</span> : null}
-                    記録日: {formatDate(r.createdAt)}
-                  </div>
-                  {r.note ? <p className="mt-1 text-sm">{r.note}</p> : null}
-                  {canUpdate && nexts.length > 0 ? (
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <span className="text-xs text-muted-foreground">状況を更新:</span>
-                      {nexts.map((s) => (
-                        <form key={s} action={updateReferralRecordStatusAction}>
-                          <input type="hidden" name="id" value={r.id} />
-                          <input type="hidden" name="status" value={s} />
-                          <button type="submit" className="rounded-md border px-2.5 py-1 text-xs hover:bg-secondary/60">{REFERRAL_RECORD_STATUS_LABEL[s]}へ</button>
-                        </form>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })
+            records.map(renderReferralRow)
           )}
         </CardContent>
       </Card>

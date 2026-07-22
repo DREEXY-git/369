@@ -220,6 +220,16 @@ async function main() {
     }
   }
 
+  // ---- Customer Referrals (Phase 3.5: 紹介記録) ----
+  await prisma.customerReferral.createMany({
+    data: [
+      { tenantId, referrerName: customers[0]?.name ?? '既存顧客A', referredName: '大通フェス実行委員会', referredContact: 'contact@odori-fes.example.jp', estimatedValue: 800000, status: 'in_progress', note: '毎年の大型イベント。設営一式の相談。', ownerId: salesUser.id },
+      { tenantId, referrerName: customers[2]?.name ?? '既存顧客B', referredName: '札幌北ロータリークラブ', referredContact: '011-700-0000', estimatedValue: 300000, status: 'won', note: '周年式典の音響・照明を受注。', ownerId: ceo.id },
+      { tenantId, referrerName: customers[8]?.name ?? '既存顧客C', referredName: '合同会社ミライデザイン', referredContact: null, estimatedValue: 150000, status: 'received', note: '知人経由の問い合わせ。ヒアリング待ち。', ownerId: salesUser.id },
+      { tenantId, referrerName: customers[1]?.name ?? '既存顧客D', referredName: '個人事業主（カフェ開業）', referredContact: 'cafe-open@example.jp', estimatedValue: 120000, status: 'lost', note: '予算が合わず今回は見送り。', ownerId: salesUser.id },
+    ],
+  });
+
   // ---- Deals ----
   const dealDefs: [string, number, number, number, string, number][] = [
     ['夏祭り会場設営一式', 1_800_000, 1_150_000, 70, 'NEGOTIATION', 0],

@@ -574,7 +574,8 @@ test.describe('E-06 human-only境界（AI/mixed role のDB不変・人間positiv
       // positive control: Usage(=EventProductUsage)+reserve Movement+GrowthEvent+DomainEvent。
       await expect.poll(() => prisma.eventProductUsage.count({ where: { tenantId: t, eventId: ownEvt.id, assetId: ownAsset.id } }), { timeout: 10_000 }).toBe(1);
       expect(await prisma.inventoryMovement.count({ where: { tenantId: t, eventId: ownEvt.id } }), 'reserve Movement 1').toBeGreaterThanOrEqual(1);
-      expect(await prisma.growthEvent.count({ where: { tenantId: t, entityType: 'EventProject', entityId: ownEvt.id, type: 'event.equipment.assigned' } }), 'GrowthEvent 1').toBe(1);
+      // GrowthEvent は EventProductUsage と同じく非同期に確定するため、575 の poll と同様に待って数える（即時 count だと未コミットで 0 になるフレーキーを解消・アサーション内容は count===1 で不変）。
+      await expect.poll(() => prisma.growthEvent.count({ where: { tenantId: t, entityType: 'EventProject', entityId: ownEvt.id, type: 'event.equipment.assigned' } }), { timeout: 10_000, message: 'GrowthEvent 1' }).toBe(1);
       expect(await prisma.domainEvent.count({ where: { tenantId: t, aggregateType: 'EventProject', aggregateId: ownEvt.id } }), 'DomainEvent 1').toBeGreaterThanOrEqual(1);
 
       for (const v of ROLE_VARIANTS) {

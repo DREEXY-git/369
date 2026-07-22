@@ -50,17 +50,23 @@ export default async function M2ReadinessPage() {
   const mapsOn = isGoogleMapsEnabled();
 
   // テナント単位の土台データ・安全実績（すべて tenantId でスコープ・件数のみ＝PII 非取得）。
-  const [suppression, consentTotal, consentTrue, sendLogByStatus, pendingSendClaims, blockedSends] = await Promise.all([
+  // 送信中クレーム（write-ahead claim）は3送信経路すべてを監視する:
+  //  - 請求書 E-01: FinanceEvent status='pending_send'
+  //  - 督促 dunning: CollectionReminder status='sending'
+  //  - 営業メール E-04: OutreachSendLog status ∈ {queued, sending}
+  // いずれも「送信は起動したが finalize 未了」＝通常 0。滞留があれば finalize 再実行（provider は再送しない）を要確認。
+  const [suppression, consentTotal, consentTrue, sendLogByStatus, invoiceClaims, dunningClaims, outreachClaims, blockedSends] = await Promise.all([
     prisma.suppressionList.count({ where: { tenantId: t } }),
     prisma.consentRecord.count({ where: { tenantId: t } }),
     prisma.consentRecord.count({ where: { tenantId: t, consent: true } }),
     prisma.outreachSendLog.groupBy({ by: ['status'], where: { tenantId: t }, _count: { _all: true } }),
-    // exactly-once の write-ahead claim（invoice-send E-01）。pending_send は「送信は起動したが finalize 未了」。
-    // 通常 0。>0 が滞留していれば finalize の再実行（provider は再送しない）を要確認。
     prisma.financeEvent.count({ where: { tenantId: t, status: 'pending_send' } }),
+    prisma.collectionReminder.count({ where: { tenantId: t, status: 'sending' } }),
+    prisma.outreachSendLog.count({ where: { tenantId: t, status: { in: ['queued', 'sending'] } } }),
     // AIの外部送信を遮断した回数（AIは送信主体になれない多重防御の実測）。
     prisma.aIAgentAction.count({ where: { tenantId: t, type: 'external_send_blocked' } }),
   ]);
+  const inFlightClaims = invoiceClaims + dunningClaims + outreachClaims;
   const sendCount = (s: string) => sendLogByStatus.find((x) => x.status === s)?._count._all ?? 0;
   const sent = sendCount('sent');
   const logged = sendCount('logged');
@@ -83,7 +89,7 @@ export default async function M2ReadinessPage() {
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="配信停止 登録" value={suppression} sub="送信前チェックの対象" tone="slate" />
         <Stat label="同意記録（有効/全体）" value={`${consentTrue} / ${consentTotal}`} tone={consentTrue > 0 ? 'emerald' : 'slate'} />
-        <Stat label="送信中クレーム（要確認）" value={pendingSendClaims} sub={pendingSendClaims === 0 ? '滞留なし（正常）' : '滞留あり・finalize 未了'} tone={pendingSendClaims === 0 ? 'emerald' : 'amber'} />
+        <Stat label="送信中クレーム（要確認）" value={inFlightClaims} sub={inFlightClaims === 0 ? '3経路とも滞留なし（正常）' : `請求書${invoiceClaims}/督促${dunningClaims}/営業${outreachClaims}`} tone={inFlightClaims === 0 ? 'emerald' : 'amber'} />
         <Stat label="AI外部送信ブロック" value={blockedSends} sub="AIの送信を遮断した実績" tone="emerald" />
       </div>
 

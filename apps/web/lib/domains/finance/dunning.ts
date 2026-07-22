@@ -13,7 +13,7 @@ import { prepareExternalPayload } from '@/lib/safe-external-send';
 import { assertAiToolAllowed } from '@/lib/ai-safety-server';
 import { toNumber } from '@/lib/utils';
 import { buildDunningDraft, isDunningEligible, nextDunningStage, dunningStageMeta } from '@hokko/shared';
-import { getEmailProvider, isExternalSendEnabled } from '@hokko/integrations';
+import { getEmailProvider, isExternalSendEnabled, type EmailProvider } from '@hokko/integrations';
 
 export interface Actor {
   tenantId: string;
@@ -212,72 +212,149 @@ export async function requestDunningSend(actor: Actor, reminderId: string): Prom
 }
 
 /**
- * 承認済み督促を送信/記録（invoice-send パターン）。
- * EXTERNAL_SEND_ENABLED=false は logged/監査のみ。宛先メール無は送信不可。
- * Receivable は触らない（送信だけで collected にしない）。二重実行防止は呼び出し側 executeApprovedAction。
+ * 送信の exactly-once 実証用テストフック（invoice-send E-01 と同型）。**未指定時は本番挙動を一切変えない**。
+ * spec が provider 呼び出し回数の観測と、各クラッシュウィンドウ（claim 後・provider 後・finalize 途中）の
+ * 障害注入を行うためのもの。EXTERNAL_SEND_ENABLED 等の env ゲートには影響しない。
  */
-export async function executeDunningSend(actor: Actor, reminderId: string): Promise<{ ok: boolean; reason?: string }> {
+export interface DunningSendTestHooks {
+  /** instrumented なメール Provider を注入し送信回数を観測（指定時のみ送信経路を実行・env 非依存）。 */
+  __emailProviderForTest?: EmailProvider;
+  /** claim commit 後・provider 呼び出し前に throw（claim 済みなら retry は provider 再送しない、を実証）。 */
+  __faultAfterClaimForTest?: () => void;
+  /** provider 呼び出し成功直後・finalize tx 前に throw（送信後クラッシュ後の retry でも provider 二重送信が起きない、を実証）。 */
+  __faultAfterProviderForTest?: () => void;
+  /** finalize tx 内の書き込み途中で throw（sent/Audit の all-or-nothing rollback を実証）。 */
+  __faultBetweenWritesForTest?: () => void;
+}
+
+// 送信可能状態（CAS の barrier）。sent/logged は送信済み・'sending' は write-ahead claim（送信起動済み）。
+const DUNNING_SENDABLE_STATUSES = ['draft', 'pending_approval'] as const;
+
+type DunningClaimOutcome =
+  | { kind: 'not-found' }
+  | { kind: 'no-recipient' } // 宛先メール無し（claim を立てず送信不可で返す）
+  | { kind: 'done' } // 既に sent/logged（冪等に成功で返す）
+  | { kind: 'claimed' } // 本実行が 'sending' を立てた＝provider 呼び出し担当（勝者1本）
+  | { kind: 'resume' }; // 既存 'sending' を引き継ぐ＝provider を再送しない
+
+/**
+ * 承認済み督促を外部送信/記録し sent|logged へ。EXTERNAL_SEND_ENABLED 時のみ実送信・それ以外は監査のみ。
+ * Receivable は触らない（送信だけで collected にしない・入金時のみ collected）。
+ *
+ * exactly-once（invoice-send E-01 と同型）: 外部送信は取り消せない副作用なので、DB より前に無防備に呼ぶと
+ * 送信後の DB 失敗/並行/クラッシュで二重送信になる（旧実装は status を read してから update する非原子的ガードで、
+ * provider 成功→finalize 失敗の retry が再送し得た）。そこで **write-ahead claim → provider → finalize** の3相にする:
+ *  1. claim（tx1・CollectionReminder 行 FOR UPDATE で並行/再送を直列化）: status を 'sending' に前進させ、
+ *     「送信が一度でも起動された」ことの durable な証跡にする。claim 生成者だけが provider を呼ぶ（勝者1本）。
+ *  2. provider: claim 生成者のみ・ちょうど1回。既存 'sending' を引き継ぐ retry/並行敗者は provider を呼ばない
+ *     （＝二重送信より「稀な pre-send クラッシュで1通落ちる（手動再送可）」を選ぶ at-most-once。督促は二重送信が最悪手）。
+ *  3. finalize（tx3・冪等）: 'sending'→sent|logged への CAS ＋ Audit を単一 tx で all-or-nothing 確定。
+ *     途中失敗は全 rollback し 'sending' のまま残るので、retry が provider を再送せず finalize をやり直す。
+ */
+export async function executeDunningSend(
+  actor: Actor,
+  reminderId: string,
+  opts: DunningSendTestHooks = {},
+): Promise<{ ok: boolean; reason?: string }> {
   const chain = await loadReminderChain(actor.tenantId, reminderId);
   if (!chain) return { ok: false, reason: 'not-found' };
   const { reminder, invoice: inv } = chain;
-  if (reminder.status === 'sent' || reminder.status === 'logged') return { ok: false, reason: 'already-sent' };
-
   const recipient = inv.customer?.email ?? null;
-  if (!recipient) return { ok: false, reason: 'no-recipient' }; // メール未登録 → 送信しない
+
+  // ---- Phase 1: 送信クレーム（write-ahead・CollectionReminder 行 FOR UPDATE で並行/再送を直列化） ----
+  const claim = await prisma.$transaction(async (tx): Promise<DunningClaimOutcome> => {
+    await tx.$queryRaw`SELECT id FROM "CollectionReminder" WHERE id = ${reminderId} AND "tenantId" = ${actor.tenantId} FOR UPDATE`;
+    const cur = await tx.collectionReminder.findFirst({ where: { id: reminderId, tenantId: actor.tenantId }, select: { status: true } });
+    if (!cur) return { kind: 'not-found' };
+    if (cur.status === 'sent' || cur.status === 'logged') return { kind: 'done' }; // 完了済みは冪等成功
+    if (cur.status === 'sending') return { kind: 'resume' }; // 既存 claim を引き継ぐ（provider 再送なし）
+    if (!recipient) return { kind: 'no-recipient' }; // 宛先無しは claim を立てず送信不可で返す
+    if (!(DUNNING_SENDABLE_STATUSES as readonly string[]).includes(cur.status)) return { kind: 'not-found' };
+    await tx.collectionReminder.update({ where: { id: reminderId }, data: { status: 'sending' } });
+    return { kind: 'claimed' };
+  }, { timeout: 15_000 });
+
+  if (claim.kind === 'not-found') return { ok: false, reason: 'not-found' };
+  if (claim.kind === 'no-recipient') return { ok: false, reason: 'no-recipient' };
+  if (claim.kind === 'done') return { ok: true }; // 完了済みの replay は冪等成功（並行/再送で契約が揺れない）
+  const isClaimCreator = claim.kind === 'claimed';
 
   const subject = `【お支払い状況のご確認】請求書 ${inv.number}`;
-  const prepared = await prepareExternalPayload({
-    tenantId: actor.tenantId,
-    actorId: actor.userId,
-    channel: 'email',
-    subject,
-    body: reminder.draftMessage,
-    recipient,
-    entityType: 'CollectionReminder',
-    entityId: reminderId,
-    purpose: 'dunning_send_execute',
-  });
-
-  const enabled = isExternalSendEnabled();
+  const enabled = isExternalSendEnabled(); // デプロイ定数（retry/resume を跨いで安定）
   let sendStatus = 'logged';
   let provider = 'log';
-  if (enabled) {
-    const email = getEmailProvider();
-    const res = await email.send({ to: recipient, from: process.env.MAIL_FROM ?? 'billing@dreexy.example.jp', subject, text: prepared.maskedBody });
-    sendStatus = res.status;
-    provider = res.provider;
-  }
-  const newStatus = enabled ? 'sent' : 'logged';
-  await prisma.collectionReminder.update({ where: { id: reminderId }, data: { status: newStatus } });
-  // 注意: Receivable.status は変更しない（送信だけで collected にしない。入金時のみ collected）。
-  await writeAudit({ tenantId: actor.tenantId, actorId: actor.userId, action: 'dunning_send', entityType: 'CollectionReminder', entityId: reminderId, summary: `督促を${newStatus === 'sent' ? '送信' : '記録'}: 請求書 ${inv.number}（${sendStatus}/${provider}）` });
-  await emitGrowthEvent({
-    tenantId: actor.tenantId,
-    type: 'finance.dunning.sent',
-    title: `督促送信（お支払い状況の確認）: 請求書 ${inv.number}`,
-    actorId: actor.userId,
-    entityType: 'CollectionReminder',
-    entityId: reminderId,
-  });
-  // Phase 1-33: 非課金の利用量記録（dunning 送信が logged/sent として確定した事実のみ）。課金ではない・billing=usage_only 固定。
-  // no-recipient / already-sent / failed / その他 status は emit しない（送れていない＝never_billable 相当）。
-  // metadata は非PIIの channel/status/kind のみ（recipient/draftMessage/subject/maskedBody/inv.number/金額/reminderId/secret は入れない）。
-  // 記録失敗は dunning 主処理を壊さない（recordUsageEvent は例外を投げず ok:false を返すだけ）。Receivable は触らない・collected にしない。
-  if (sendStatus === 'logged' || sendStatus === 'sent') {
-    await recordUsageEvent({
+
+  // ---- Phase 2: 外部送信（claim 生成者のみ・ちょうど1回） ----
+  if (isClaimCreator && recipient) {
+    // 送信直前に再度 PII マスク。
+    const prepared = await prepareExternalPayload({
       tenantId: actor.tenantId,
       actorId: actor.userId,
-      actorType: 'user',
-      eventType: 'external_send.dunning',
-      category: 'external_send',
-      billing: 'usage_only',
-      unit: 'count',
-      quantity: 1,
-      sourceType: 'CollectionReminder',
-      sourceId: reminderId,
-      idempotencyKey: `usage:external_send.dunning:${reminderId}`,
-      metadata: { channel: 'email', status: sendStatus, kind: 'dunning' },
+      channel: 'email',
+      subject,
+      body: reminder.draftMessage,
+      recipient,
+      entityType: 'CollectionReminder',
+      entityId: reminderId,
+      purpose: 'dunning_send_execute',
     });
+    if (opts.__faultAfterClaimForTest) opts.__faultAfterClaimForTest();
+    const testProvider = opts.__emailProviderForTest;
+    if (testProvider || enabled) {
+      const email = testProvider ?? getEmailProvider();
+      const res = await email.send({ to: recipient, from: process.env.MAIL_FROM ?? 'billing@dreexy.example.jp', subject, text: prepared.maskedBody });
+      sendStatus = res.status;
+      provider = res.provider;
+    }
+    if (opts.__faultAfterProviderForTest) opts.__faultAfterProviderForTest();
+  }
+
+  // ---- Phase 3: finalize（'sending'→sent|logged への CAS ＋ Audit を単一 tx・冪等） ----
+  const newStatus = enabled ? 'sent' : 'logged';
+  const finalized = await prisma.$transaction(async (tx) => {
+    const flip = await tx.collectionReminder.updateMany({
+      where: { id: reminderId, tenantId: actor.tenantId, status: 'sending' },
+      data: { status: newStatus },
+    });
+    if (opts.__faultBetweenWritesForTest) opts.__faultBetweenWritesForTest();
+    if (flip.count === 1) {
+      // 注意: Receivable.status は変更しない（送信だけで collected にしない。入金時のみ collected）。
+      await tx.auditLog.create({
+        data: { tenantId: actor.tenantId, actorId: actor.userId ?? null, actorType: 'user', action: 'dunning_send', entityType: 'CollectionReminder', entityId: reminderId, summary: `督促を${newStatus === 'sent' ? '送信' : '記録'}: 請求書 ${inv.number}（${sendStatus}/${provider}）` },
+      });
+    }
+    return flip.count === 1;
+  }, { timeout: 15_000 });
+
+  // ---- post-commit best-effort（finalize した実行のみ・二重計上しない） ----
+  if (finalized) {
+    await emitGrowthEvent({
+      tenantId: actor.tenantId,
+      type: 'finance.dunning.sent',
+      title: `督促送信（お支払い状況の確認）: 請求書 ${inv.number}`,
+      actorId: actor.userId,
+      entityType: 'CollectionReminder',
+      entityId: reminderId,
+    });
+    // Phase 1-33: 非課金の利用量記録（dunning 送信が logged/sent として確定した事実のみ）。課金ではない・billing=usage_only 固定。
+    // metadata は非PIIの channel/status/kind のみ（recipient/draftMessage/subject/maskedBody/inv.number/金額/reminderId/secret は入れない）。
+    // 記録失敗は dunning 主処理を壊さない（recordUsageEvent は例外を投げず ok:false を返すだけ）。idempotencyKey で再送収束。
+    if (sendStatus === 'logged' || sendStatus === 'sent') {
+      await recordUsageEvent({
+        tenantId: actor.tenantId,
+        actorId: actor.userId,
+        actorType: 'user',
+        eventType: 'external_send.dunning',
+        category: 'external_send',
+        billing: 'usage_only',
+        unit: 'count',
+        quantity: 1,
+        sourceType: 'CollectionReminder',
+        sourceId: reminderId,
+        idempotencyKey: `usage:external_send.dunning:${reminderId}`,
+        metadata: { channel: 'email', status: sendStatus, kind: 'dunning' },
+      });
+    }
   }
   return { ok: true };
 }

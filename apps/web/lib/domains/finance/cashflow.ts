@@ -88,7 +88,7 @@ export interface CashflowUnifiedData {
 /** 予定（draft/pending/approved）と実績（posted）を入金/支払別に統合集計（直近30日実績付き）。Phase 1-10。 */
 export async function getCashflowUnifiedData(tenantId: string): Promise<CashflowUnifiedData> {
   const events = await prisma.financeEvent.findMany({
-    where: { tenantId, type: { in: ['cashflow_expected', 'payment_expected', 'payment_received'] } },
+    where: { tenantId, type: { in: ['cashflow_expected', 'payment_expected', 'payment_received', 'payment_reversal'] } },
     orderBy: { occurredAt: 'desc' },
     take: 300,
   });

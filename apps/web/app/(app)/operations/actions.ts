@@ -377,7 +377,9 @@ export async function completeEventProjectAction(formData: FormData) {
  *  業務ロジックは lib/domains/finance/finance-bridge.ts。Golden Path: 現場→会計の橋渡し。 */
 export async function bridgeEventToFinanceAction(formData: FormData) {
   const user = await requireUser();
-  if (!hasPermission(user, 'finance', 'create')) redirect('/operations/events?denied=1');
+  // Codex D-R3-01: 同じ event 導線の他 Action と同様、AI 主体（AI role / isAiAgent 不整合）を
+  // 財務ブリッジ（FinanceEvent/請求候補/仕訳候補/入金予定の生成）から遮断する。
+  if (!isHumanUser({ roles: user.roles }) || !hasPermission(user, 'finance', 'create')) redirect('/operations/events?denied=1');
   const eventId = String(formData.get('eventId') ?? '');
   if (!eventId) redirect('/operations/events?error=input');
   const res = await bridgeEventProjectToFinance({ tenantId: user.tenantId, userId: user.userId }, eventId);

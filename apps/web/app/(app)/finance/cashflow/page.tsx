@@ -3,7 +3,7 @@ import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle, Table, Th, Td, Badge, Stat, EmptyState } from '@/components/ui';
 import { formatJpy, formatDate, formatDateTime } from '@hokko/shared';
-import { getCashflowBridgeData, getCashflowUnifiedData, getTenantScopedCashflowForecast } from '@/lib/domains/finance/cashflow';
+import { getCashflowBridgeData, getCashflowUnifiedData, getTenantScopedCashflowForecast, getCashflowShortageProjection } from '@/lib/domains/finance/cashflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +22,9 @@ export default async function CashflowPage() {
   const bridge = await getCashflowBridgeData(user.tenantId);
   // 予定 vs 実績（入金/支払）の統合集計。
   const unified = await getCashflowUnifiedData(user.tenantId);
+  // 資金ショート予兆（実データからのライブ予測）: 現在の現預金 + 今日以降の予定入出金 → running balance。
+  const proj = await getCashflowShortageProjection(user.tenantId);
+  const projLines = proj.result.lines.slice(0, 14);
 
   return (
     <div>
@@ -38,6 +41,51 @@ export default async function CashflowPage() {
           🤖 AI CFO: 残高が薄くなる時期があります。入金前倒し交渉・支払サイト調整・短期借入の検討を推奨します。
         </div>
       ) : null}
+
+      {/* 資金ショート予兆（実データからのライブ予測）: 現在の現預金＋今日以降の予定入出金の running balance。既存の静的予測とは別カード。 */}
+      <Card className="mb-4 border-2">
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center gap-2">
+            資金ショート予兆（実データ・ライブ予測）
+            {proj.result.shortageDate ? <Badge tone="red">要対応</Badge> : proj.lineCount > 0 ? <Badge tone="green">予測期間内 ショートなし</Badge> : null}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <Stat label="現在の現預金" value={formatJpy(proj.opening)} />
+            <Stat label="予測 最低残高" value={formatJpy(proj.result.minBalance)} tone={proj.result.minBalance < 0 ? 'red' : proj.result.minBalance < 1_500_000 ? 'amber' : 'emerald'} />
+            <Stat label="資金ショート予測日" value={proj.result.shortageDate ? formatDate(proj.result.shortageDate) : 'なし'} tone={proj.result.shortageDate ? 'red' : 'emerald'} />
+            <Stat label="対象の予定" value={`${proj.lineCount}件`} sub="今日以降・確定日" />
+          </div>
+          {proj.result.shortageDate ? (
+            <div className="mb-3 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900">
+              ⚠️ このままだと <span className="font-bold">{formatDate(proj.result.shortageDate)}</span> ごろに現預金がマイナスになる見込みです（現在の現預金＋今日以降の予定入出金ベース）。入金の前倒し・支払の繰延・短期借入などの手当てを早めに検討してください。
+            </div>
+          ) : null}
+          {proj.lineCount === 0 ? (
+            <p className="text-sm text-muted-foreground">今日以降の予定入出金（Finance Bridge の入金/支払予定）がまだありません。予定が登録されると、現預金からのライブな資金ショート予測が表示されます。</p>
+          ) : (
+            <Table>
+              <thead><tr><Th>予定日</Th><Th>入金</Th><Th>支払</Th><Th>残高（予測）</Th></tr></thead>
+              <tbody>
+                {projLines.map((l, i) => {
+                  const d = typeof l.date === 'string' ? l.date : formatDate(l.date);
+                  return (
+                    <tr key={i}>
+                      <Td className="whitespace-nowrap">{d}</Td>
+                      <Td className="text-emerald-600">{l.inflow > 0 ? formatJpy(l.inflow) : '—'}</Td>
+                      <Td className="text-red-600">{l.outflow > 0 ? formatJpy(l.outflow) : '—'}</Td>
+                      <Td className={`font-medium ${l.balance < 0 ? 'text-red-600' : ''}`}>{formatJpy(l.balance)} {l.shortage ? <Badge tone="red">ショート</Badge> : null}</Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </Table>
+          )}
+          {proj.lineCount > projLines.length ? <p className="pt-2 text-xs text-muted-foreground">先頭{projLines.length}件を表示（全{proj.lineCount}件の予定を予測に反映）。</p> : null}
+          <p className="pt-2 text-[11px] text-muted-foreground">※ 予定入出金ベースの機械計算による見込みです（確定ではありません）。実際の入出金・借入枠は別途ご確認ください。</p>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="pt-4">

@@ -1,7 +1,14 @@
 // FinanceEvent(cashflow_expected) を /finance/cashflow へ接続する集計（既存表示は非破壊）。Phase 1-9〜1-10。
 import { prisma } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
-import { summarizeCashflowActualVsExpected, type CashflowActualExpected } from '@hokko/shared';
+import {
+  summarizeCashflowActualVsExpected,
+  forecastCashflow,
+  financeEventToCashflowLine,
+  type CashflowActualExpected,
+  type CashflowResult,
+  type CashflowInputLine,
+} from '@hokko/shared';
 
 const EXPECTED = ['draft', 'pending_approval', 'approved'];
 
@@ -12,6 +19,50 @@ export interface CashflowBridgeData {
   netExpected: number;
   monthInflow: number;
   monthOutflow: number;
+}
+
+export interface CashflowShortageProjection {
+  /** 現在の現預金（CashAccount 残高合計）＝予測の起点。 */
+  opening: number;
+  /** 予測に載せた予定イベント数（今日以降・dueAt 確定分）。 */
+  lineCount: number;
+  /** forecastCashflow の結果（日次残高推移・最低残高・初ショート日）。 */
+  result: CashflowResult;
+}
+
+/**
+ * 資金ショート予兆（実データからのライブ予測）: 現在の現預金（CashAccount 合計）を起点に、
+ * 今日以降の「予定」FinanceEvent（cashflow_expected/payment_expected の expected 状態・dueAt 確定分）を
+ * 日付順に足し引きして running balance を作り、初めてマイナスになる日＝資金ショート予測日を実データから算出する。
+ * 既存の静的 forecast 表示は非破壊（別カード）。read-only・tenantId スコープ・純関数 forecastCashflow に委譲。
+ */
+export async function getCashflowShortageProjection(
+  tenantId: string,
+  now: Date = new Date(),
+): Promise<CashflowShortageProjection> {
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const [accounts, events] = await Promise.all([
+    prisma.cashAccount.findMany({ where: { tenantId }, select: { balance: true } }),
+    prisma.financeEvent.findMany({
+      where: {
+        tenantId,
+        type: { in: ['cashflow_expected', 'payment_expected'] },
+        status: { in: EXPECTED },
+        dueAt: { gte: todayStart },
+      },
+      orderBy: { dueAt: 'asc' },
+      take: 500,
+      select: { dueAt: true, amount: true, direction: true, description: true },
+    }),
+  ]);
+  const opening = accounts.reduce((s, a) => s + toNumber(a.balance), 0);
+  const lines: CashflowInputLine[] = [];
+  for (const e of events) {
+    const line = financeEventToCashflowLine({ dueAt: e.dueAt, amount: toNumber(e.amount), direction: e.direction, note: e.description });
+    if (line) lines.push(line);
+  }
+  return { opening, lineCount: lines.length, result: forecastCashflow(opening, lines) };
 }
 
 /** FinanceEvent(cashflow_expected) を入金/支払予定として集計（今月＋全期間）。 */

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { maskEmail, maskPhone, maskName, maskText } from '../masking';
-import { computeQuoteTotals, isOverdue, forecastCashflow, detectProfitLeaks } from '../finance';
+import { computeQuoteTotals, isOverdue, forecastCashflow, financeEventToCashflowLine, detectProfitLeaks } from '../finance';
 import { hasReservationConflict, suggestDynamicPrice } from '../inventory';
 import { computeLeadScore } from '../leads';
 import { chunkText, cosineSimilarity } from '../knowledge';
@@ -58,6 +58,30 @@ describe('資金繰り予測', () => {
     expect(r.lines[1]!.balance).toBe(-300_000);
     expect(r.shortageDate).not.toBeNull();
     expect(r.minBalance).toBe(-300_000);
+  });
+});
+
+describe('予定 FinanceEvent → 資金繰り予測行（financeEventToCashflowLine）', () => {
+  const due = new Date('2026-08-01');
+  it('inflow/outflow を direction で振り分け、金額は負を0に丸める', () => {
+    expect(financeEventToCashflowLine({ dueAt: due, amount: 500_000, direction: 'inflow' })).toEqual({ date: due, inflow: 500_000, outflow: 0, note: undefined });
+    expect(financeEventToCashflowLine({ dueAt: due, amount: 300_000, direction: 'outflow', note: '家賃' })).toEqual({ date: due, inflow: 0, outflow: 300_000, note: '家賃' });
+    // neutral 等は資金移動なし、負値は0
+    expect(financeEventToCashflowLine({ dueAt: due, amount: 100, direction: 'neutral' })).toEqual({ date: due, inflow: 0, outflow: 0, note: undefined });
+    expect(financeEventToCashflowLine({ dueAt: due, amount: -100, direction: 'inflow' })).toEqual({ date: due, inflow: 0, outflow: 0, note: undefined });
+  });
+  it('dueAt が無い予定は null（日付未確定＝予測に載せない）', () => {
+    expect(financeEventToCashflowLine({ dueAt: null, amount: 500_000, direction: 'inflow' })).toBeNull();
+  });
+  it('forecastCashflow と連結して資金ショート日を算出できる', () => {
+    const lines = [
+      { dueAt: new Date('2026-08-10'), amount: 900_000, direction: 'outflow' },
+      { dueAt: null, amount: 999_999, direction: 'outflow' }, // 日付未確定は除外される
+      { dueAt: new Date('2026-08-20'), amount: 400_000, direction: 'inflow' },
+    ].map(financeEventToCashflowLine).filter((l): l is NonNullable<typeof l> => l !== null);
+    const r = forecastCashflow(500_000, lines);
+    expect(r.shortageDate).not.toBeNull(); // 500,000 - 900,000 = -400,000
+    expect(r.minBalance).toBe(-400_000);
   });
 });
 

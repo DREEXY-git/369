@@ -3,13 +3,14 @@ import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeDataAccess } from '@/lib/db';
 import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
-import { Card, CardContent, CardHeader, CardTitle, Badge, EmptyState } from '@/components/ui';
+import { Card, CardContent, CardHeader, CardTitle, Badge, EmptyState, Table, Th, Td } from '@/components/ui';
 import { AccessDenied } from '@/components/access-denied';
 import {
   REFERRAL_RECORD_STATUSES,
   REFERRAL_RECORD_STATUS_LABEL,
   canTransitionReferralRecord,
   deriveReferralSummary,
+  summarizeReferrersByName,
   formatDate,
   type ReferralRecordStatus,
 } from '@hokko/shared';
@@ -62,9 +63,11 @@ export default async function ReferralRecordsPage({
           : '';
 
   const LIST_LIMIT = 200;
-  // KPI（総数・成約率・見込み金額）は全件を DB aggregate で算出（take した標本に依存しない・Codex R4-07）。一覧は最新 LIST_LIMIT 件のみ表示。
-  const [grouped, records] = await Promise.all([
+  const LEADERBOARD_LIMIT = 10;
+  // KPI（総数・成約率・見込み金額）と紹介元ランキングは全件を DB aggregate で算出（take した標本に依存しない・Codex R4-07）。一覧は最新 LIST_LIMIT 件のみ表示。
+  const [grouped, referrerGroups, records] = await Promise.all([
     prisma.customerReferral.groupBy({ by: ['status'], where: { tenantId: user.tenantId }, _count: { _all: true }, _sum: { estimatedValue: true } }),
+    prisma.customerReferral.groupBy({ by: ['referrerName', 'status'], where: { tenantId: user.tenantId }, _count: { _all: true }, _sum: { estimatedValue: true } }),
     prisma.customerReferral.findMany({ where: { tenantId: user.tenantId }, orderBy: [{ createdAt: 'desc' }], take: LIST_LIMIT }),
   ]);
   const gcount = (s: string) => grouped.find((x) => x.status === s)?._count._all ?? 0;
@@ -77,6 +80,10 @@ export default async function ReferralRecordsPage({
     pipelineValue: gsum('received') + gsum('in_progress'),
     wonValue: gsum('won'),
   });
+  // 紹介元ランキング（誰が実際に紹介し・成約に繋がったか）。成約金額の多い順・上位のみ表示。
+  const leaderboard = summarizeReferrersByName(
+    referrerGroups.map((g) => ({ referrerName: g.referrerName, status: g.status, count: g._count._all, wonValue: toNumber(g._sum.estimatedValue ?? 0) })),
+  ).slice(0, LEADERBOARD_LIMIT);
   // Codex R4-05: 一覧は氏名・連絡先（PII）を表示するため、参照を metadata-only で監査（値は入れない）。
   if (records.length > 0) {
     await writeDataAccess({
@@ -111,6 +118,37 @@ export default async function ReferralRecordsPage({
         <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">進行中の見込み金額</div><div className="text-2xl font-bold">{yen(summary.pipelineValue)}</div><div className="text-xs text-muted-foreground">受領{summary.received} / 商談中{summary.inProgress}</div></CardContent></Card>
         <Card><CardContent className="pt-4"><div className="text-xs text-muted-foreground">成約した見込み金額</div><div className="text-2xl font-bold">{yen(summary.wonValue)}</div></CardContent></Card>
       </div>
+
+      {leaderboard.length > 0 ? (
+        <Card className="mb-4">
+          <CardHeader><CardTitle>紹介元ランキング（誰が紹介し・成約に繋がったか）</CardTitle></CardHeader>
+          <CardContent>
+            <p className="mb-2 text-xs text-muted-foreground">成約金額の多い順・上位{LEADERBOARD_LIMIT}件。よく紹介してくれる相手ほど、次のお願いやお礼の優先度が高い相手です。</p>
+            <Table>
+              <thead>
+                <tr>
+                  <Th>紹介元</Th>
+                  <Th>紹介数</Th>
+                  <Th>成約</Th>
+                  <Th>成約率</Th>
+                  <Th>成約金額</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {leaderboard.map((r) => (
+                  <tr key={r.referrerName} className="hover:bg-secondary/50">
+                    <Td className="text-sm font-medium">{r.referrerName}</Td>
+                    <Td className="text-xs">{r.total}件</Td>
+                    <Td className="text-xs">{r.won}件{r.lost > 0 ? `（不成立${r.lost}）` : ''}</Td>
+                    <Td className="text-xs"><Badge tone={r.winRate >= 50 ? 'green' : r.winRate > 0 ? 'amber' : 'slate'}>{r.winRate}%</Badge></Td>
+                    <Td className="text-xs">{yen(r.wonValue)}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {canCreate ? (
         <Card className="mb-4">

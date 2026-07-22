@@ -203,6 +203,7 @@ export default async function AiAgentDetailPage({ params }: { params: Promise<{ 
                   <span>リスク: {r.riskLevel}</span>
                   <span className="ml-auto">{formatDateTime(r.startedAt)}</span>
                 </div>
+                <Link href={`/ai-agents/${agent.id}/runs/${r.id}`} className="mt-1 inline-block text-[11px] text-primary hover:underline" data-testid={`run-receipt-link-${r.id}`}>→ 実行レシート（証拠付き）</Link>
               </div>
             ))}
           </CardContent>

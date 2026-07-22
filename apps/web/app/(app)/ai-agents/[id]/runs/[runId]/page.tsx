@@ -56,6 +56,9 @@ export default async function AiRunReceiptPage({ params }: { params: Promise<{ i
     orderBy: { createdAt: 'asc' },
   });
   const blockedSends = actions.filter((a) => a.type === 'external_send_blocked').length;
+  // Codex G-AI-04: 生の output（任意 JSON）・error は AI が参照した個別データ（PII/機密を含み得る）を露出し得るため、
+  // 広い dashboard:read では出さず、監査閲覧権限（audit:read）保有者にのみ生表示する。行動トレイル・統計は従来どおり全 dashboard:read。
+  const canSeeRawOutput = hasPermission(user, 'audit', 'read');
 
   // 機密（AI 実行履歴）の参照を metadata-only で監査（出力本文・payload・PII は記録しない・件数と対象 ID のみ）。
   await writeDataAccess({
@@ -108,8 +111,16 @@ export default async function AiRunReceiptPage({ params }: { params: Promise<{ i
         <CardHeader><CardTitle>出力（AIの結果・下書き）</CardTitle></CardHeader>
         <CardContent className="space-y-2">
           <p className="text-xs text-muted-foreground">AIの生成物は下書きです。承認・外部送信は人間の承認導線でのみ行われます。</p>
-          <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md border bg-secondary/40 p-3 text-xs">{pretty(run.output)}</pre>
-          {run.error ? <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900">エラー: {run.error}</div> : null}
+          {canSeeRawOutput ? (
+            <>
+              <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md border bg-secondary/40 p-3 text-xs">{pretty(run.output)}</pre>
+              {run.error ? <div className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900">エラー: {run.error}</div> : null}
+            </>
+          ) : (
+            <div className="rounded-md border bg-secondary/30 p-3 text-xs text-muted-foreground">
+              生の出力・エラー内容には個別の顧客・財務・機密データが含まれ得るため、監査閲覧権限（audit:read）保有者にのみ表示します。上の行動トレイル・統計・安全指標はどなたでも確認できます。{run.error ? '（この実行にはエラーが記録されています）' : ''}
+            </div>
+          )}
         </CardContent>
       </Card>
 

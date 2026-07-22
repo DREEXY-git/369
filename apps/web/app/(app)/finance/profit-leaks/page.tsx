@@ -4,6 +4,7 @@ import { toNumber } from '@/lib/utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, Stat, EmptyState, Badge } from '@/components/ui';
 import { SeverityBadge } from '@/components/badges';
+import { canSeeCustomerLabel } from '@/lib/security/customer-visibility';
 import { detectProfitLeaks, formatJpy } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
@@ -49,14 +50,19 @@ export default async function ProfitLeaksPage() {
     : [];
   const custIds = invoices.map((i) => i.customerId).filter((x): x is string => !!x);
   const customers = custIds.length
-    ? await prisma.customer.findMany({ where: { tenantId: t, id: { in: custIds } }, select: { id: true, name: true } })
+    ? await prisma.customer.findMany({ where: { tenantId: t, id: { in: custIds } }, select: { id: true, name: true, label: true } })
     : [];
   const invById = new Map(invoices.map((i) => [i.id, i]));
-  const custNameById = new Map(customers.map((c) => [c.id, c.name]));
+  const custById = new Map(customers.map((c) => [c.id, c]));
+  // Codex G-AI-03: 顧客名（機密ラベル対象）は customer:read ＋ ラベル可視の場合のみ実名を出す。
+  // 権限外は請求番号にフォールバックし、顧客名・延滞額の対応を露出しない（売掛エイジング画面と同じ規約）。
+  const canSeeNames = hasPermission(user, 'customer', 'read');
   const liveFindings = detectProfitLeaks({
     overdueReceivables: overdueRecv.map((r) => {
       const inv = invById.get(r.invoiceId);
-      const label = (inv?.customerId ? custNameById.get(inv.customerId) : null) ?? inv?.number ?? r.id;
+      const cust = inv?.customerId ? custById.get(inv.customerId) : null;
+      const nameVisible = cust != null && canSeeNames && canSeeCustomerLabel(user.roles, cust.label);
+      const label = (nameVisible ? cust!.name : null) ?? inv?.number ?? r.id;
       return { id: r.id, amount: toNumber(r.amount), customer: label };
     }),
   });

@@ -24,7 +24,13 @@ packet_sha256: EXTERNAL
 - revision 2 → 3: 既存Draft PR #129に対するB/H監査finding（B-P5-GOV-01〜04, H-P5-001）のremediation。新機能・新WIP・Phase 5実行開始ではない。
   - previous_head（rev2 head）: `509f3b9cc380b961c4e412b3c05056480e285f52`
   - previous_packet_sha256（rev2 Packet本文）: `0e9ed7da3799ac38257d6e35e89d35a66d1cb833c319d10075213faf44274835`
-- 最終Packet承認（`PHASE5_TASK_PACKET_APPROVED`）は本revisionでも未実施。Revision 3作成後のHuman Gateとして残す。承認者は人間のみ、Codex B/Hは独立確認者。
+- revision 3 rework2（revisionは3のまま維持）: rev3初版（head `f0cca809abd6ff37dc5f6182ff44e4cda39269df`）へのB/H再監査（B: `B_PRECHECK_NG` / H: `H_OVERSIGHT_HOLD`）で確定した release-blocking findings を修正。
+  - B-P5-GOV-01 (HIGH): 06/07のTask Packet必須欄から `human_approval` を除去し、外部append-only Human Approval Event（8項目一致検証・fail-closed）へ置換。
+  - H-P5-R3-01 (MEDIUM): 01/02/03/05/06/07のEOF余分空行を除去し `git diff --check` exit 0、version/manifest整合。
+  - B-P5-GOV-R3-01 (MEDIUM): EvidenceとPacketのfinding ID対応を正しい対応へ修正。
+  - B-P5-GOV-04 (Evidence制約): raw baseline_diffをGitへ保存しないこと、証拠限界を人間が明示受容したことをEvidenceへ正確に記録。
+  - Commit F（pre-rework Evidence attestation）/ G（prompt・manifest修正）/ H（Packet・最終Evidence）。
+- 最終Packet承認（`PHASE5_TASK_PACKET_APPROVED`）は本revisionでも未実施。rework2作成後のHuman Gateとして残す。承認者は人間のみ、Codex B/Hは独立確認者。
 
 ## 1. Objective
 
@@ -45,31 +51,32 @@ packet_sha256: EXTERNAL
 
 ## 4. Source of Truth
 
-Commit C（B/H findingを反映したremediation commit）を、remediated Prompt Systemの正本とする。
+Commit G（rework2でB/H findingを反映したremediation commit）を、remediated Prompt Systemの正本とする。
 
-- Prompt system commit SHA (Commit C): `6df876ec6bd56982702ef63830a982dccb399dca`
+- Prompt system commit SHA (Commit G): `1ca066ef491acc6dbd08d81b4f42ad29f1e67628`
 - Bootstrap commit A（初回Git追跡）: `f71837efd5866427f0ba6f3b3b9462fd093286ad`
+- rev3初版 Commit C: `6df876ec6bd56982702ef63830a982dccb399dca`
 - Base main SHA at approval: `f822a73998d0dd936f18ad4ac305d01643ed8f83`
 - Prompt directory: `369-vault/プロンプト/Phase5/`
-- Manifest content hash (Commit C時点): `93c450f1f7ef326f821277fdbe17ffdb7a79890de6d145060a04c5e346fd6dad`
-- Related design audit: B/H audit of Draft PR #129
-- Related prior implementation: P5-GOV-000 revision 2 (`509f3b9cc380b961c4e412b3c05056480e285f52`)
+- Manifest content hash (Commit G時点): `73d0fe7a3e7a1ecab3665be042bc0729b2d19d0bae34576f70a980a4aa76e53d`
+- Related design audit: B/H re-audit of Draft PR #129（B: B_PRECHECK_NG / H: H_OVERSIGHT_HOLD）
+- Related prior implementation: P5-GOV-000 revision 3 initial (`f0cca809abd6ff37dc5f6182ff44e4cda39269df`)
 
-### Prompt SHA-256（Commit C時点の各ファイル内容）
+### Prompt SHA-256（Commit G時点の各ファイル内容）
 
-| # | Path | prompt_id | version | SHA-256 | rev3変更 |
+| # | Path | prompt_id | version | SHA-256 | rework2変更 |
 |---|---|---|---|---|---|
-| 00 | `369-vault/プロンプト/Phase5/00_PHASE5_PROMPT_SYSTEM.md` | 369-PHASE5-PROMPT-SYSTEM | 1.1 | `ee356ea54671c9ce75a0e78fb31dc0936a6b5ba3fa67a1049699d0ecd2ece90d` | YES |
-| 01 | `369-vault/プロンプト/Phase5/01_PHASE5_PROGRAM_CHARTER_V1.md` | 369-PHASE5-PROGRAM-CHARTER | 1.0 | `46b223208a478c470a8f9983910325b1e08abbe2520d0a4c62926c4614a16099` | no |
-| 02 | `369-vault/プロンプト/Phase5/02_PHASE5_CLAUDE_CODE_MASTER_PROMPT_V1.md` | 369-PHASE5-CLAUDE-IMPLEMENTER | 1.0 | `17631eb65f68afb3bf39fcdfac1b46c30b7411a8db536125903c65c27a03db92` | no |
-| 03 | `369-vault/プロンプト/Phase5/03_PHASE5_CODEX_A_TO_H_MASTER_PROMPT_V14.md` | 369-PHASE5-CODEX-A-H | 14.0 | `cba186eb0d5fda3c7b9a99ea0fb6c819e8ba72b6b439b74249ba96fd473fc7c5` | no |
-| 04 | `369-vault/プロンプト/Phase5/04_PHASE5_TASK_PACKET_TEMPLATE_V1.md` | 369-PHASE5-TASK-PACKET-TEMPLATE | 1.1 | `0298f5391bfee2c3771e24b7b51aedd08580de4d6cc79a73651a3d9c5720d6b1` | YES |
-| 05 | `369-vault/プロンプト/Phase5/05_PHASE5_BUSINESS_CLOSE_PROMPT_V1.md` | 369-PHASE5-BUSINESS-CLOSE | 1.0 | `a5d64bc0e00704d557627c7c5e3390cdec94a6116b6371750c5ed6bb4de538fd` | no |
-| 06 | `369-vault/プロンプト/Phase5/06_PHASE5_CLAUDE_CODE_SINGLE_PROMPT_V1.md` | 369-PHASE5-CLAUDE-SINGLE | 1.1 | `79e9f070e4e343b5774f0e4390bc6c95895211ea8abe8a64a14f9b53453c3be4` | YES |
-| 07 | `369-vault/プロンプト/Phase5/07_PHASE5_CODEX_SINGLE_PROMPT_V15.md` | 369-PHASE5-CODEX-SINGLE | 15.1 | `9810c9c0fe9476880ca8a3f2207b50127a47e56df04b896743c7de064af068e9` | YES |
-| — | `369-vault/プロンプト/Phase5/PROMPT_MANIFEST.json` | 369-phase5-prompt-manifest-v1 | 1.1 | `93c450f1f7ef326f821277fdbe17ffdb7a79890de6d145060a04c5e346fd6dad` | YES |
+| 00 | `369-vault/プロンプト/Phase5/00_PHASE5_PROMPT_SYSTEM.md` | 369-PHASE5-PROMPT-SYSTEM | 1.1 | `ee356ea54671c9ce75a0e78fb31dc0936a6b5ba3fa67a1049699d0ecd2ece90d` | no |
+| 01 | `369-vault/プロンプト/Phase5/01_PHASE5_PROGRAM_CHARTER_V1.md` | 369-PHASE5-PROGRAM-CHARTER | 1.1 | `0a2a89a30cb3e9381f92f4e7a7e99a3d4951fdc6acb9681645f7b35882dbad8e` | YES (EOF) |
+| 02 | `369-vault/プロンプト/Phase5/02_PHASE5_CLAUDE_CODE_MASTER_PROMPT_V1.md` | 369-PHASE5-CLAUDE-IMPLEMENTER | 1.1 | `d5ecf067fe9251f741127f3a7ea2bbfbb21e4d35caa4a877fa6fa5149eae749a` | YES (EOF) |
+| 03 | `369-vault/プロンプト/Phase5/03_PHASE5_CODEX_A_TO_H_MASTER_PROMPT_V14.md` | 369-PHASE5-CODEX-A-H | 14.1 | `03cafb8b2b34ddbe3726ce55bcbef8f7ac9d406baf3224d2f0b8b581f72dd5ba` | YES (EOF) |
+| 04 | `369-vault/プロンプト/Phase5/04_PHASE5_TASK_PACKET_TEMPLATE_V1.md` | 369-PHASE5-TASK-PACKET-TEMPLATE | 1.1 | `0298f5391bfee2c3771e24b7b51aedd08580de4d6cc79a73651a3d9c5720d6b1` | no |
+| 05 | `369-vault/プロンプト/Phase5/05_PHASE5_BUSINESS_CLOSE_PROMPT_V1.md` | 369-PHASE5-BUSINESS-CLOSE | 1.1 | `65add1032baaaa595cf4eda63d5b7b10805b720cab6766a1940ff5b794338cad` | YES (EOF) |
+| 06 | `369-vault/プロンプト/Phase5/06_PHASE5_CLAUDE_CODE_SINGLE_PROMPT_V1.md` | 369-PHASE5-CLAUDE-SINGLE | 1.2 | `ee2ea1d9908f473ec91a5fd43169ecc5068ca9365757f7a30b50ec415d81c1eb` | YES (human_approval除去 + EOF) |
+| 07 | `369-vault/プロンプト/Phase5/07_PHASE5_CODEX_SINGLE_PROMPT_V15.md` | 369-PHASE5-CODEX-SINGLE | 15.2 | `84ea784c4b1d3ed615bc127572650dfc1c12cdf24ba0800cc18324d8049c68a7` | YES (human_approval除去 + EOF) |
+| — | `369-vault/プロンプト/Phase5/PROMPT_MANIFEST.json` | 369-phase5-prompt-manifest-v1 | — | `73d0fe7a3e7a1ecab3665be042bc0729b2d19d0bae34576f70a980a4aa76e53d` | YES |
 
-manifestはcontent hash（各prompt本文のSHA-256）だけを管理する。commit SHAはmanifest本文へ書き込まない（循環参照なし）。commit SHAとcontent hashの対応付けは、本Packetと外部Human Approval Event（append-only）が併記して固定する。
+manifestはcontent hash（各prompt本文のSHA-256）だけを管理する。commit SHAはmanifest本文へ書き込まない（循環参照なし）。commit SHAとcontent hashの対応付けは、本Packetと外部Human Approval Event（append-only）が併記して固定する。06/07はTask Packet必須欄から `human_approval` を除去し、外部Human Approval Eventへ置換済み。
 
 ## 5. FACT / UNKNOWN
 
@@ -89,7 +96,7 @@ manifestはcontent hash（各prompt本文のSHA-256）だけを管理する。co
 
 ### IN_SCOPE
 
-- B-P5-GOV-01〜04・H-P5-001の修正（Prompt System 00/04/06/07 + manifest = Commit C）。
+- B/H監査findingの修正（rev3初版 = Commit C、rework2 = Commit F/G/H）。Prompt System 00〜07 + manifest、Packet、Evidence。
 - P5-GOV-000 Packetのrevision 3化（本ファイル = Commit D）。
 - baseline/after証拠の永続化（evidenceファイル = Commit E）。
 - 同一既存branch `claude/p5-entry-gate-v1` への通常push（既存Draft PR #129を維持）。
@@ -193,8 +200,14 @@ human_gates:
 
 ## 13. Acceptance Criteria
 
-1. B-P5-GOV-01〜04が解消される（外部Human Approval Event方式への統一、B/Hの承認者→独立確認者化、C/D/EのREQUIRED統一、manifest/commit/Packet hash循環の解消）。
-2. H-P5-001が解消される（baseline/after証拠の永続化、prompt hashの再計算）。
+1. finding ID対応（B-P5-GOV-R3-01で確定した正しい対応）で各findingが解消される:
+   - B-P5-GOV-01: `human_approval` をTask Packet必須欄から除去し外部append-only Human Approval Event方式へ統一。Packet immutable、8項目一致検証、mismatch/stale/自己承認はfail-closed。
+   - B-P5-GOV-02: C/D/E Role RouteをREQUIREDへ統一。
+   - B-P5-GOV-03: manifestはcontent hashのみ管理、循環hash解消。
+   - B-P5-GOV-04: dirty checkout baseline Evidenceを、raw diff非保存でhash・手順・制約付きに永続化。
+   - H-P5-001: 承認者は人間のみ、B/Hは独立確認者であることをprompt/Packetへ明記。
+   - H-P5-R3-01: 01/02/03/05/06/07のEOF正規化とversion/manifest整合で `git diff --check` exit 0。
+2. 06/07のTask Packet必須欄に `human_approval` が存在しない。
 3. 本Packetのstatusが `PROPOSED` である。
 4. 最終承認者が人間のみであり、Codex B/Hは独立確認者であることが本Packetとprompt本文に明記される。
 5. 本Packet §19 Role RouteのC/D/Eが `REQUIRED` である。
@@ -276,7 +289,7 @@ route:
   H_oversight: REQUIRED_AT_CHECKPOINT
 ```
 
-C（security/correctness）・D（test/evidence）・E（integration）はすべての実装Task PacketでREQUIREDに統一した（rev2のNOT_REQUIRED_WITH_REASONを廃止）。本remediationはdocsのみを変更するが、Role Route自体はB/Hのfinding B-P5-GOV-03に従いREQUIREDを正本とする。B/Hは独立確認者として本rev3をread-only再監査し、承認者は人間のみ。
+C（security/correctness）・D（test/evidence）・E（integration）はすべての実装Task PacketでREQUIREDに統一した（rev2のNOT_REQUIRED_WITH_REASONを廃止）。Role Route自体はB/Hのfinding B-P5-GOV-02に従いREQUIREDを正本とする。B/Hは独立確認者として本rev3をread-only再監査し、承認者は人間のみ。
 
 ## 20. Stop Conditions
 

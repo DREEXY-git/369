@@ -29,7 +29,7 @@
 
 ## 作らないもの・移すもの（有限クローズ）
 
-- **Phase 4.1／4.5 は作らない**。積み残しは**すべて Phase 5 候補**として整理する（[[プロンプト/Phase5/06_PHASE5_CLAUDE_CODE_SINGLE_PROMPT_V1|Phase 5 Claude Code統合完全プロンプト]] の Task Packet ガバナンスで扱う）。
+- **Phase 4.1／4.5 は作らない**。積み残しは**すべて Phase 5 候補**として整理する（Phase 5 の Task Packet ガバナンス＝承認済み Task Packet を待って着手。正本プロンプトは `369` リポジトリ側で管理）。
 - **Phase 5 へ移す製品課題**（承認済み Task Packet 待ち・本クローズでは着手しない）:
   - (a) F-R7-02 slice2（producer 側 canonical-id＋unified/bridge reader 統一・**schema 変更を伴う＝Human Gate**）
   - (b) post-commit 冪等（durable requestId）

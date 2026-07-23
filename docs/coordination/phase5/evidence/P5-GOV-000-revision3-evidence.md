@@ -222,3 +222,50 @@ amend / rebase / reset / force push は不使用。F/G/Hはrev3初版head `f0cca
 - main merge / Production: 未実施。人間Gate。
 
 verdict（rework2レーン）: `REVISION3_REWORK2_READY_FOR_BH_REAUDIT`
+
+---
+
+# Provenance Correction — H-P5-R3-R2-01
+
+rework2 head `4225273212cf8adc9973e8deb06bbd34cb2cfe0f` に対するH再監査finding `H-P5-R3-R2-01`（Packet本文に残っていた古いCommit C/D/Eの将来形・正本表現）を修正した。docs-only。Prompt 00〜07とmanifestは変更しない。revisionは3のまま維持。
+
+## 12. Packet provenance correction（Commit I / J）
+
+### 12.1 修正内容（Packet）
+
+- §5 FACT: rev3初版のCommit C/D/E、rework2のCommit F/G/Hがいずれも完了・push済みであることを正確に記録。hash照合対象を現行Prompt System正本のCommit G（`1ca066ef…`）に統一。
+- §6 Scope: 初版Packet=Commit D・初版Evidence=Commit Eという履歴と、現行Packet=Commit H/I・現行Evidence=Commit H/Jを分離。
+- §16 Evidence Required: base→A→B→C→D→E→F→G→H→I→J→headの実在commit chainを完全SHAで記録。
+- §17 Rollback: 「Commit C/D/Eをこれから積む」という将来形を削除し、実在のchain（A〜J）へ修正。
+
+### 12.2 commit chain（provenance correction）
+
+- Commit I（Packet provenance correction）: `41f7823725d09df23f48b087e27ea2859004aa73`
+- Commit J（final Evidence and new Packet hash = 本コミット）: 自身のSHAは循環回避のため本文へ記載しない。push後にPR #129と報告で提示する。
+
+amend / rebase / reset / force push は不使用。I/Jはrework2 head `4225273…` の上に積むだけ。
+
+### 12.3 hash（provenance correction）
+
+- Packet本文 SHA-256: rework2 `dd1497641c0be46f4605bc19da599306a784ed9f161aa735e847e9def2444632` → provenance correction `d5df4db457bbb16ac0c4c772d6d97b9737871d43f951f24652d32696cc87885e`
+- Packet本文は自身のhashを埋め込まない（`packet_sha256: EXTERNAL`）。Packet hashはこのEvidenceと外部Human Approval Eventで固定する。本Evidence本文も自身のhashを埋め込まない。
+- manifest content hash: `73d0fe7a3e7a1ecab3665be042bc0729b2d19d0bae34576f70a980a4aa76e53d`（**変更前と同一・不変**）。
+- Prompt 00〜07のSHA-256: §11.2の rework2 (after) 値から**不変**。manifest cross-check `MANIFEST_ALL_MATCH`。
+
+### 12.4 検証（provenance correction）
+
+- `git diff --check f822a73998d0dd936f18ad4ac305d01643ed8f83...HEAD` = exit 0。
+- Prompt 00〜07 hash = 現行manifestと全8件一致（manifest含め cross-check `MANIFEST_ALL_MATCH`）。
+- manifest SHA-256 = 変更前と同一（`73d0fe7a…`）。
+- ALLOWED_PATHS外変更 = 0（Packet と Evidence のみ）。
+- 製品コード / DB / schema / migration / workflow / PADN 変更 = 0。
+- 元のdirty checkout（`codex/f1d-e2e-locators`）: HEAD_SAME / STATUS_SAME / DIFF_SAME / STASH_SAME（不変）。
+- Draft PR #129 = Draft維持、PR本文未更新、auto-merge未設定。新規branch / 新規PR = なし。
+
+### 12.5 未実施（Human Gate）
+
+- 最終Packet承認（`PHASE5_TASK_PACKET_APPROVED`）: 未実施。人間のみが、Codex B/H再監査後に行う。
+- Codex B/H independent re-audit（read-only、新fixed head対象）: 未実施。B/Hは独立確認者。
+- main merge / Production: 未実施。人間Gate。
+
+verdict（provenance correctionレーン）: `REVISION3_PROVENANCE_READY_FOR_BH_REAUDIT`

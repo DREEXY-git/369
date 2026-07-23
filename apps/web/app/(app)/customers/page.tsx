@@ -43,7 +43,12 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
       <PageHeader
         title="顧客管理 CRM"
         description={`${customers.length} 件の顧客`}
-        action={<Link href="/customers/new"><Button>＋ 顧客を追加</Button></Link>}
+        action={
+          <div className="flex gap-2">
+            <Link href="/customers/churn"><Button variant="outline">⚠️ 離反予兆</Button></Link>
+            <Link href="/customers/new"><Button>＋ 顧客を追加</Button></Link>
+          </div>
+        }
       />
       <Card className="mb-3 p-3">
         <form method="get" className="flex items-end gap-2">

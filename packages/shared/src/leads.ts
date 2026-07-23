@@ -82,8 +82,14 @@ export const LEAD_SCORE_FACTOR_META: Record<string, { label: string; hint: strin
 };
 
 /**
+ * 1項目が取り得る加点の現実的な上限。現行スコアの最大項目は base=30 なので 100 は十分な安全余裕。
+ * これを超える有限値は壊れた/旧形式/手動投入とみなし理由に含めない（Codex C-SCORE-03: 誤った根拠を出さない）。
+ */
+export const MAX_LEAD_SCORE_FACTOR_POINTS = 100;
+
+/**
  * 優先度スコアの内訳を「加点のあった理由」の配列にして返す。
- * - 加点0以下・非数値は理由に含めない（該当しない項目を「理由」として見せない）。
+ * - 加点0以下・非数値・現実的上限超過は理由に含めない（該当しない/壊れた項目を「理由」として見せない）。
  * - 影響度（点数）の大きい順。同点は key で決定論的に整列（表示順が揺れない）。
  * - breakdown が null/未保存/オブジェクトでない場合は空配列（fail-closed・捏造しない）。
  */
@@ -91,10 +97,13 @@ export function describeLeadScoreBreakdown(breakdown: unknown): LeadScoreFactor[
   if (breakdown == null || typeof breakdown !== 'object' || Array.isArray(breakdown)) return [];
   const factors: LeadScoreFactor[] = [];
   for (const [key, raw] of Object.entries(breakdown as Record<string, unknown>)) {
-    const points = typeof raw === 'number' && Number.isFinite(raw) ? raw : 0;
-    if (points <= 0) continue;
-    const meta = LEAD_SCORE_FACTOR_META[key] ?? { label: key, hint: '', kind: 'opportunity' as const };
-    factors.push({ key, label: meta.label, points, hint: meta.hint, kind: meta.kind });
+    // 数値かつ有限、かつ現実的な範囲(0 < points <= 上限)のみ採用。範囲外・非数値は捏造を避けて除外（C-SCORE-03）。
+    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0 || raw > MAX_LEAD_SCORE_FACTOR_POINTS) continue;
+    // Object.prototype 継承プロパティ（constructor/toString/__proto__ 等）を meta と誤認しないよう own key のみ採用（C-SCORE-04）。
+    const meta = Object.hasOwn(LEAD_SCORE_FACTOR_META, key)
+      ? LEAD_SCORE_FACTOR_META[key]!
+      : { label: key, hint: '', kind: 'opportunity' as const };
+    factors.push({ key, label: meta.label, points: raw, hint: meta.hint, kind: meta.kind });
   }
   factors.sort((a, b) => b.points - a.points || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   return factors;

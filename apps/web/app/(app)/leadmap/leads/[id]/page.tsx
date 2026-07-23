@@ -60,6 +60,9 @@ export default async function LeadDetailPage({ params, searchParams }: { params:
   // 保存済み breakdown を「加点のあった理由」に変換（純関数・加点0や未保存は空＝捏造しない）。
   const latestScore = lead.scores[0];
   const scoreFactors = describeLeadScoreBreakdown(latestScore?.breakdown);
+  // Codex C-SCORE-01: 表示する加点の合計は「表示中の factor の総和」を正本にする（保存 score は 0-100 に
+  // cap 済みで内訳の総和と一致しないことがあるため、内訳と矛盾する「合計◯点」を断定しない）。
+  const scoreFactorTotal = scoreFactors.reduce((s, f) => s + f.points, 0);
   const expired = lead.expiresAt ? new Date(lead.expiresAt).getTime() < Date.now() : false;
   // 手動ステージ変更は人間 ∧ leadmap:update のみ表示（保護の本体は Action/domain の fail-closed 判定）。
   const canMutateStage = user.isAi === false && hasPermission(user, 'leadmap', 'update');
@@ -151,7 +154,7 @@ export default async function LeadDetailPage({ params, searchParams }: { params:
               <CardHeader><CardTitle>優先度スコアの内訳（AIが有望と判断した理由）</CardTitle></CardHeader>
               <CardContent className="space-y-2">
                 <p className="text-xs text-muted-foreground">
-                  「既に集客できていて、かつ改善の余地がある店」ほど提案が刺さりやすい、という考え方でAIが点数化しています（合計 {latestScore?.score ?? lead.priority} 点 / 100点満点）。加点の大きい理由ほど、営業の切り口として有効です。
+                  「既に集客できていて、かつ改善の余地がある店」ほど提案が刺さりやすい、という考え方でAIが点数化しています。下記の加点合計は {scoreFactorTotal} 点{scoreFactorTotal > 100 ? '（優先度スコアは上限100点に補正されます）' : ''}。加点の大きい理由ほど、営業の切り口として有効です。
                 </p>
                 <div className="space-y-1.5">
                   {scoreFactors.map((f) => (

@@ -17,6 +17,7 @@ export * from './retention';
 export * from './events';
 export * from './finance-event-identity';
 export * from './cashflow-obligation';
+export * from './customer-health';
 export * from './ai-safety';
 export * from './growth';
 export * from './operations';

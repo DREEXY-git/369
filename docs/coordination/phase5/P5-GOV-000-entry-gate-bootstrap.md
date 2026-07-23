@@ -1,7 +1,7 @@
 ---
 schema: 369-phase5-task-packet-v1
 packet_id: P5-GOV-000
-revision: 3
+revision: 4
 status: PROPOSED
 phase: 5
 workstream: WS-GOV
@@ -31,6 +31,11 @@ packet_sha256: EXTERNAL
   - B-P5-GOV-04 (Evidence制約): raw baseline_diffをGitへ保存しないこと、証拠限界を人間が明示受容したことをEvidenceへ正確に記録。
   - Commit F（pre-rework Evidence attestation）/ G（prompt・manifest修正）/ H（Packet・最終Evidence）。
 - 最終Packet承認（`PHASE5_TASK_PACKET_APPROVED`）は本revisionでも未実施。rework2作成後のHuman Gateとして残す。承認者は人間のみ、Codex B/Hは独立確認者。
+- revision 3 → 4（Entry Gate最後の修正・人間承認済み）: Prompt 04/06/07のHuman Approval Event統一（旧キー `approver` を廃止し `human_approver` に統一・8項目・authorization_scope・event_id・GitHub author認証規則）と、§16の完全40文字SHA記録・§5の完了済みcommit将来形の除去。新機能・新WIP・Phase 5実行開始ではない。
+  - previous_head（rev3 head = Commit J）: `3f174f4e2303ad09508f99ab6b014860ffde371b`
+  - previous_packet_sha256（rev3 Packet本文, provenance correction）: `d5df4db457bbb16ac0c4c772d6d97b9737871d43f951f24652d32696cc87885e`
+  - Commit K（Prompt 04/06/07統一 + manifest更新, 完了・push済み）: `1ff7fed77ace5f5bab47b1bcf7c3290e87a361d8`
+  - Commit L（Revision 4 Packet）/ Commit M（Revision 4 final Evidence）: 各コミット自身の完全SHAは循環回避のため本文へ埋め込まない。Git DAGと外部fixed headで完全chainを固定する。
 
 ## 1. Objective
 
@@ -51,42 +56,44 @@ packet_sha256: EXTERNAL
 
 ## 4. Source of Truth
 
-Commit G（rework2でB/H findingを反映したremediation commit）を、remediated Prompt Systemの正本とする。
+Commit K（P5-GOV-000 revision 4でPrompt 04/06/07のHuman Approval Eventを単一スキーマへ統一したremediation commit）を、remediated Prompt Systemの正本とする（rev3正本はCommit G `1ca066ef491acc6dbd08d81b4f42ad29f1e67628`、KはそのGにrevision 4の統一だけを反映した後継）。
 
-- Prompt system commit SHA (Commit G): `1ca066ef491acc6dbd08d81b4f42ad29f1e67628`
+- Prompt system commit SHA (Commit K, rev4正本): `1ff7fed77ace5f5bab47b1bcf7c3290e87a361d8`
+- 前正本 Prompt system commit SHA (Commit G, rev3): `1ca066ef491acc6dbd08d81b4f42ad29f1e67628`
 - Bootstrap commit A（初回Git追跡）: `f71837efd5866427f0ba6f3b3b9462fd093286ad`
 - rev3初版 Commit C: `6df876ec6bd56982702ef63830a982dccb399dca`
 - Base main SHA at approval: `f822a73998d0dd936f18ad4ac305d01643ed8f83`
 - Prompt directory: `369-vault/プロンプト/Phase5/`
-- Manifest content hash (Commit G時点): `73d0fe7a3e7a1ecab3665be042bc0729b2d19d0bae34576f70a980a4aa76e53d`
+- Manifest content hash (Commit K時点): `139f8ddad2bf09e45c36be95f0674f6ec49a7f3cd0e33f769438411707c8302d`
+- 前 Manifest content hash (Commit G時点): `73d0fe7a3e7a1ecab3665be042bc0729b2d19d0bae34576f70a980a4aa76e53d`
 - Related design audit: B/H re-audit of Draft PR #129（B: B_PRECHECK_NG / H: H_OVERSIGHT_HOLD）
 - Related prior implementation: P5-GOV-000 revision 3 initial (`f0cca809abd6ff37dc5f6182ff44e4cda39269df`)
 
-### Prompt SHA-256（Commit G時点の各ファイル内容）
+### Prompt SHA-256（Commit K時点の各ファイル内容）
 
-| # | Path | prompt_id | version | SHA-256 | rework2変更 |
+| # | Path | prompt_id | version | SHA-256 | rev4変更 |
 |---|---|---|---|---|---|
 | 00 | `369-vault/プロンプト/Phase5/00_PHASE5_PROMPT_SYSTEM.md` | 369-PHASE5-PROMPT-SYSTEM | 1.1 | `ee356ea54671c9ce75a0e78fb31dc0936a6b5ba3fa67a1049699d0ecd2ece90d` | no |
-| 01 | `369-vault/プロンプト/Phase5/01_PHASE5_PROGRAM_CHARTER_V1.md` | 369-PHASE5-PROGRAM-CHARTER | 1.1 | `0a2a89a30cb3e9381f92f4e7a7e99a3d4951fdc6acb9681645f7b35882dbad8e` | YES (EOF) |
-| 02 | `369-vault/プロンプト/Phase5/02_PHASE5_CLAUDE_CODE_MASTER_PROMPT_V1.md` | 369-PHASE5-CLAUDE-IMPLEMENTER | 1.1 | `d5ecf067fe9251f741127f3a7ea2bbfbb21e4d35caa4a877fa6fa5149eae749a` | YES (EOF) |
-| 03 | `369-vault/プロンプト/Phase5/03_PHASE5_CODEX_A_TO_H_MASTER_PROMPT_V14.md` | 369-PHASE5-CODEX-A-H | 14.1 | `03cafb8b2b34ddbe3726ce55bcbef8f7ac9d406baf3224d2f0b8b581f72dd5ba` | YES (EOF) |
-| 04 | `369-vault/プロンプト/Phase5/04_PHASE5_TASK_PACKET_TEMPLATE_V1.md` | 369-PHASE5-TASK-PACKET-TEMPLATE | 1.1 | `0298f5391bfee2c3771e24b7b51aedd08580de4d6cc79a73651a3d9c5720d6b1` | no |
-| 05 | `369-vault/プロンプト/Phase5/05_PHASE5_BUSINESS_CLOSE_PROMPT_V1.md` | 369-PHASE5-BUSINESS-CLOSE | 1.1 | `65add1032baaaa595cf4eda63d5b7b10805b720cab6766a1940ff5b794338cad` | YES (EOF) |
-| 06 | `369-vault/プロンプト/Phase5/06_PHASE5_CLAUDE_CODE_SINGLE_PROMPT_V1.md` | 369-PHASE5-CLAUDE-SINGLE | 1.2 | `ee2ea1d9908f473ec91a5fd43169ecc5068ca9365757f7a30b50ec415d81c1eb` | YES (human_approval除去 + EOF) |
-| 07 | `369-vault/プロンプト/Phase5/07_PHASE5_CODEX_SINGLE_PROMPT_V15.md` | 369-PHASE5-CODEX-SINGLE | 15.2 | `84ea784c4b1d3ed615bc127572650dfc1c12cdf24ba0800cc18324d8049c68a7` | YES (human_approval除去 + EOF) |
-| — | `369-vault/プロンプト/Phase5/PROMPT_MANIFEST.json` | 369-phase5-prompt-manifest-v1 | — | `73d0fe7a3e7a1ecab3665be042bc0729b2d19d0bae34576f70a980a4aa76e53d` | YES |
+| 01 | `369-vault/プロンプト/Phase5/01_PHASE5_PROGRAM_CHARTER_V1.md` | 369-PHASE5-PROGRAM-CHARTER | 1.1 | `0a2a89a30cb3e9381f92f4e7a7e99a3d4951fdc6acb9681645f7b35882dbad8e` | no |
+| 02 | `369-vault/プロンプト/Phase5/02_PHASE5_CLAUDE_CODE_MASTER_PROMPT_V1.md` | 369-PHASE5-CLAUDE-IMPLEMENTER | 1.1 | `d5ecf067fe9251f741127f3a7ea2bbfbb21e4d35caa4a877fa6fa5149eae749a` | no |
+| 03 | `369-vault/プロンプト/Phase5/03_PHASE5_CODEX_A_TO_H_MASTER_PROMPT_V14.md` | 369-PHASE5-CODEX-A-H | 14.1 | `03cafb8b2b34ddbe3726ce55bcbef8f7ac9d406baf3224d2f0b8b581f72dd5ba` | no |
+| 04 | `369-vault/プロンプト/Phase5/04_PHASE5_TASK_PACKET_TEMPLATE_V1.md` | 369-PHASE5-TASK-PACKET-TEMPLATE | 1.2 | `5b8624cc4937bbb4345642504463e04090b69b404fe3b5862dc9be2ba1ea1149` | YES (承認イベント統一) |
+| 05 | `369-vault/プロンプト/Phase5/05_PHASE5_BUSINESS_CLOSE_PROMPT_V1.md` | 369-PHASE5-BUSINESS-CLOSE | 1.1 | `65add1032baaaa595cf4eda63d5b7b10805b720cab6766a1940ff5b794338cad` | no |
+| 06 | `369-vault/プロンプト/Phase5/06_PHASE5_CLAUDE_CODE_SINGLE_PROMPT_V1.md` | 369-PHASE5-CLAUDE-SINGLE | 1.3 | `2a8b743bfe193801bb0f73fb5bd1e3f41f727f01bb4cc793e80ef91989da26e0` | YES (承認イベント統一) |
+| 07 | `369-vault/プロンプト/Phase5/07_PHASE5_CODEX_SINGLE_PROMPT_V15.md` | 369-PHASE5-CODEX-SINGLE | 15.3 | `8bba350a5de46e03851e0aa52fd0787c3aaf09218e8d523d321d03974a032e01` | YES (承認イベント統一) |
+| — | `369-vault/プロンプト/Phase5/PROMPT_MANIFEST.json` | 369-phase5-prompt-manifest-v1 | — | `139f8ddad2bf09e45c36be95f0674f6ec49a7f3cd0e33f769438411707c8302d` | YES |
 
-manifestはcontent hash（各prompt本文のSHA-256）だけを管理する。commit SHAはmanifest本文へ書き込まない（循環参照なし）。commit SHAとcontent hashの対応付けは、本Packetと外部Human Approval Event（append-only）が併記して固定する。06/07はTask Packet必須欄から `human_approval` を除去し、外部Human Approval Eventへ置換済み。
+manifestはcontent hash（各prompt本文のSHA-256）だけを管理する。commit SHAはmanifest本文へ書き込まない（循環参照なし）。commit SHAとcontent hashの対応付けは、本Packetと外部Human Approval Event（append-only）が併記して固定する。06/07はTask Packet必須欄から `human_approval` を除去し、外部Human Approval Eventへ置換済み。revision 4では04/06/07のHuman Approval Eventを単一スキーマへ統一し、旧キー `approver` を廃止し `human_approver` に統一した（Commit K）。
 
 ## 5. FACT / UNKNOWN
 
 ### FACT
 
 - `git rev-parse origin/main` = `f822a73998d0dd936f18ad4ac305d01643ed8f83`。
-- commit chainは実施済み: rev2（Commit A→B）、rev3初版（Commit C→D→E, head `f0cca809…`）、rework2（Commit F→G→H, head `4225273…`）はすべて完了・push済み。本provenance correctionはその上にCommit I→Jを積む（amend/rebase/resetなし）。
-- 現行Prompt System正本はCommit G（`1ca066ef…`）。§4のhash照合対象はCommit Gである。Commit G時点で再計算したprompt SHA-256とmanifest content hashは§4の値と一致する（cross-check `MANIFEST_ALL_MATCH`）。Prompt 00〜07とmanifestはprovenance correctionで変更しない。
-- 元のローカルcheckout（branch `codex/f1d-e2e-locators`）はdirtyであり、本作業では一切編集しない。byte単位/SHA-256でbaseline不変を確認済み（HEAD/STATUS/DIFF/STASH = SAME）。
-- 作業はcleanな別worktree（branch `claude/p5-entry-gate-v1`）のみで実施。
+- commit chainは実施済み（append-only・amend/rebase/resetなし）: rev2（Commit A→B）、rev3初版（C→D→E）、rework2（F→G→H）、provenance correction（I→J）はすべて完了・push済み。head（rev3最終）= Commit J `3f174f4e2303ad09508f99ab6b014860ffde371b`。
+- Revision 4 は Commit J の上に、Commit K（Prompt 04/06/07のHuman Approval Event統一 + manifest更新・完了・push済み `1ff7fed77ace5f5bab47b1bcf7c3290e87a361d8`）に続けて本Packet（Commit L）とEvidence（Commit M）を積む。完了済みのcommit（A〜K）を「これから積む」将来形では記述しない。
+- 現行Prompt System正本はCommit K（`1ff7fed77ace5f5bab47b1bcf7c3290e87a361d8`）。§4のhash照合対象はCommit K。Commit K時点で再計算したprompt SHA-256とmanifest content hashは§4の値と一致する（cross-check `MANIFEST_ALL_MATCH`）。Prompt 00/01/02/03/05はrevision 4で不変、04/06/07はCommit Kで承認イベント統一のため変更した。
+- 本Revision 4の作業はcleanな作業branch `claude/p5-entry-gate-v1` 上でのみ実施する。rev3までのローカルdirty checkout baseline（rev3 Evidence §10・別環境）は歴史記録として保持し、Rev4では再取得・変更しない（rev3 Evidenceは不変）。
 
 ### UNKNOWN
 
@@ -118,7 +125,7 @@ manifestはcontent hash（各prompt本文のSHA-256）だけを管理する。co
 
 - `369-vault/プロンプト/Phase5/**`
 - `docs/coordination/phase5/P5-GOV-000-entry-gate-bootstrap.md`
-- `docs/coordination/phase5/evidence/P5-GOV-000-revision3-evidence.md`
+- `docs/coordination/phase5/evidence/P5-GOV-000-revision4-evidence.md`
 
 ## 8. FORBIDDEN_PATHS
 
@@ -212,12 +219,12 @@ human_gates:
 4. 最終承認者が人間のみであり、Codex B/Hは独立確認者であることが本Packetとprompt本文に明記される。
 5. 本Packet §19 Role RouteのC/D/Eが `REQUIRED` である。
 6. manifestがcontent hashのみを管理し、循環hashが存在しない。
-7. baseline evidenceが `docs/coordination/phase5/evidence/P5-GOV-000-revision3-evidence.md` に永続化される。
+7. baseline evidenceが `docs/coordination/phase5/evidence/P5-GOV-000-revision4-evidence.md` に永続化される。
 8. `git diff --name-only origin/main...HEAD` がALLOWED_PATHS内のみで、ALLOWED_PATHS外の変更が0件である。
 9. 作成済みDraft PR #129がDraftのまま維持され、auto-merge / merge-on-greenが設定されない。
 10. main / Production / DB / schema / workflow / PADN等の禁止事項が維持され、変更0件である。
 11. 本Packetに角括弧プレースホルダ（未置換のテンプレート項目）が0件である。
-12. 本Packet本文（rev3）のSHA-256が外部証拠として算出・報告される（本文には書き込まない）。
+12. 本Packet本文（rev4）のSHA-256が外部証拠として算出・報告される（本文には書き込まない）。
 
 ## 14. Negative Acceptance Criteria
 
@@ -248,15 +255,18 @@ human_gates:
 ## 16. Evidence Required
 
 - changed files（`git diff --name-only origin/main...HEAD`）
-- commit chain（実在・完全SHA）: base `f822a73…` → A `f71837e…` → B `509f3b9…`（rev2）→ C `6df876e…` → D `345c8a4…` → E `f0cca80…`（rev3初版）→ F `ade469f…` → G `1ca066e…` → H `4225273…`（rework2）→ I / J（provenance correction）→ head
-- 各prompt SHA-256（rev3初版→rework2のbefore/after。provenance correctionでは不変）
-- manifest content hash（`73d0fe7a…`、provenance correctionで不変）
-- Packet SHA-256（provenance correction後の再計算値, 外部証拠）
+- commit chain（実在・完全40文字SHA・append-only）: base `f822a73998d0dd936f18ad4ac305d01643ed8f83` → A `f71837efd5866427f0ba6f3b3b9462fd093286ad` → B `509f3b9cc380b961c4e412b3c05056480e285f52` → C `6df876ec6bd56982702ef63830a982dccb399dca` → D `345c8a4a1a8303874409d3f6a910575d2600675c` → E `f0cca809abd6ff37dc5f6182ff44e4cda39269df` → F `ade469fb29ebb7a01400a94185f20c92cb13ceef` → G `1ca066ef491acc6dbd08d81b4f42ad29f1e67628` → H `4225273212cf8adc9973e8deb06bbd34cb2cfe0f` → I `41f7823725d09df23f48b087e27ea2859004aa73` → J `3f174f4e2303ad09508f99ab6b014860ffde371b` → K `1ff7fed77ace5f5bab47b1bcf7c3290e87a361d8` → L（本Packet）→ M（Evidence）
+- base と Commit A〜K の完全SHAは本Packetへ記録する（KはCommit L=本Packetより前に確定）。Commit L（本Packet自身を含む）と Commit M（Evidence自身を含む）は自身の完全SHAを本文へ埋め込まない（循環回避）。したがって「すべての完全SHAをPacket内部に記録済み」とは表現しない。完全chainはGit DAG（親子リンク）と外部fixed head（Human Approval Event）で固定する。
+- Commit L 完全SHAと本Packet本文 SHA-256 は Evidence（Commit M）へ記録する。
+- Commit M 完全SHAと Evidence 本文 SHA-256 は完了報告と外部Human Approval Eventで固定する（本文へは埋め込まない）。
+- 各prompt SHA-256（§4のCommit K時点値）: 00/01/02/03/05はrevision 4で不変、04/06/07はCommit Kで変更。
+- manifest content hash（`139f8ddad2bf09e45c36be95f0674f6ec49a7f3cd0e33f769438411707c8302d`、Commit K時点）
+- Packet SHA-256（rev4 Packet=Commit L確定後の再計算値, 外部証拠。本文には `packet_sha256: EXTERNAL`）
 - Evidence SHA-256（外部証拠）
 - 検証コマンドとexit status
-- baseline/after SHA-256とSAME結果
+- baseline invariance: rev3 Evidence §10 の歴史記録（別環境）を不変で保持。Rev4作業branchはcleanのため新規baseline再取得なし。
 - Draft PR #129 URL（Draft維持）
-- Evidence path: `docs/coordination/phase5/evidence/P5-GOV-000-revision3-evidence.md`
+- Evidence path: `docs/coordination/phase5/evidence/P5-GOV-000-revision4-evidence.md`
 - migration / rollback evidence: NOT_APPLICABLE（schema対象外）
 
 ## 17. Rollback
@@ -270,7 +280,7 @@ human_gates:
 
 - Stable knowledge changed: `YES`（Prompt SystemのB/H finding修正。承認者=人間、B/H=独立確認者、C/D/E必須、hash非循環を明文化）
 - Vault files allowed: `369-vault/プロンプト/Phase5/**`
-- Evidence path allowed: `docs/coordination/phase5/evidence/P5-GOV-000-revision3-evidence.md`
+- Evidence path allowed: `docs/coordination/phase5/evidence/P5-GOV-000-revision4-evidence.md`
 - `CURRENT_STATE` update: `POST_MERGE_ONLY`
 - `DELIVERY_CONTRACT` update: `POST_MERGE_ONLY`
 - Function Evidence update: `NO`
@@ -305,4 +315,4 @@ C（security/correctness）・D（test/evidence）・E（integration）はすべ
 
 ## 承認状態（本文外イベントで確定）
 
-本Packet本文には自身のSHA-256を書き込まない（循環参照回避）。Packet本文（rev3）確定後にファイル全体のSHA-256を計算し、外部証拠として報告する。`PHASE5_TASK_PACKET_APPROVED` マーカーは、Codex B/Hが独立にread-only再監査し、人間（DREEXY-git）がそのSHA-256を最終確認するまで付与しない。承認者は人間のみ。現時点のstatusは `PROPOSED`。
+本Packet本文には自身のSHA-256を書き込まない（循環参照回避）。Packet本文（rev4）確定後にファイル全体のSHA-256を計算し、外部証拠として報告する。`PHASE5_TASK_PACKET_APPROVED` マーカーは、Codex B/Hが独立にread-only再監査し、人間（DREEXY-git）がそのSHA-256を最終確認するまで付与しない。承認者は人間のみ。現時点のstatusは `PROPOSED`。

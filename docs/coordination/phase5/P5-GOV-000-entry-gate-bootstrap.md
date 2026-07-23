@@ -83,8 +83,8 @@ manifestはcontent hash（各prompt本文のSHA-256）だけを管理する。co
 ### FACT
 
 - `git rev-parse origin/main` = `f822a73998d0dd936f18ad4ac305d01643ed8f83`。
-- rev2 head `509f3b9…` は既にpush済み（Draft PR #129）。rev3はその上にCommit C/D/Eを積む（amend/rebase/resetなし）。
-- Commit C時点で再計算したprompt SHA-256とmanifest content hashは§4の値と一致する（cross-check `ALL_MATCH`）。
+- commit chainは実施済み: rev2（Commit A→B）、rev3初版（Commit C→D→E, head `f0cca809…`）、rework2（Commit F→G→H, head `4225273…`）はすべて完了・push済み。本provenance correctionはその上にCommit I→Jを積む（amend/rebase/resetなし）。
+- 現行Prompt System正本はCommit G（`1ca066ef…`）。§4のhash照合対象はCommit Gである。Commit G時点で再計算したprompt SHA-256とmanifest content hashは§4の値と一致する（cross-check `MANIFEST_ALL_MATCH`）。Prompt 00〜07とmanifestはprovenance correctionで変更しない。
 - 元のローカルcheckout（branch `codex/f1d-e2e-locators`）はdirtyであり、本作業では一切編集しない。byte単位/SHA-256でbaseline不変を確認済み（HEAD/STATUS/DIFF/STASH = SAME）。
 - 作業はcleanな別worktree（branch `claude/p5-entry-gate-v1`）のみで実施。
 
@@ -97,8 +97,8 @@ manifestはcontent hash（各prompt本文のSHA-256）だけを管理する。co
 ### IN_SCOPE
 
 - B/H監査findingの修正（rev3初版 = Commit C、rework2 = Commit F/G/H）。Prompt System 00〜07 + manifest、Packet、Evidence。
-- P5-GOV-000 Packetのrevision 3化（本ファイル = Commit D）。
-- baseline/after証拠の永続化（evidenceファイル = Commit E）。
+- P5-GOV-000 Packetのrevision 3化（本ファイル）: 初版 = Commit D、rework2更新 = Commit H、provenance correction = Commit I（現行）。
+- baseline/after証拠の永続化（evidenceファイル）: 初版 = Commit E、rework2 pre/after = Commit F/H、provenance最終 = Commit J（現行）。
 - 同一既存branch `claude/p5-entry-gate-v1` への通常push（既存Draft PR #129を維持）。
 
 ### NON_SCOPE
@@ -248,10 +248,11 @@ human_gates:
 ## 16. Evidence Required
 
 - changed files（`git diff --name-only origin/main...HEAD`）
-- base完全SHA / Commit A / Commit C / Commit D / Commit E / head完全SHA
-- 各prompt SHA-256（rev2→rev3のbefore/after）
-- manifest content hash
-- Packet SHA-256（rev3, 外部証拠）
+- commit chain（実在・完全SHA）: base `f822a73…` → A `f71837e…` → B `509f3b9…`（rev2）→ C `6df876e…` → D `345c8a4…` → E `f0cca80…`（rev3初版）→ F `ade469f…` → G `1ca066e…` → H `4225273…`（rework2）→ I / J（provenance correction）→ head
+- 各prompt SHA-256（rev3初版→rework2のbefore/after。provenance correctionでは不変）
+- manifest content hash（`73d0fe7a…`、provenance correctionで不変）
+- Packet SHA-256（provenance correction後の再計算値, 外部証拠）
+- Evidence SHA-256（外部証拠）
 - 検証コマンドとexit status
 - baseline/after SHA-256とSAME結果
 - Draft PR #129 URL（Draft維持）
@@ -260,7 +261,7 @@ human_gates:
 
 ## 17. Rollback
 
-- Code rollback: 本branchは未merge。Commit C/D/Eは既存branchへ積むだけで、Draft PR #129をclose、または不要ならbranch削除（人間判断）で完全に取り消せる。製品コード・DB・mainへは一切影響しない。
+- Code rollback: 本branchは未merge。実在のcommit chain（A→B→C→D→E→F→G→H→I→J）は既存branch `claude/p5-entry-gate-v1` 上に積まれているのみで、Draft PR #129をclose、または不要ならbranch削除（人間判断）で完全に取り消せる。製品コード・DB・mainへは一切影響しない。
 - Data rollback: none（データ変更なし）。
 - Feature flag: none。
 - Unsafe partial state prevention: docs-onlyのため部分適用による不整合は発生しない。mainへのmergeは人間Gate。

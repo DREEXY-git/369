@@ -516,10 +516,12 @@ async function main() {
     for (let li = 0; li < places.length; li++) {
       const p = places[li]!;
       const wh = p.website_hints;
-      const score = computeLeadScore({
+      // Codex C-SCORE-02: score と breakdown は必ず同一入力の1回の computeLeadScore から取る
+      // （priority / LeadScore.score / breakdown の三者を一致させ、内訳表示と合計を矛盾させない）。
+      const { score, breakdown: scoreBreakdown } = computeLeadScore({
         rating: p.rating, reviewCount: p.reviewCount, hasWebsite: wh.hasWebsite,
         mobileFriendly: wh.mobile, hasBooking: wh.hasBooking, hasLine: wh.hasLine, hasSocial: !!p.social.instagram,
-      }).score;
+      });
       const stage = pick(stageDist, totalLeads);
       const lead = await prisma.localBusinessLead.create({
         data: {
@@ -530,7 +532,7 @@ async function main() {
           placeSnapshots: { create: [{ tenantId, source: 'DEMO', placeId: p.placeId, payload: p as any, attributionRequired: false, cachePolicy: 'demo' }] },
           reviews: { create: p.reviews.map((r) => ({ tenantId, author: r.author, rating: r.rating, text: r.text, source: 'DEMO' as const })) },
           socialProfiles: { create: p.social.instagram ? [{ tenantId, platform: 'instagram', url: p.social.instagram }] : [] },
-          scores: { create: [{ tenantId, score, breakdown: computeLeadScore({ rating: p.rating, reviewCount: p.reviewCount, hasWebsite: wh.hasWebsite }).breakdown }] },
+          scores: { create: [{ tenantId, score, breakdown: scoreBreakdown }] },
         },
       });
       // website scan + findings (analyzed stages onward)

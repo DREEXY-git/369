@@ -53,6 +53,62 @@ export function priorityLabel(score: number): { text: string; tone: string } {
   return { text: '低', tone: 'slate' };
 }
 
+// ---- 優先度スコアの内訳の説明（なぜこのリードが有望か＝根拠を残す） ----
+// computeLeadScore が算出・保存した breakdown（加点の内訳）を、営業担当が読める日本語の
+// 「理由」に変換する純関数。加点0（該当なし）の項目は理由として表示しない。DB 非依存。
+
+/** 内訳項目の種別。base=基礎点 / fit=刺さりやすさ（確立度・評価帯）/ opportunity=提案余地 / caution=要注意。 */
+export type LeadScoreFactorKind = 'base' | 'fit' | 'opportunity' | 'caution';
+
+export interface LeadScoreFactor {
+  key: string;
+  label: string;
+  points: number;
+  hint: string;
+  kind: LeadScoreFactorKind;
+}
+
+/** breakdown の各キーの日本語ラベルと「なぜ営業機会か」の一言。未知キーは key をそのまま出す。 */
+export const LEAD_SCORE_FACTOR_META: Record<string, { label: string; hint: string; kind: LeadScoreFactorKind }> = {
+  base: { label: '基礎点', hint: 'すべてのリードに与える基準点です。', kind: 'base' },
+  established: { label: '確立度（口コミの多さ）', hint: '既に集客できている店ほど、改善提案が売上に直結し刺さりやすいです。', kind: 'fit' },
+  rating: { label: '評価帯', hint: '評価が低いほど改善提案の余地が大きく、提案が刺さりやすいです。', kind: 'fit' },
+  noWebsite: { label: 'Webサイトなし', hint: 'Web制作・集客支援の提案が最も刺さる状態です。', kind: 'opportunity' },
+  weakMobile: { label: 'モバイル最適化が弱い', hint: 'スマホ対応の改善提案の余地があります。', kind: 'opportunity' },
+  noBooking: { label: '予約導線なし', hint: 'ネット予約システム導入の提案余地があります。', kind: 'opportunity' },
+  noLine: { label: 'LINE公式なし', hint: 'LINE集客・再来店施策の提案余地があります。', kind: 'opportunity' },
+  noSocial: { label: 'SNS発信なし', hint: 'SNS運用支援の提案余地があります。', kind: 'opportunity' },
+  negativeSignal: { label: 'ネガティブ口コミの兆候', hint: '評判改善・オンライン対応の支援余地があります。', kind: 'caution' },
+};
+
+/**
+ * 1項目が取り得る加点の現実的な上限。現行スコアの最大項目は base=30 なので 100 は十分な安全余裕。
+ * これを超える有限値は壊れた/旧形式/手動投入とみなし理由に含めない（Codex C-SCORE-03: 誤った根拠を出さない）。
+ */
+export const MAX_LEAD_SCORE_FACTOR_POINTS = 100;
+
+/**
+ * 優先度スコアの内訳を「加点のあった理由」の配列にして返す。
+ * - 加点0以下・非数値・現実的上限超過は理由に含めない（該当しない/壊れた項目を「理由」として見せない）。
+ * - 影響度（点数）の大きい順。同点は key で決定論的に整列（表示順が揺れない）。
+ * - breakdown が null/未保存/オブジェクトでない場合は空配列（fail-closed・捏造しない）。
+ */
+export function describeLeadScoreBreakdown(breakdown: unknown): LeadScoreFactor[] {
+  if (breakdown == null || typeof breakdown !== 'object' || Array.isArray(breakdown)) return [];
+  const factors: LeadScoreFactor[] = [];
+  for (const [key, raw] of Object.entries(breakdown as Record<string, unknown>)) {
+    // 数値かつ有限、かつ現実的な範囲(0 < points <= 上限)のみ採用。範囲外・非数値は捏造を避けて除外（C-SCORE-03）。
+    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0 || raw > MAX_LEAD_SCORE_FACTOR_POINTS) continue;
+    // Object.prototype 継承プロパティ（constructor/toString/__proto__ 等）を meta と誤認しないよう own key のみ採用（C-SCORE-04）。
+    const meta = Object.hasOwn(LEAD_SCORE_FACTOR_META, key)
+      ? LEAD_SCORE_FACTOR_META[key]!
+      : { label: key, hint: '', kind: 'opportunity' as const };
+    factors.push({ key, label: meta.label, points: raw, hint: meta.hint, kind: meta.kind });
+  }
+  factors.sort((a, b) => b.points - a.points || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  return factors;
+}
+
 // ---- 取りこぼし検知（放置・停滞リードのレーダー） ----
 // アクティブなリードを「今どの段階で止まっているか」で分類し、最終活動からの経過で「要対応」を炙り出す。
 // 終端（WON/LOST/UNSUBSCRIBED/EXCLUDED）は対象外。DB 非依存の純関数（stage は文字列で受ける）。

@@ -9,9 +9,17 @@ import { AccessDenied } from '@/components/access-denied';
 import { analyzeLeadAction, generateOutreachAction, convertLeadToCustomerAction, updateLeadStageAction, repairLeadLinkAction } from '../../actions';
 import { manualStageTargets } from '@/lib/domains/crm/lead-stage';
 import { isLeadLinkConsistent } from '@/lib/domains/crm/lead-convert';
-import { formatDate, formatDateTime, isHumanUser, type LeadStage } from '@hokko/shared';
+import { formatDate, formatDateTime, isHumanUser, describeLeadScoreBreakdown, type LeadStage, type LeadScoreFactorKind } from '@hokko/shared';
 
 export const dynamic = 'force-dynamic';
+
+// 優先度スコア内訳の種別 → バッジ表現（提案の切り口を色で識別できるように）。
+const FACTOR_KIND_LABEL: Record<LeadScoreFactorKind, string> = {
+  base: '基礎点', fit: '刺さりやすさ', opportunity: '提案の余地', caution: '要注意',
+};
+const FACTOR_KIND_TONE: Record<LeadScoreFactorKind, 'slate' | 'blue' | 'green' | 'amber'> = {
+  base: 'slate', fit: 'blue', opportunity: 'green', caution: 'amber',
+};
 
 export default async function LeadDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string>> }) {
   const { id } = await params;
@@ -39,6 +47,9 @@ export default async function LeadDetailPage({ params, searchParams }: { params:
       outreachDrafts: { orderBy: { createdAt: 'desc' }, take: 1 },
       placeSnapshots: { orderBy: { fetchedAt: 'desc' }, take: 1 },
       pipelineHistory: { orderBy: { createdAt: 'desc' }, take: 6 },
+      // 優先度スコアの内訳（なぜ有望か）。LeadScore は leadId 単独FKのため、越境参照を防ぐよう
+      // 子取得条件にも tenantId を明示（defense-in-depth・他画面の nested scope と同じ規約）。
+      scores: { where: { tenantId: user.tenantId }, orderBy: { createdAt: 'desc' }, take: 1 },
     },
   });
   if (!lead) notFound();
@@ -46,6 +57,12 @@ export default async function LeadDetailPage({ params, searchParams }: { params:
   const insight = lead.insights[0];
   const scan = lead.websiteScans[0];
   const snap = lead.placeSnapshots[0];
+  // 保存済み breakdown を「加点のあった理由」に変換（純関数・加点0や未保存は空＝捏造しない）。
+  const latestScore = lead.scores[0];
+  const scoreFactors = describeLeadScoreBreakdown(latestScore?.breakdown);
+  // Codex C-SCORE-01: 表示する加点の合計は「表示中の factor の総和」を正本にする（保存 score は 0-100 に
+  // cap 済みで内訳の総和と一致しないことがあるため、内訳と矛盾する「合計◯点」を断定しない）。
+  const scoreFactorTotal = scoreFactors.reduce((s, f) => s + f.points, 0);
   const expired = lead.expiresAt ? new Date(lead.expiresAt).getTime() < Date.now() : false;
   // 手動ステージ変更は人間 ∧ leadmap:update のみ表示（保護の本体は Action/domain の fail-closed 判定）。
   const canMutateStage = user.isAi === false && hasPermission(user, 'leadmap', 'update');
@@ -130,6 +147,32 @@ export default async function LeadDetailPage({ params, searchParams }: { params:
               ) : null}
             </CardContent>
           </Card>
+
+          {/* 優先度スコアの内訳（なぜ有望か＝AIの根拠） */}
+          {scoreFactors.length > 0 ? (
+            <Card>
+              <CardHeader><CardTitle>優先度スコアの内訳（AIが有望と判断した理由）</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  「既に集客できていて、かつ改善の余地がある店」ほど提案が刺さりやすい、という考え方でAIが点数化しています。下記の加点合計は {scoreFactorTotal} 点{scoreFactorTotal > 100 ? '（優先度スコアは上限100点に補正されます）' : ''}。加点の大きい理由ほど、営業の切り口として有効です。
+                </p>
+                <div className="space-y-1.5">
+                  {scoreFactors.map((f) => (
+                    <div key={f.key} className="flex items-start justify-between gap-3 rounded-md border p-2">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge tone={FACTOR_KIND_TONE[f.kind]}>{FACTOR_KIND_LABEL[f.kind]}</Badge>
+                          <span className="text-sm font-medium">{f.label}</span>
+                        </div>
+                        {f.hint ? <div className="mt-0.5 text-xs text-muted-foreground">{f.hint}</div> : null}
+                      </div>
+                      <div className="shrink-0 text-sm font-bold text-primary">+{f.points}</div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
 
           {/* レビュー */}
           <Card>

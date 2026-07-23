@@ -17,8 +17,10 @@
 1. 保存済み利益漏れを無加工表示するため、顧客名・案件名・見積名の redaction を迂回できる（HIGH）。
 2. 朝礼の nested `CampaignMetric` に child tenant scope がなく、他 tenant の存在・件数をマーケティング集計へ混入できる（MEDIUM）。
 3. 資金ショート予測を `cashflow_expected` だけに限定した結果、正規の請求書送信が作る `payment_expected` を予測から消している。また InvoiceCandidate 起点の予定は正式 Invoice の入金で消し込まれない（MEDIUM）。
-4. 資金ショート予測の期間境界 B-CF-04 は未解消、同一日時の順序 B-CF-05 は決定論化だけで経済的意味は未確定（MEDIUM/LOW）。
-5. LeadMap の count/list race は外側の `totalStale` 分岐に残り、C-LM-02 は閉じていない。C-LM-03 も最終活動日時の並び順は未解消（LOW）。
+4. 501件打切りを検出しても、朝礼カードの表示条件に `truncated` がなく、不完全な予測を安全に見せ得る（MEDIUM）。
+5. #119 は `VOID` Invoice も請求済み扱いにし、請求漏れを見逃す（MEDIUM）。
+6. 資金ショート予測の期間境界 B-CF-04 は未解消、同一日時の順序 B-CF-05 は決定論化だけで経済的意味は未確定（MEDIUM/LOW）。
+7. LeadMap の count/list race は外側の `totalStale` 分岐に残り、C-LM-02 は閉じていない。C-LM-03 も最終活動日時の並び順は未解消（LOW）。
 
 ## 指摘
 
@@ -38,7 +40,7 @@
 
 **影響**
 
-`finance:read` はあるが `customer:read` / `deal:read` がない利用者に、ライブ経路では伏せた顧客名・案件名・見積名が保存済み経路から再露出する。G-AI-03 と #119 の redaction は経路横断では fail-closed になっていない。
+`finance:read` はあるが `customer:read` / `deal:read` がない利用者に、ライブ経路では伏せた顧客名・案件名・見積名が保存済み経路から再露出する。さらに重複排除 key が `type + title` のため、同じ entity でも保存済み実名 title とライブの伏字 title が一致せず、件数・影響額を二重加算し得る。G-AI-03 と #119 の redaction は経路横断では fail-closed になっていない。
 
 **推奨**
 
@@ -161,6 +163,44 @@ count/list を同一スナップショットで読むか、表示用集合を単
 
 `COALESCE(lastContactAt, updatedAt)` 相当で order する read model、または同義の安全な query 設計に統一し、その後に `id` tie-break を置く。
 
+### F-R7-08 [MEDIUM] B-CF-03 の打切りを朝礼が表示しない
+
+**該当箇所**
+
+- `apps/web/lib/domains/finance/cashflow.ts:62-75`
+- `apps/web/app/(app)/reports/morning/page.tsx:133-135,197-218`
+
+**事実**
+
+helper は501件目で `truncated=true` を返すが、朝礼の `showShortageAlert` は `shortageDate` または `minBalance < 1,500,000` だけを条件にし、`truncated` を見ない。「先頭500件で試算」の注記はカード内部にあるため、この表示条件が false なら注記ごと消える。
+
+**影響**
+
+先頭500件が安全でも、501件目以降に大型支払がある不完全な予測を朝礼は無警告にできる。打切り検出を追加した目的に対して fail-open であり、B-CF-03 は cashflow 本画面では閉じても朝礼統合では閉じていない。
+
+**推奨**
+
+`showShortageAlert` に `shortageProj.truncated` を含め、打切り時は shortage の結論とは別に coverage 不足を必ず表示する。`truncated=true` の場合は「ショートなし」という安全結論を出さない negative test を追加する。
+
+### F-R7-09 [MEDIUM] #119 は VOID Invoice で請求漏れを抑止する
+
+**該当箇所**
+
+- `apps/web/app/(app)/finance/profit-leaks/page.tsx:61-79`
+- `packages/db/prisma/schema.prisma:74-82,824-849`
+
+**事実**
+
+direct `Invoice.dealId` と Quote 経由 `Invoice.quoteId` の両 query は tenant scope を持つが、Invoice status を限定しない。従って無効化済みの `VOID` Invoice だけが存在する Deal も `billedDealIds` に入る。
+
+**影響**
+
+納品済み Deal に有効な請求書がなく再請求が必要でも、請求漏れ候補が消える。越境は起こさないが、#119 の中心判定が存在するだけの無効行に対して fail-open になる。
+
+**推奨**
+
+請求済みとみなす有効 Invoice status を明示し、少なくとも `VOID` を除外する。DRAFT を「請求済み」または「請求準備中」のどちらに扱うかも contract 化し、direct/Quote の active、VOID-only、mixed fixture を追加する。
+
 ## 修正項目別の検証結果
 
 | 項目 | 判定 | 監査結果 |
@@ -173,12 +213,12 @@ count/list を同一スナップショットで読むか、表示用集合を単
 | E-01 | PASS | pending invoice claim は tenant + type + sourceType + status で限定。入口 `admin:read` も fetch 前。 |
 | B-CF-01 | PARTIAL/FAIL | PO 二重 type は除外したが、Invoice 正規予定消失と candidate lifecycle 残留。F-R7-03。 |
 | B-CF-02 | PASS | opening が既に負の場合を cashflow 画面・朝礼で明示。 |
-| B-CF-03 | PASS | 501件目で truncation を検出し、両画面で警告。 |
+| B-CF-03 | PARTIAL/FAIL | 501件目で truncation を検出し cashflow 本画面は警告するが、朝礼はカード自体を隠せる。F-R7-08。 |
 | B-CF-04 | FAIL | opening の as-of と当日／overdue 境界が未定義。F-R7-04。 |
 | B-CF-05 | PARTIAL | 行順は決定論化。業務上の同日時順序は未定義。F-R7-05。 |
 | G-AI-03 | PARTIAL/FAIL | live customer/deal は権限別 redaction。stored finding が迂回。F-R7-01。 |
 | G-AI-04 | PASS | 指定一覧外だが修正確認のため対象ページを read-only 確認。raw output/error は `audit:read` がなければ描画されない。run/agent/action query も tenant scope。 |
-| #119 | PARTIAL | 追加 findMany は全て tenant scope。direct deal/quote 経路の重複判定と live 案件名 redaction は妥当。保存済み経路との統合で F-R7-01。 |
+| #119 | PARTIAL/FAIL | 追加 findMany は全て tenant scope、direct/quote 両経路確認と live 案件名 redaction は妥当。保存済み経路は F-R7-01、VOID-only の誤判定は F-R7-09。 |
 
 ## tenant / RBAC / fail-closed 横断確認
 

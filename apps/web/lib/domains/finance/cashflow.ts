@@ -72,6 +72,14 @@ export async function getCashflowShortageProjection(
     const line = financeEventToCashflowLine({ dueAt: e.dueAt, amount: toNumber(e.amount), direction: e.direction, note: e.description });
     if (line) lines.push(line);
   }
+  // Codex F-R7-04: 同一日は支払(outflow)を先に評価する保守的順序にする（同日入出金の順序で資金ショートを見逃さない・
+  // 安全側に倒す）。forecastCashflow は date で stable sort するため、ここで (date→outflow優先) に並べれば同日順序が確定する。
+  lines.sort((a, b) => {
+    const da = new Date(a.date).getTime();
+    const db = new Date(b.date).getTime();
+    if (da !== db) return da - db;
+    return (b.outflow > 0 ? 1 : 0) - (a.outflow > 0 ? 1 : 0);
+  });
   return { opening, lineCount: lines.length, truncated, currentlyNegative: opening < 0, result: forecastCashflow(opening, lines) };
 }
 

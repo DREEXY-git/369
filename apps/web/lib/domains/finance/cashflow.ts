@@ -5,6 +5,7 @@ import {
   summarizeCashflowActualVsExpected,
   forecastCashflow,
   financeEventToCashflowLine,
+  selectCanonicalCashflowObligations,
   type CashflowActualExpected,
   type CashflowResult,
   type CashflowInputLine,
@@ -28,6 +29,11 @@ export interface CashflowShortageProjection {
   lineCount: number;
   /** Codex B-CF-03: take 上限で後続予定が打ち切られたか（true なら「ショートなし」を断定しない）。 */
   truncated: boolean;
+  /**
+   * F-R7-02: 予定集合が不完全か（打切り or canonical 化の不確実＝未知source/lifecycle欠落/direction競合）。
+   * true なら「資金ショートなし」を断定してはならない（fail-safe）。truncated を包含する。
+   */
+  coverageIncomplete: boolean;
   /** Codex B-CF-02: opening が既にマイナス＝現時点で資金ショート中か（将来予兆とは別に明示）。 */
   currentlyNegative: boolean;
   /** forecastCashflow の結果（日次残高推移・最低残高・初ショート日）。 */
@@ -38,9 +44,17 @@ export const SHORTAGE_PROJECTION_LIMIT = 500;
 
 /**
  * 資金ショート予兆（実データからのライブ予測）: 現在の現預金（CashAccount 合計）を起点に、
- * 今日以降の「予定」FinanceEvent（cashflow_expected の expected 状態・dueAt 確定分）を
- * 日付順に足し引きして running balance を作り、初めてマイナスになる日＝資金ショート予測日を実データから算出する。
- * 既存の静的 forecast 表示は非破壊（別カード）。read-only・tenantId スコープ・純関数 forecastCashflow に委譲。
+ * 今日以降の「予定」FinanceEvent を canonical 化して running balance を作り、
+ * 初めてマイナスになる日＝資金ショート予測日を実データから算出する。
+ *
+ * F-R7-02（Codex A' 設計の slice1）: cashflow_expected と payment_expected の両方を取得し、
+ * selectCanonicalCashflowObligations で「1 債務 = 1 予定行」に正規化する。これにより
+ *  - PO の二重計上（cashflow_expected + payment_expected）を排除しつつ、
+ *  - 直接/見積由来 Invoice の入金（payment_expected のみで表現・従来欠落）も取りこぼさず、
+ *  - 部分入金済みは残額だけを載せる（過大計上＝偽の余裕を防ぐ）。
+ * 正規化が不確実（打切り/未知source/lifecycle欠落/direction競合）なら coverageIncomplete を立て、
+ * 呼び出し側が「ショートなし」を断定しないようにする（fail-safe）。
+ * read-only・全クエリ tenantId スコープ・計算は純関数 selector / forecastCashflow に委譲。
  */
 export async function getCashflowShortageProjection(
   tenantId: string,
@@ -51,36 +65,60 @@ export async function getCashflowShortageProjection(
   const [accounts, events] = await Promise.all([
     prisma.cashAccount.findMany({ where: { tenantId }, select: { balance: true } }),
     prisma.financeEvent.findMany({
-      // Codex B-CF-01: 予定は canonical な cashflow_expected のみ対象にする。payment_expected を併読すると
-      // Finance Bridge が同一支払を両 type で表現するため二重計上（偽のショート/偽の余裕）になる。既存の予定表示と同一 type。
       where: {
         tenantId,
-        type: 'cashflow_expected',
+        type: { in: ['cashflow_expected', 'payment_expected'] },
         status: { in: EXPECTED },
         dueAt: { gte: todayStart },
       },
-      // Codex B-CF-05: 同一 dueAt の並び順を id で決定論化（同日入出金の順序でショート判定が揺れない）。
+      // Codex B-CF-05: 同一 dueAt の並び順を id で決定論化。B-CF-03: +1 件多く取り打切りを検出。
       orderBy: [{ dueAt: 'asc' }, { id: 'asc' }],
-      take: SHORTAGE_PROJECTION_LIMIT + 1, // Codex B-CF-03: +1 件多く取り、打ち切り有無を検出する
-      select: { dueAt: true, amount: true, direction: true, description: true },
+      take: SHORTAGE_PROJECTION_LIMIT + 1,
+      select: { id: true, type: true, sourceType: true, sourceId: true, amount: true, direction: true, dueAt: true, description: true },
     }),
   ]);
+  // Codex（設計レビュー）: canonicalization 前に raw 打切りを判定し、501件目のショートを「なし」と断定しない。
   const truncated = events.length > SHORTAGE_PROJECTION_LIMIT;
+  const scanned = events.slice(0, SHORTAGE_PROJECTION_LIMIT);
+
+  // canonical 化に必要な lineage（candidate→invoice）と Invoice lifecycle を tenant スコープで取得。
+  const candidateIds = [...new Set(scanned.filter((e) => e.sourceType === 'InvoiceCandidate' && e.sourceId).map((e) => e.sourceId as string))];
+  const directInvoiceIds = scanned.filter((e) => e.sourceType === 'Invoice' && e.sourceId).map((e) => e.sourceId as string);
+  const candidateLinks = candidateIds.length
+    ? await prisma.invoiceCandidate.findMany({ where: { tenantId, id: { in: candidateIds }, invoiceId: { not: null } }, select: { id: true, invoiceId: true } })
+    : [];
+  const invoiceIds = [...new Set([...directInvoiceIds, ...candidateLinks.map((c) => c.invoiceId as string)])];
+  const invoices = invoiceIds.length
+    ? await prisma.invoice.findMany({ where: { tenantId, id: { in: invoiceIds } }, select: { id: true, status: true, total: true, paidAmount: true } })
+    : [];
+
+  const selection = selectCanonicalCashflowObligations({
+    events: scanned.map((e) => ({ id: e.id, type: e.type, sourceType: e.sourceType, sourceId: e.sourceId, direction: e.direction, amount: toNumber(e.amount), dueAt: e.dueAt, description: e.description })),
+    invoices: invoices.map((i) => ({ id: i.id, status: i.status, total: toNumber(i.total), paidAmount: toNumber(i.paidAmount) })),
+    candidateInvoiceLinks: candidateLinks.map((c) => ({ candidateId: c.id, invoiceId: c.invoiceId as string })),
+  });
+
   const opening = accounts.reduce((s, a) => s + toNumber(a.balance), 0);
   const lines: CashflowInputLine[] = [];
-  for (const e of events.slice(0, SHORTAGE_PROJECTION_LIMIT)) {
-    const line = financeEventToCashflowLine({ dueAt: e.dueAt, amount: toNumber(e.amount), direction: e.direction, note: e.description });
+  for (const r of selection.rows) {
+    const line = financeEventToCashflowLine({ dueAt: r.dueAt, amount: r.amount, direction: r.direction, note: r.description });
     if (line) lines.push(line);
   }
-  // Codex F-R7-04: 同一日は支払(outflow)を先に評価する保守的順序にする（同日入出金の順序で資金ショートを見逃さない・
-  // 安全側に倒す）。forecastCashflow は date で stable sort するため、ここで (date→outflow優先) に並べれば同日順序が確定する。
+  // Codex F-R7-04: 同一日は支払(outflow)を先に評価する保守的順序（同日入出金の順序でショートを見逃さない）。
   lines.sort((a, b) => {
     const da = new Date(a.date).getTime();
     const db = new Date(b.date).getTime();
     if (da !== db) return da - db;
     return (b.outflow > 0 ? 1 : 0) - (a.outflow > 0 ? 1 : 0);
   });
-  return { opening, lineCount: lines.length, truncated, currentlyNegative: opening < 0, result: forecastCashflow(opening, lines) };
+  return {
+    opening,
+    lineCount: lines.length,
+    truncated,
+    coverageIncomplete: truncated || selection.coverageIncomplete,
+    currentlyNegative: opening < 0,
+    result: forecastCashflow(opening, lines),
+  };
 }
 
 /** FinanceEvent(cashflow_expected) を入金/支払予定として集計（今月＋全期間）。 */

@@ -1,7 +1,7 @@
 ---
 title: Phase 5 Claude Code Implementation Master Prompt
 prompt_id: 369-PHASE5-CLAUDE-IMPLEMENTER
-version: 1.0
+version: 1.1
 status: proposed
 date: 2026-07-23
 engine: claude-code
@@ -410,4 +410,3 @@ Codex指摘へのremediationは、finding ID、severity、fixed SHA、allowed pa
 5. Definition of Ready判定
 
 有効なTask Packetがなければ、現在地と不足項目を報告して停止する。自分で次の実装を選んで開始しない。
-

@@ -1,7 +1,7 @@
 ---
 title: Phase 5 Claude Code Single Master Prompt
 prompt_id: 369-PHASE5-CLAUDE-SINGLE
-version: 1.1
+version: 1.2
 status: proposed
 date: 2026-07-23
 engine: claude-code
@@ -180,12 +180,22 @@ authorization:
   commit: false
   push: false
   open_draft_pr: false
-human_approval:
-  marker: PHASE5_TASK_PACKET_APPROVED
-  approver:
-  approved_at:
-  packet_sha256:
 ```
+
+`human_approval` はTask Packet必須欄に含めない（Packet本文へ書かない）。承認は外部のappend-only Human Approval Eventとして記録し、Packetのimmutable本文と分離する。
+
+Human Approval Eventと対象Packet / headの一致を必須検証する:
+
+- `packet_id`
+- `revision`
+- `packet_sha256`
+- `fixed_head_sha`
+- `human_approver`
+- `authorization_scope`
+- `approved_at`
+- `event_id`
+
+いずれかがmismatch、headがstale、またはAIによる自己承認の場合はfail-closed（編集権限を得ない）。承認者は人間のみで、B/Hを含むCodexは独立確認者であり承認者ではない。
 
 規則:
 
@@ -461,4 +471,3 @@ Obsidianは経営者向け要約、安定知識、設計判断、Promptを扱い
 5. Definition of Ready判定
 
 `MODE=AUTO_ENTRY`または有効なTask Packetがない場合は、次の推奨1件と自己完結したTask Packet案を提示して停止します。編集、commit、push、PR、DB、本番は行いません。
-

@@ -1,7 +1,7 @@
 ---
 title: Phase 5 Program Charter
 prompt_id: 369-PHASE5-PROGRAM-CHARTER
-version: 1.0
+version: 1.1
 status: proposed
 date: 2026-07-23
 tags:
@@ -426,4 +426,3 @@ Obsidian:
 - 人間がBusiness Phase Closeを明示承認する
 
 いずれかがUNKNOWNなら「完成」としない。Phase 5.1 / 5.5を作らず、未完了はPhase 5内のOPEN Workstreamまたは次Phase候補として明示する。
-

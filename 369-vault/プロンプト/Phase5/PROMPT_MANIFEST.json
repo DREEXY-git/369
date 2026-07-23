@@ -3,7 +3,7 @@
   "status": "proposed",
   "generated_on": "2026-07-23",
   "hash_algorithm": "sha256",
-  "notes_ja": "各sha256は対象prompt本文のcontent hash（この値のみを管理する）。本文変更時はversionとsha256を更新する。prompt本文をGit追跡したcommit SHAはこのmanifestへ書き込まない（循環参照を作らない）。commit SHAとcontent hashの対応付けは、Task Packetと外部Human Approval Event（append-only）が併記して固定する。00/04/06/07はP5-GOV-000 revision 3のB/H監査finding修正で更新済み。",
+  "notes_ja": "各sha256は対象prompt本文のcontent hash（この値のみを管理する）。本文変更時はversionとsha256を更新する。prompt本文をGit追跡したcommit SHAはこのmanifestへ書き込まない（循環参照を作らない）。commit SHAとcontent hashの対応付けは、Task Packetと外部Human Approval Event（append-only）が併記して固定する。P5-GOV-000 revision 3 rework2で、01/02/03/05/06/07のEOFを正規化し、06/07のTask Packet必須欄から human_approval を除去（外部Human Approval Eventへ置換）した。",
   "prompts": [
     {
       "path": "369-vault/プロンプト/Phase5/00_PHASE5_PROMPT_SYSTEM.md",
@@ -14,20 +14,20 @@
     {
       "path": "369-vault/プロンプト/Phase5/01_PHASE5_PROGRAM_CHARTER_V1.md",
       "prompt_id": "369-PHASE5-PROGRAM-CHARTER",
-      "version": "1.0",
-      "sha256": "46b223208a478c470a8f9983910325b1e08abbe2520d0a4c62926c4614a16099"
+      "version": "1.1",
+      "sha256": "0a2a89a30cb3e9381f92f4e7a7e99a3d4951fdc6acb9681645f7b35882dbad8e"
     },
     {
       "path": "369-vault/プロンプト/Phase5/02_PHASE5_CLAUDE_CODE_MASTER_PROMPT_V1.md",
       "prompt_id": "369-PHASE5-CLAUDE-IMPLEMENTER",
-      "version": "1.0",
-      "sha256": "17631eb65f68afb3bf39fcdfac1b46c30b7411a8db536125903c65c27a03db92"
+      "version": "1.1",
+      "sha256": "d5ecf067fe9251f741127f3a7ea2bbfbb21e4d35caa4a877fa6fa5149eae749a"
     },
     {
       "path": "369-vault/プロンプト/Phase5/03_PHASE5_CODEX_A_TO_H_MASTER_PROMPT_V14.md",
       "prompt_id": "369-PHASE5-CODEX-A-H",
-      "version": "14.0",
-      "sha256": "cba186eb0d5fda3c7b9a99ea0fb6c819e8ba72b6b439b74249ba96fd473fc7c5"
+      "version": "14.1",
+      "sha256": "03cafb8b2b34ddbe3726ce55bcbef8f7ac9d406baf3224d2f0b8b581f72dd5ba"
     },
     {
       "path": "369-vault/プロンプト/Phase5/04_PHASE5_TASK_PACKET_TEMPLATE_V1.md",
@@ -38,20 +38,20 @@
     {
       "path": "369-vault/プロンプト/Phase5/05_PHASE5_BUSINESS_CLOSE_PROMPT_V1.md",
       "prompt_id": "369-PHASE5-BUSINESS-CLOSE",
-      "version": "1.0",
-      "sha256": "a5d64bc0e00704d557627c7c5e3390cdec94a6116b6371750c5ed6bb4de538fd"
+      "version": "1.1",
+      "sha256": "65add1032baaaa595cf4eda63d5b7b10805b720cab6766a1940ff5b794338cad"
     },
     {
       "path": "369-vault/プロンプト/Phase5/06_PHASE5_CLAUDE_CODE_SINGLE_PROMPT_V1.md",
       "prompt_id": "369-PHASE5-CLAUDE-SINGLE",
-      "version": "1.1",
-      "sha256": "79e9f070e4e343b5774f0e4390bc6c95895211ea8abe8a64a14f9b53453c3be4"
+      "version": "1.2",
+      "sha256": "ee2ea1d9908f473ec91a5fd43169ecc5068ca9365757f7a30b50ec415d81c1eb"
     },
     {
       "path": "369-vault/プロンプト/Phase5/07_PHASE5_CODEX_SINGLE_PROMPT_V15.md",
       "prompt_id": "369-PHASE5-CODEX-SINGLE",
-      "version": "15.1",
-      "sha256": "9810c9c0fe9476880ca8a3f2207b50127a47e56df04b896743c7de064af068e9"
+      "version": "15.2",
+      "sha256": "84ea784c4b1d3ed615bc127572650dfc1c12cdf24ba0800cc18324d8049c68a7"
     }
   ]
 }

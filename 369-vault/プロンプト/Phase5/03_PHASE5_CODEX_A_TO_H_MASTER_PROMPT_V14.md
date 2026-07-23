@@ -1,7 +1,7 @@
 ---
 title: Phase 5 Codex A-H Unified Audit Master Prompt
 prompt_id: 369-PHASE5-CODEX-A-H
-version: 14.0
+version: 14.1
 status: proposed
 date: 2026-07-23
 engine: codex
@@ -701,4 +701,3 @@ ACTIVE_ROLE=D
 8. `CODEX_PHASE5_GO / WARNING / HOLD / NG`
 
 コード、docs、vault、branch、PR、Lease、triggerを変更してはいけない。
-

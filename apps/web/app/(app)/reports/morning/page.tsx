@@ -110,7 +110,7 @@ export default async function MorningReportPage() {
   let seoWarnings = 0;
   if (canViewReferral) {
     const [mktCampaigns, pending, mktContents] = await Promise.all([
-      prisma.marketingCampaign.findMany({ where: { tenantId: t }, select: { channel: true, metrics: { select: { id: true } } } }),
+      prisma.marketingCampaign.findMany({ where: { tenantId: t }, select: { channel: true, metrics: { where: { tenantId: t }, select: { id: true } } } }),
       prisma.marketingSuggestion.count({ where: { tenantId: t, approvalStatus: 'pending' } }),
       prisma.contentAsset.findMany({ where: { tenantId: t }, select: { title: true, body: true }, take: 100 }),
     ]);
@@ -130,9 +130,10 @@ export default async function MorningReportPage() {
   }
   const showMarketingCard = canViewReferral && (channelsConnected > 0 || pendingSuggestions > 0 || seoWarnings > 0);
 
-  // 資金ショート予兆（実データ・ライブ予測）。finance:read 保有者のみ。ショート予測 or 残高が薄い時だけ朝礼に前出し。
+  // 資金ショート予兆（実データ・ライブ予測）。finance:read 保有者のみ。ショート予測 or 残高が薄い or 打切り時に朝礼へ前出し。
+  // Codex B-R7-01/F-R7-03: truncated（予定が上限超過で先頭500件のみ試算）も表示条件に含め、coverage 不足を隠さない。
   const shortageProj = canViewFinance ? await getCashflowShortageProjection(user.tenantId) : null;
-  const showShortageAlert = !!shortageProj && (shortageProj.result.shortageDate != null || shortageProj.result.minBalance < 1_500_000);
+  const showShortageAlert = !!shortageProj && (shortageProj.currentlyNegative || shortageProj.result.shortageDate != null || shortageProj.truncated || shortageProj.result.minBalance < 1_500_000);
 
   // 財務指標は finance:read 非保有者には redact（0/neutral）。AI 入力・異常検知・画面のすべてに redact 後の値を使う。
   const sales = canViewFinance ? toNumber(dealSum._sum.amount) : 0;
@@ -199,15 +200,17 @@ export default async function MorningReportPage() {
           <CardHeader>
             <CardTitle className="flex flex-wrap items-center gap-2">
               {shortageProj.currentlyNegative ? '🚨 資金ショート（現在マイナス）' : shortageProj.result.shortageDate ? '🚨 資金ショート予兆' : '⚠️ 資金繰り 要注意'}
-              {shortageProj.currentlyNegative ? <Badge tone="red">現在マイナス</Badge> : shortageProj.result.shortageDate ? <Badge tone="red">{formatDate(shortageProj.result.shortageDate)} 予測</Badge> : <Badge tone="amber">残高薄め</Badge>}
+              {shortageProj.currentlyNegative ? <Badge tone="red">現在マイナス</Badge> : shortageProj.result.shortageDate ? <Badge tone="red">{formatDate(shortageProj.result.shortageDate)} 予測</Badge> : shortageProj.truncated ? <Badge tone="amber">判定範囲不足</Badge> : <Badge tone="amber">残高薄め</Badge>}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-1 text-sm">
-            {/* Codex B-CF-02: opening が既にマイナス＝現在ショート中を最優先で明示（将来予測日と別扱い）。 */}
+            {/* Codex B-CF-02: opening が既にマイナス＝現在ショート中を最優先。B-R7-01: 次に将来ショート日、次に打切り（判定範囲不足）、最後に残高薄め。 */}
             {shortageProj.currentlyNegative ? (
               <p>現在の現預金が <span className="font-bold">マイナス（{shortageProj.opening.toLocaleString('ja-JP')}円）</span> です。すでに資金ショート状態の可能性があります。至急、資金手当てをご検討ください。</p>
             ) : shortageProj.result.shortageDate ? (
               <p>現在の現預金＋今日以降の予定入出金で試算すると、<span className="font-bold">{formatDate(shortageProj.result.shortageDate)}</span> ごろに残高がマイナスになる見込みです。入金の前倒し・支払の繰延・短期借入などの手当てを早めにご検討ください。</p>
+            ) : shortageProj.truncated ? (
+              <p>予定入出金が多く先頭500件までで試算しています。それ以降の予定は未反映のため、<span className="font-bold">「資金ショートなし」とは断定できません</span>。大きな支払い予定がないか資金繰りページでご確認ください。</p>
             ) : (
               <p>予測期間内に資金ショートはありませんが、最低残高が薄くなる時期があります。大きな支払い予定の前に資金繰りをご確認ください。</p>
             )}

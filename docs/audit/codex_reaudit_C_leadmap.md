@@ -1,113 +1,69 @@
-# Codex レーンC 独立再監査 — LeadMap 取りこぼし検知
+# Codex レーンC 独立監査 - LeadMap 優先度スコア内訳
 
 ## 監査固定点
 
-- 監査日: 2026-07-23（Asia/Tokyo）
-- 対象: PR #112 `feat(leadmap): 取りこぼし検知ボード（放置・停滞リードのレーダー）`
-- PR head: `d0956f4c756f1988b07c93788689977938b7c270`
-- PR base: `32f6a58715f1385f16a0a5e684f93e183f03c97f`
-- merge commit: `6a3c03b265aba2c30df25d17a85e041f1dba4218`
-- `git fetch origin main` 後の監査 HEAD (`origin/main`): `9bff4e91da89ea7739eb72d647671e7c85350783`
-- PR head と最新 main の対象2ファイル: 差分なし（`git diff --exit-code` で確認）
+- 監査日: 2026-07-23 (Asia/Tokyo)
+- 対象: PR #122 `claude/leadmap-score-breakdown-v1`
+- 固定 commit: `d3b7ce5`
+- 依頼ファイル: `docs/coordination/codex-queue/2026-07-23-C-leadmap-score-breakdown.md`
 - 監査対象:
   - `packages/shared/src/leads.ts`
-  - `apps/web/app/(app)/leadmap/attention/page.tsx`
-
-PR #112 は監査時点で merge 済み。PR head は squash merge commit と同一 tree であり、最新 main でも対象コードは変わっていないため、上記最新 main を実監査固定点とした。
+  - `packages/shared/src/__tests__/lead_score_breakdown.test.ts`
+  - `apps/web/app/(app)/leadmap/leads/[id]/page.tsx`
+  - `packages/db/prisma/schema.prisma` の `LocalBusinessLead` / `LeadScore`
+- 作業境界: read-only source review。main merge、DB、Secrets、本番、外部送信、課金は未実行。
 
 ## 判定
 
-**CHANGES_REQUIRED（原子性・一貫性）**
+**PASS**
 
-- Critical / High: 0件
-- Medium: 1件（しきい値境界で純関数とDB件数が不一致）
-- Low: 2件（count/list の非同一 snapshot、同優先度内の最終活動順）
-- tenant 越境: 確認したクエリには finding なし
-- stage 分類: 現行16 stageには finding なし
+実害として扱うべき tenant 越境、権限漏れ、PII 滲み出し、決定論崩れ、または broken JSON による表示破綻は確認しなかった。
 
-## Findings
+残る注意点は「破損した `breakdown` に巨大な有限数が入った場合、factor の `+points` 表示はその値をそのまま出す」こと。ただし同じカードは保存済み `latestScore.score` を合計点として表示しており、`breakdown` 自体も同一 tenant の `LeadScore` からしか読まれない。現変更の実害 finding にはしない。将来の堅牢化では、factor points を `0..100` に clamp する、または score と内訳合計が大きく乖離した場合に「内訳参考値」と明示する余地がある。
 
-### C-LM-01 — しきい値ちょうどのリードをDBクエリだけ除外する
+## 観点別確認
 
-- file:line: `apps/web/app/(app)/leadmap/attention/page.tsx:67`、対照 `packages/shared/src/leads.ts:115-129,132-134`
-- 種別: 境界条件 / 純関数とDB集計の不一致
-- 重大度: **Medium**
-- 再現:
-  1. `now = 2026-07-22T00:00:00.000Z`、`hot_cooling` のしきい値を4日とする。
-  2. `REPLIED` の `lastContactAt = 2026-07-18T00:00:00.000Z`（cutoffと完全一致）とする。
-  3. `classifyLeadStall` は `floor(4日) >= 4` により `isStale: true` を返す。
-  4. DB条件は `lastContactAt: { lt: cutoff }` なので同じ行を数えない。`lastContactAt = null` で `updatedAt = cutoff` の場合も同様。
-- なぜ実害か: UI文言と純関数・単体テストは「N日**以上**（ちょうどを含む）」を契約としているのに、count と上位12件は厳密に古い行だけを対象とする。同じ入力を純関数で判定した結果とボード件数が一致せず、境界上の要対応リードが一時的に取りこぼされる。
-- 修正案: 現在の契約を維持するなら、両OR枝を `lte: cutoff` にする。逆に `lt` を仕様とするなら `classifyLeadStall` を厳密超過へ変更し、「以上」の文言・コメント・既存境界テストも同時に直す。現状の明示契約からは `lte` が妥当。
-- 必須test:
-  - `lastContactAt` 非nullについて `cutoff - 1ms / cutoff / cutoff + 1ms` のDB抽出結果と `classifyLeadStall` を比較する。
-  - `lastContactAt = null` の `updatedAt` について同じ3境界を比較する。
-  - 4 bucketすべてで count と分類結果が一致することを確認する。
+### 1. tenant 越境参照
 
-### C-LM-02 — count と表示listが同一snapshotではない
+`LeadDetailPage` は先に `requireUser()` と `leadmap:read` を確認し、その後 `localBusinessLead.findFirst({ where: { id, tenantId: user.tenantId } })` で親 lead を tenant scope している。追加された nested read も `scores: { where: { tenantId: user.tenantId }, orderBy: { createdAt: 'desc' }, take: 1 }` で子側 tenant を明示している。
 
-- file:line: `apps/web/app/(app)/leadmap/attention/page.tsx:69-77`
-- 種別: 読み取り一貫性 / concurrency
-- 重大度: **Low**
-- 再現: `count` と `findMany(take: 12)` は同じ `where` を使うが、独立した2 statementを `Promise.all` で発行する。両statementの間に送信・接触記録・stage更新が入ると、それぞれが別の PostgreSQL snapshot を見る可能性がある。
-- なぜ実害か: `count = 0` なのに `leads.length = 1` なら `b.count > 0` のfilterで実在行をカードごと隠し得る。逆なら空カードと誤った「ほかN件」を表示する。データ破壊やtenant越境はないが、取りこぼし検知画面の瞬間的な自己矛盾になる。
-- 修正案: count と list を `REPEATABLE READ` の同一transaction snapshotで取得するか、単一SQL（window count等）で取得する。単に通常の `READ COMMITTED` transactionへ包むだけではstatementごとにsnapshotが変わり得るため不十分。
-- 必須test: count後・list前に別connectionから対象行のstageまたは最終活動を更新するbarrier付きrace testを用意し、返るcountとlistが同一snapshot由来であることを確認する。
+schema 上 `LeadScore` は `leadId` 単独 FK だが、親 lead が `id + tenantId` で取得され、子 score も `tenantId` で絞られるため、別 tenant の `LeadScore` が親 lead にぶら下がっていても表示されない。逆に `tenantId=user.tenantId` かつ `leadId=対象lead.id` の score は、同一 tenant の対象 lead に対する score として扱われる。
 
-### C-LM-03 — 同優先度のtie-breakが最終活動（COALESCE）順になっていない
+### 2. 捏造しない / 壊れた JSON
 
-- file:line: `apps/web/app/(app)/leadmap/attention/page.tsx:73-74`
-- 種別: 優先度ソート / 上位12件選択
-- 重大度: **Low**
-- 再現: primary keyは `priority: desc` で正しい。一方、tie-breakは `lastContactAt asc, updatedAt asc` であり、契約上の最終活動 `lastContactAt ?? updatedAt` の昇順ではない。PostgreSQLの昇順ではnullが後ろになるため、同一priorityで `lastContactAt = null, updatedAt = 30日前` のリードが、`lastContactAt = 5日前` のリードより後ろになり得る。さらに完全同値時の `id` tie-breakもない。
-- なぜ実害か: 同優先度が13件以上あると、より長く放置された未接触リードが上位12件から外れ、短期間のリードが表示され得る。count自体は正しいが、「今見るべき12件」の選択が最終活動規律と一致せず、同値集合では表示が揺れる。
-- 修正案: `priority DESC, COALESCE(lastContactAt, updatedAt) ASC, id ASC` をDBで表現する（必要なら安全なraw query、または明示的な `lastActivityAt` 設計）。primaryの `priority DESC` は維持する。
-- 必須test: 同一priorityの `lastContactAt` 有/無を混在させた13件以上を作り、COALESCE相当で古い順の12件が決定的に選ばれることを確認する。
+`describeLeadScoreBreakdown` は `null` / `undefined` / 非オブジェクト / 配列を空配列にし、0以下、非数値、非有限値を除外する。カードは `scoreFactors.length > 0` の場合だけ表示されるため、未保存または壊れた breakdown から理由を捏造しない。
 
-## 観点別確認結果
+未知キーは仕様どおり key を label にして `opportunity` 扱いになる。これは `computeLeadScore` の将来キー追加に対する劣化耐性として妥当で、現コードが生成する breakdown key は `LEAD_SCORE_FACTOR_META` とテストで対応確認されている。
 
-### 1. 16 stage → bucket と終端除外
+`latestScore.score` と `lead.priority` が乖離しても、基本情報の優先度バッジと内訳カードの保存済み score は別の値として表示される。誤った合算値を再計算して見せる実装ではない。
 
-現行 `LeadStage` 16値を、schema・shared型・実行結果で照合した。
+### 3. 情報露出 / 権限
 
-| bucket | stage |
-|---|---|
-| `unworked` | `NEW` |
-| `draft_pending` | `ANALYZED`, `DRAFTED`, `PENDING_APPROVAL`, `READY` |
-| `awaiting_response` | `SENT`, `OPENED`, `CLICKED` |
-| `hot_cooling` | `REPLIED`, `APPOINTMENT`, `NEGOTIATING`, `QUOTED` |
-| 対象外 | `WON`, `LOST`, `UNSUBSCRIBED`, `EXCLUDED` |
+Lead 詳細は店舗情報、営業メモ、下書き導線を含む画面であり、既に `leadmap:read` がない場合は DB fetch 前に `AccessDenied` を返す。追加された score include はこのガードの後にしか実行されない。
 
-12 active stageは重複なく全件分類され、4 terminal stageは `leadStallBucketForStage` / `classifyLeadStall` で `null`。DB側も各bucketの逆引きstageだけを `in` 条件へ入れるため、現行コードではterminalは抽出されない。
+`breakdown` の表示内容は label / hint / points / kind のみで、既知キーは評価帯、口コミ数、Web/予約/LINE/SNS/ネガティブ口コミ兆候など LeadMap 画面の既存情報から派生する営業理由に限られる。機密ラベルや PII を新たに参照する経路はない。
 
-補足リスク: `LEAD_STAGE_TO_STALL_BUCKET` が `Record<string, ...>` のため、将来enumを追加してもcompile時に網羅漏れを検出しない。今回の16値に漏れはないが、`LeadStage` をkeyにした明示的なexhaustive設計か、`LEAD_STAGES` 全値を走査する回帰testが望ましい。
+### 4. 決定論
 
-### 2. stale条件とCOALESCE相当
+`describeLeadScoreBreakdown` は `points` 降順、同点は `key` 昇順で sort する。入力 object の列挙順に依存しないことは `lead_score_breakdown.test.ts` の reversed object case で確認されている。表示側も `key` を React key に使っており、同じ breakdown から同じ順序になる。
 
-- `lastContactAt < cutoff`
-- または `lastContactAt IS NULL AND updatedAt < cutoff`
+### 5. 回帰耐性
 
-この2枝は、strict inequalityの範囲では `COALESCE(lastContactAt, updatedAt) < cutoff` と等価であり、`classifyLeadStall` の `lastContactAt ?? updatedAt` と同じ列を選ぶ。差は C-LM-01 の境界演算子だけ。
+`computeLeadScore` が現在保存する既知 key は `LEAD_SCORE_FACTOR_META` に揃っており、テストも全既知 key の meta 欠落を検出する。将来 key が増えて meta 更新を忘れても、未知キー fallback でカード自体は破綻しない。
 
-### 3. tenant境界
+## テスト確認
 
-`count` と `findMany` の共通 `where` に `tenantId: user.tenantId` があり、selectにもrelation/includeはない。4 bucketすべて同じ構築経路を通るため、確認対象クエリから別tenantリードが混入する経路は認めなかった。
+既存追加テストを source review で確認した。対象は次を含む。
 
-### 4. count / list とpriority
+- `computeLeadScore` の breakdown を日本語 factor に変換
+- `points` 降順、同点 `key` 昇順の決定論
+- 0以下、非数値の除外
+- 未知キー fallback
+- `null` / `undefined` / 非オブジェクト / 配列の fail-closed
+- 既知キー meta 欠落検出
 
-- bucket間のstage集合は排他的で、`totalStale` の二重計上はない。
-- count と list は同一 `where` であり、静止データでは `count >= leads.length`、最大12件表示となる。
-- `priority` はschema上0–100の営業優先度で、`DESC` は正しい。
-- 同時更新とtie-breakについては C-LM-02 / C-LM-03 のとおり。
-
-## 検証記録
-
-- `git fetch origin main` と PR head ref の再取得: 実施
-- PR head / 最新 main の対象ファイルdiff: 0
-- Node 24のTypeScript type-strippingで対象 `leads.ts` を直接importし、16 stageのmapping・4 bucket逆引き・境界時の `isStale: true` を実行確認
-- 既存 `packages/shared/src/__tests__/lead_stall.test.ts` をsource review: 7 tests。純関数の境界「ちょうどはtrue」はあるが、ページのDB predicate、tenant、count/list race、take 12 orderingのテストはない
-- Vitestの再実行は、checkoutに実体のある依存がなく既存launcherの参照先 `vitest.mjs` も欠落していたため未実施。依存install、DB接続、schema操作は行っていない
+ローカルでの test command は実行していない。依頼は docs-only / read-only 監査であり、DB・依存取得・Playwright には触れていない。
 
 ## 安全境界
 
-コード修正、main push/merge、PR作成、本番・DB・Secrets・外部送信・課金操作は行っていない。本成果物は監査指摘のみ。
+コード修正、main push/merge、PR作成、本番・DB・Secrets・外部送信・課金操作は行っていない。本成果物は `codex/reaudit-C-leadmap` 向けの docs-only 監査レポートである。

@@ -2,14 +2,14 @@
 
 > 現在地の「1枚サマリー」。今の真実だけを書きます。長い経緯は `tasks/PROGRESS.md`、詳細監査は `docs/audit/` を参照。
 
-## 🔴 EMERGENCY FIX V82（最優先・現在の真実・2026-07-14）
+## ✅ 現在の真実（2026-07-23・Business Phase Close）
 
-- **RELEASE HOLD**: `main=35b0640` を固定し **EMERGENCY_FIX**（rollback/revert/main merge/Production 変更なし）。「Wave 1/2 完了」「Production 安全」「脆弱性ゼロ」は**撤回**。
-- **背景**: Codex が PR #44〜#54 に `CHANGES_REQUIRED`／`POST_MERGE_INCIDENT` を記録。既知 P1 を含む `f2ef4d1` 系譜が Production/Ready で公開済み（人間スクショ確認）。正本: PR#53 comment `#4964987100`（CODEX_EMERGENCY_REMEDIATION_PLAN_V82）。
-- **未解消 P1 の型**: ①業務状態＋必須監査が非原子（別 transaction）②非必須 event を commit 後 await（失敗で不整合・retry 修復不能）③`findFirst→create` の TOCTOU（並行二重 PENDING）④`FOR UPDATE` 後も lock 前 snapshot で判定⑤related ID の tenant 未検証⑥財務証跡（Payment）の物理削除⑦`safeAiInput` を Provider 呼出し後に実行⑧`*.itest.ts` が CI 未実行・test cleanup が tenant 全体 Audit 削除。
-- **修正順序（混在禁止・1 WIP=1固定SHA=1 Draft PR=1 Codex再監査）**: Gate-0 CI → Lane-FINANCE(#45→#46→#51→#53) → Lane-INVENTORY(#47→#48→#50) → Lane-CRM(#49) → Lane-MEETING(#52) → Lane-P4(#44) → 統合RC dry-run。#54 は append-only reversal schema 承認まで HOLD。
-- **人間 Gate（自動実行しない）**: schema/migration 適用・CI workflow の main 反映・main merge・Production deploy/rollback・Production DB/queue/worker・Secrets・実LLM・外部送信・課金。
-- **Gate-0 R4（進行中・PR #55・唯一の最優先WIP）**: `claude/emergency-ci-gate-v82`。R1=`stage2_integration`（ephemeral PostgreSQL+Redis で `@hokko/db`／`@hokko/worker` の `test:integration`）追加。R2=会議E2E race 根治・critical silent skip 0・cleanup 衛生・`release_gate` 集約／push:main のみ／skip-only-fixme scan／0件収集失敗化。R3=共有 seed tenant の広域 cleanup 全廃（作成 id 限定・snapshot 差分）・会議 flake 反復 Gate（`--repeat-each=5 --retries=0`）を CI 本文で証明。**R4（Codex #4966445912 対応）=success artifact 0 件の根本修正**: 会議 repeat Gate を full E2E の「前」へ移動し full E2E を最後の Playwright 実行にして証拠 PNG（test-results）を保全、success 証拠 upload を `if-no-files-found: error`（0 PNG=stage3 failure）にし failure 診断 upload と責務分離。**`CODEX_PASS_V83_GATE0_R3` は存在しない**（採用しない）。**`release_gate` の branch protection required 化＝人間 Repository Settings（HUMAN_CONFIGURATION_REQUIRED / EVIDENCE_GAP）**。新 full SHA の PR-event CI で 4 jobs green＋artifact≥1 を確認後 `CLAUDE_FIXED_V84_GATE0_R4` 提出→freeze、Codex R4 PASS＋人間 main merge まで次 Lane（FINANCE #45）へ進まない。
+- **現在地**: `main=0dbea72`。**Vercel Production `0dbea72` を人間が確認済み**（代表画面の目視 GO）。旧「🔴 EMERGENCY FIX V82 / RELEASE HOLD（main=35b0640）」は**解消済み**（その後 M1〜Phase 3 クローズまで前進し完了）。
+- **Phase 3（AI Growth Engine v0）: CLOSED**（完了基準 `9a61f99`・詳細は `tasks/DELIVERY_CONTRACT.md` §7）。
+- **Phase 3.5（広告・SEO/Content・紹介）: CLOSED**（Business Phase Close・人間承認 2026-07-23）。C19 広告 read model＋AI下書き・C21 SEO/Content 承認ブリッジ・C22 紹介の3系統。
+- **Phase 4（AI社員／コントロールプレーン／成果台帳）: CLOSED**（Business Phase Close・人間承認 2026-07-23）。AI社員の証拠由来状態・Agent Control Plane・Work Evidence の3系統。
+- **Phase 4.1／4.5 は作らない**。積み残しは**すべて Phase 5 候補**として整理（製品課題と単なる文書整理は分離。詳細は DELIVERY_CONTRACT §5）。
+- **恒久 Human Gate（自動実行しない・Phase Close 後も不変）**: main merge／Production（Vercel）／schema・migration／secret・env／外部送信／実LLM／課金／RBAC・機密ラベル／破壊的データ操作／Business Phase Close。**外部送信・実LLM・課金は封印のまま**（EXTERNAL_SEND_ENABLED=false・FakeLLM・externalAiAllowed 既定 false）。
 
 ## 状態管理ルール
 
@@ -31,6 +31,8 @@
 - **このファイルに固定してよい commit は、「Phase 完了基準」と「最新の本番確認GO済みプロダクト基準」の基準 commit だけ**です。現在 HEAD・origin/main・作業ブランチ・未push などの現在位置は git を参照してください。
 
 ## Phase の現在地
+
+- **（2026-07-23 更新・Business Phase Close）Phase 3 / Phase 3.5 / Phase 4 はいずれも CLOSED**。以下の各 Phase 記述は当時の記録（履歴）であり、現在地の正は冒頭の「✅ 現在の真実」ブロック＋git refs とする。
 
 - **Phase 1: 正式完了（Phase 1-50・判定根拠は doc24 の GO）。完了基準 commit: `e95f887`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/25_phase1_completion_record.md`）。
 - **Phase X: 完了済み（Phase X-CLOSE-01・判定 GO）。完了基準 commit: `70d4d06`**（※現在 HEAD ではなく完了基準。詳細 `docs/audit/32_phase_x_completion_record.md`）。恒久資産=E2E smoke green 回帰ゲート（11/11）＋roadmap 9本＋Feature Registry＋各種 Matrix＋Phase 2 entry review。

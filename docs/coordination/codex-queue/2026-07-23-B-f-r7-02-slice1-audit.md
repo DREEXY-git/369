@@ -3,8 +3,11 @@ chat: B
 type: audit
 target: F-R7-02 slice1 実装 / branch claude/f-r7-02-cashflow-canonical-v1（PR は本文参照）
 push-to: codex/reaudit-B-cashflow
-status: OPEN
+status: DONE
+resolved: 2026-07-23
 ---
+
+> **DONE（2026-07-23・前進のみ・再オープンしない）**: 本監査は Codex `be37a55`（`codex/reaudit-B-cashflow`）で実施され、実害3件（B-S1-01 false-safe／B-S1-02・03 unified/bridge 未調停）は **#126（main `93d4e5f`）** で反映済み。依頼は役割終了。producer 側の未対応 drift（`getCashflowUnifiedData`/`getCashflowBridgeData` の expected 側切替）は **F-R7-02 slice2 として Phase 5 候補**へ移管（schema 変更を伴うため Human Gate）。
 
 # 【独立監査依頼｜B: 会計/資金繰り】F-R7-02 slice1（canonical cashflow selector）実装の監査
 

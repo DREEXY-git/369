@@ -84,10 +84,12 @@ export async function getCashflowShortageProjection(
   // canonical 化に必要な lineage（candidate→invoice）と Invoice lifecycle を tenant スコープで取得。
   const candidateIds = [...new Set(scanned.filter((e) => e.sourceType === 'InvoiceCandidate' && e.sourceId).map((e) => e.sourceId as string))];
   const directInvoiceIds = scanned.filter((e) => e.sourceType === 'Invoice' && e.sourceId).map((e) => e.sourceId as string);
-  const candidateLinks = candidateIds.length
-    ? await prisma.invoiceCandidate.findMany({ where: { tenantId, id: { in: candidateIds }, invoiceId: { not: null } }, select: { id: true, invoiceId: true } })
+  // B-S1-01: 実在確認のため invoiceId の有無に関わらず全 candidate を tenant スコープで取得する
+  // （orphan/別tenant source の candidate を「未正式化の実在 candidate」と誤認しないため）。
+  const candidateRows = candidateIds.length
+    ? await prisma.invoiceCandidate.findMany({ where: { tenantId, id: { in: candidateIds } }, select: { id: true, invoiceId: true } })
     : [];
-  const invoiceIds = [...new Set([...directInvoiceIds, ...candidateLinks.map((c) => c.invoiceId as string)])];
+  const invoiceIds = [...new Set([...directInvoiceIds, ...candidateRows.map((c) => c.invoiceId).filter((x): x is string => !!x)])];
   const invoices = invoiceIds.length
     ? await prisma.invoice.findMany({ where: { tenantId, id: { in: invoiceIds } }, select: { id: true, status: true, total: true, paidAmount: true } })
     : [];
@@ -95,7 +97,7 @@ export async function getCashflowShortageProjection(
   const selection = selectCanonicalCashflowObligations({
     events: scanned.map((e) => ({ id: e.id, type: e.type, sourceType: e.sourceType, sourceId: e.sourceId, direction: e.direction, amount: toNumber(e.amount), dueAt: e.dueAt, description: e.description })),
     invoices: invoices.map((i) => ({ id: i.id, status: i.status, total: toNumber(i.total), paidAmount: toNumber(i.paidAmount) })),
-    candidateInvoiceLinks: candidateLinks.map((c) => ({ candidateId: c.id, invoiceId: c.invoiceId as string })),
+    candidates: candidateRows.map((c) => ({ id: c.id, invoiceId: c.invoiceId })),
   });
 
   const opening = accounts.reduce((s, a) => s + toNumber(a.balance), 0);

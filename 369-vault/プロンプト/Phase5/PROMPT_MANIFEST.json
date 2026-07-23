@@ -1,0 +1,57 @@
+{
+  "schema": "369-phase5-prompt-manifest-v1",
+  "status": "proposed",
+  "generated_on": "2026-07-23",
+  "hash_algorithm": "sha256",
+  "notes_ja": "各sha256はこのmanifest作成時点のファイル内容。本文変更時はversionとhashを更新する。Task Packetでは、Gitへ反映されたcommit SHAとこのsha256を併記する。",
+  "prompts": [
+    {
+      "path": "369-vault/プロンプト/Phase5/00_PHASE5_PROMPT_SYSTEM.md",
+      "prompt_id": "369-PHASE5-PROMPT-SYSTEM",
+      "version": "1.0",
+      "sha256": "27330d2b9ad72d19d52dba0dbb0348c7bc6f90642879fb4dd4cdc7e2b7c8caa4"
+    },
+    {
+      "path": "369-vault/プロンプト/Phase5/01_PHASE5_PROGRAM_CHARTER_V1.md",
+      "prompt_id": "369-PHASE5-PROGRAM-CHARTER",
+      "version": "1.0",
+      "sha256": "46b223208a478c470a8f9983910325b1e08abbe2520d0a4c62926c4614a16099"
+    },
+    {
+      "path": "369-vault/プロンプト/Phase5/02_PHASE5_CLAUDE_CODE_MASTER_PROMPT_V1.md",
+      "prompt_id": "369-PHASE5-CLAUDE-IMPLEMENTER",
+      "version": "1.0",
+      "sha256": "17631eb65f68afb3bf39fcdfac1b46c30b7411a8db536125903c65c27a03db92"
+    },
+    {
+      "path": "369-vault/プロンプト/Phase5/03_PHASE5_CODEX_A_TO_H_MASTER_PROMPT_V14.md",
+      "prompt_id": "369-PHASE5-CODEX-A-H",
+      "version": "14.0",
+      "sha256": "cba186eb0d5fda3c7b9a99ea0fb6c819e8ba72b6b439b74249ba96fd473fc7c5"
+    },
+    {
+      "path": "369-vault/プロンプト/Phase5/04_PHASE5_TASK_PACKET_TEMPLATE_V1.md",
+      "prompt_id": "369-PHASE5-TASK-PACKET-TEMPLATE",
+      "version": "1.0",
+      "sha256": "9e04893f78762581cee6515420ab3086537f398c41a1832a066cd4c2ef55ca7a"
+    },
+    {
+      "path": "369-vault/プロンプト/Phase5/05_PHASE5_BUSINESS_CLOSE_PROMPT_V1.md",
+      "prompt_id": "369-PHASE5-BUSINESS-CLOSE",
+      "version": "1.0",
+      "sha256": "a5d64bc0e00704d557627c7c5e3390cdec94a6116b6371750c5ed6bb4de538fd"
+    },
+    {
+      "path": "369-vault/プロンプト/Phase5/06_PHASE5_CLAUDE_CODE_SINGLE_PROMPT_V1.md",
+      "prompt_id": "369-PHASE5-CLAUDE-SINGLE",
+      "version": "1.0",
+      "sha256": "e09ce4f1db2da55569ed5b1260d78822792be3cf4b16c185144a6f18135edd6a"
+    },
+    {
+      "path": "369-vault/プロンプト/Phase5/07_PHASE5_CODEX_SINGLE_PROMPT_V15.md",
+      "prompt_id": "369-PHASE5-CODEX-SINGLE",
+      "version": "15.0",
+      "sha256": "250ca8199e6273128fc95a41380daf57f41f0733290398d0f3f6525bc2efa5b7"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 ---
 title: Phase 5 Claude Code Implementation Master Prompt
 prompt_id: 369-PHASE5-CLAUDE-IMPLEMENTER
-version: 1.1
+version: 1.2
 status: proposed
 date: 2026-07-23
 engine: claude-code
@@ -49,6 +49,9 @@ Task Packetには次の権限がある。
 
 ```yaml
 authorization:
+  repository: <OWNER/REPO>
+  branch: <EXISTING_BRANCH>
+  existing_branch_only: true
   read_only: true
   edit_local: false
   run_local_checks: false

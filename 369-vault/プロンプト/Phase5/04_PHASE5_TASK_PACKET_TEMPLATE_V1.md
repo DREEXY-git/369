@@ -1,7 +1,7 @@
 ---
 title: Phase 5 Task Packet Template
 prompt_id: 369-PHASE5-TASK-PACKET-TEMPLATE
-version: 1.3
+version: 1.4
 status: proposed
 date: 2026-07-23
 tags:
@@ -132,6 +132,9 @@ resources:
 
 ```yaml
 authorization:
+  repository: <OWNER/REPO>
+  branch: <EXISTING_BRANCH>
+  existing_branch_only: true
   read_only: true
   edit_local: false
   run_local_checks: false
@@ -261,7 +264,7 @@ route:
 
 Human Approval Event は承認済み Packet 本文へ書かない。承認は、投稿前に確定できる comment body payload と、投稿後に GitHub API から取得する本文外 envelope metadata に分離する。旧方式（`event_id` / `comment_id` / `comment_url` を承認 payload 本文へ含める自己参照方式）は残さない。承認契約は 04 / 06 / 07 で同一とする。
 
-投稿前に確定する comment body payload（この7項目だけで構成し、`event_id` / `comment_id` / `comment_url` / payload 自身の hash を含めない）:
+投稿前に確定する comment body payload（この7 top-level 項目だけで構成し、`event_id` / `comment_id` / `comment_url` / `body_sha256` / payload 自身の hash を含めない）:
 
 ```yaml
 event: PHASE5_TASK_PACKET_APPROVED
@@ -271,12 +274,18 @@ packet_sha256: <64_HEX>
 fixed_head_sha: <FULL_40_CHAR_SHA>
 human_approver: DREEXY-git
 authorization_scope:
+  repository: <OWNER/REPO>
+  branch: <EXISTING_BRANCH>
+  existing_branch_only: true
+  read_only: true
   edit_local: false
   run_local_checks: false
   commit: false
   push: false
   open_draft_pr: false
 ```
+
+`authorization_scope` は Packet の `authorization` object を、変換・省略・default 補完せずに同じキー・型・値で複写したものとする（canonical key set: `repository` / `branch` / `existing_branch_only` / `read_only` / `edit_local` / `run_local_checks` / `commit` / `push` / `open_draft_pr`）。旧キー `normal_commit` / `normal_push_to_existing_branch` は使用しない。
 
 投稿後に GitHub API から取得する本文外 envelope metadata（comment body には書かない）:
 
@@ -304,19 +313,20 @@ replay key は `github:<repository>:<comment_id>` で一意化する。
 - `comment_id` / `comment_url` を comment body へ追記しない。
 - API envelope は本文外の検証情報であり、承認 payload には含めない。
 
-verifier は GitHub API からコメントを再取得して検証する（1つでも満たさなければ fail-closed＝編集権限を得ない）:
+verifier は GitHub API からコメントと対象 PR を再取得して検証する（1つでも満たさなければ fail-closed＝編集権限を得ない）:
 
 - `author.login` が `human_approver` と完全一致する。
 - `author.login` が Packet 指定の承認者と完全一致する。
 - `author.type` が `User` であり、Bot / App を拒否する。
-- Packet の `packet_id` / `revision` / `packet_sha256` / `fixed_head_sha` / `authorization_scope` が完全一致する。
+- Packet の `packet_id` / `revision` / `packet_sha256` が完全一致する。
+- Event.`authorization_scope` と Packet.`authorization` を strict YAML parse 後に recursive exact semantic equality で比較する。duplicate key / unknown key / missing key / YAML alias・tag / 型不一致 / legacy key（`normal_commit` / `normal_push_to_existing_branch`）/ implicit default を拒否する。`read_only` を比較対象から除外しない。`repository` / `branch` / `existing_branch_only` も必ず比較する。`push: true` でも、指定済み既存 branch 以外への push は許可しない。
+- `fixed_head_sha` は Packet 内フィールドとの比較対象にしない。Packet の `repository` / `target_pr` / `branch` を使って GitHub API から対象 PR を再取得し、Event.`fixed_head_sha` が検証時点の対象 PR の live `head.sha` と完全一致することを要求する。API の `repository` / PR / `head.ref` も Packet と完全一致させる。head が 1 commit でも変われば stale として fail-closed。`fixed_head_sha` を Packet 本文へ埋め込んで循環参照を作らない。
 - 再取得 body の `body_sha256` が一致する。
 - `updated_at == created_at`（編集済みは無効）。
 - replay key（`github:<repository>:<comment_id>`）が未使用である。
-- stale head を拒否する。
 - 欠落・取得不能・不一致・AI 自己承認・bot 投稿はいずれも fail-closed。
 
-negative test（すべて fail-closed）: edited comment / bot・app author / author mismatch / stale head / body hash mismatch / duplicate・replayed comment_id / missing API metadata / Packet hash・revision・scope mismatch。
+negative test（すべて fail-closed）: `fixed_head_sha != live PR head.sha` / repository mismatch / target PR mismatch / branch mismatch / missing authorization key / unknown authorization key / legacy `normal_commit` key / legacy `normal_push_to_existing_branch` key / authorization value・type mismatch / `read_only` omission / `existing_branch_only` omission または false / edited comment / bot・app author / author mismatch / body hash mismatch / duplicate・replayed comment_id / missing API metadata / Packet hash・revision mismatch / AI 自己承認。
 
 承認者は人間のみ。B・H を含む Codex A〜H は独立確認者であり、`PHASE5_TASK_PACKET_APPROVED` を付与しない。Claude Code も自己宣言しない。
 

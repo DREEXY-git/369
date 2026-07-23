@@ -3,7 +3,7 @@
   "status": "proposed",
   "generated_on": "2026-07-23",
   "hash_algorithm": "sha256",
-  "notes_ja": "各sha256は対象prompt本文のcontent hash（この値のみを管理する）。本文変更時はversionとsha256を更新する。prompt本文をGit追跡したcommit SHAはこのmanifestへ書き込まない（循環参照を作らない）。commit SHAとcontent hashの対応付けは、Task Packetと外部Human Approval Event（append-only）が併記して固定する。P5-GOV-000 revision 3 rework2で、01/02/03/05/06/07のEOFを正規化し、06/07のTask Packet必須欄から human_approval を除去（外部Human Approval Eventへ置換）した。 P5-GOV-000 revision 4で、04/06/07のHuman Approval Eventを単一スキーマ（event: PHASE5_TASK_PACKET_APPROVED / approval 8項目 / authorization_scope / event_id / GitHub author認証規則）へ統一し、旧キー approver を human_approver へ廃止統合、versionとsha256を更新した。 revision 5で、04/06/07のHuman Approval Eventから自己参照（event_id/comment_id/comment_url/payload自身のhash）を除去し、投稿前payload（7項目）と投稿後API envelope（provider/repository/comment_id/comment_url/author/created_at/updated_at/body_sha256）を分離、versionとsha256を更新した。",
+  "notes_ja": "各sha256は対象prompt本文のcontent hash（この値のみを管理する）。本文変更時はversionとsha256を更新する。prompt本文をGit追跡したcommit SHAはこのmanifestへ書き込まない（循環参照を作らない）。commit SHAとcontent hashの対応付けは、Task Packetと外部Human Approval Event（append-only）が併記して固定する。P5-GOV-000 revision 3 rework2で、01/02/03/05/06/07のEOFを正規化し、06/07のTask Packet必須欄から human_approval を除去（外部Human Approval Eventへ置換）した。 P5-GOV-000 revision 4で、04/06/07のHuman Approval Eventを単一スキーマ（event: PHASE5_TASK_PACKET_APPROVED / approval 8項目 / authorization_scope / event_id / GitHub author認証規則）へ統一し、旧キー approver を human_approver へ廃止統合、versionとsha256を更新した。 revision 5で、04/06/07のHuman Approval Eventから自己参照（event_id/comment_id/comment_url/payload自身のhash）を除去し、投稿前payload（7項目）と投稿後API envelope（provider/repository/comment_id/comment_url/author/created_at/updated_at/body_sha256）を分離、versionとsha256を更新した。 revision 6で、Packet Authorizationを canonical schema（repository/branch/existing_branch_only/read_only/edit_local/run_local_checks/commit/push/open_draft_pr）へ統一し（旧 normal_commit/normal_push_to_existing_branch 廃止）、authorization_scope を Packet.authorization の厳密複写、fixed_head_sha を対象PRの live head.sha へ照合、旧8項目一致を廃止、02/04/06/07 の version と sha256 を更新した。",
   "prompts": [
     {
       "path": "369-vault/プロンプト/Phase5/00_PHASE5_PROMPT_SYSTEM.md",
@@ -20,8 +20,8 @@
     {
       "path": "369-vault/プロンプト/Phase5/02_PHASE5_CLAUDE_CODE_MASTER_PROMPT_V1.md",
       "prompt_id": "369-PHASE5-CLAUDE-IMPLEMENTER",
-      "version": "1.1",
-      "sha256": "d5ecf067fe9251f741127f3a7ea2bbfbb21e4d35caa4a877fa6fa5149eae749a"
+      "version": "1.2",
+      "sha256": "558fd6110c287f9f016f1b7656ca4f3d4b98e969b3924497fac04e8d1fc9740e"
     },
     {
       "path": "369-vault/プロンプト/Phase5/03_PHASE5_CODEX_A_TO_H_MASTER_PROMPT_V14.md",
@@ -32,8 +32,8 @@
     {
       "path": "369-vault/プロンプト/Phase5/04_PHASE5_TASK_PACKET_TEMPLATE_V1.md",
       "prompt_id": "369-PHASE5-TASK-PACKET-TEMPLATE",
-      "version": "1.3",
-      "sha256": "234f650eaa23cf9e59c7332de56c709690daaa91947fefb32fc4a71aacb536ae"
+      "version": "1.4",
+      "sha256": "b6a479576b787d268be49c6ec80caa9de03bae08251aeda7aed63035190b3c52"
     },
     {
       "path": "369-vault/プロンプト/Phase5/05_PHASE5_BUSINESS_CLOSE_PROMPT_V1.md",
@@ -44,14 +44,14 @@
     {
       "path": "369-vault/プロンプト/Phase5/06_PHASE5_CLAUDE_CODE_SINGLE_PROMPT_V1.md",
       "prompt_id": "369-PHASE5-CLAUDE-SINGLE",
-      "version": "1.4",
-      "sha256": "6c571c7bcf9726da2892af4e726c7ebadcc040239367bb41003155b6cf29fbe1"
+      "version": "1.5",
+      "sha256": "dfc620dfb0ad3c81918534a9ead8a55b591f3387ea18bd70eda1c261b093123d"
     },
     {
       "path": "369-vault/プロンプト/Phase5/07_PHASE5_CODEX_SINGLE_PROMPT_V15.md",
       "prompt_id": "369-PHASE5-CODEX-SINGLE",
-      "version": "15.4",
-      "sha256": "9094e17ed76a684d601c45c380886a4866df5349aa358205f7b6db6f07070e23"
+      "version": "15.5",
+      "sha256": "c3a0b25b29efed20787792db5a2d503a69337125f6f236cd2302d5998f433a57"
     }
   ]
 }

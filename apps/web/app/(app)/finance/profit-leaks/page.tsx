@@ -83,6 +83,22 @@ export default async function ProfitLeaksPage() {
     .filter((d) => !billedDealIds.has(d.id))
     .map((d) => ({ id: d.id, title: canSeeDeals ? d.title : '（納品済みの案件）', amount: toNumber(d.amount) }));
 
+  // 眠り在庫（idle asset）: 稼働率の低い在庫を利益漏れとして検知（detectProfitLeaks の idle_asset 枝）。
+  // 廃棄済み(retired)は除外。在庫名は inventory:read 保有時のみ実名・権限外は汎用文言へ redact（同じ規律）。
+  const idleAssetsRaw = await prisma.productAsset.findMany({
+    where: { tenantId: t, utilizationRate: { lt: 10 }, condition: { not: 'retired' } },
+    select: { id: true, name: true, utilizationRate: true, acquisitionCost: true },
+    orderBy: { acquisitionCost: 'desc' },
+    take: 200,
+  });
+  const canSeeInventory = hasPermission(user, 'inventory', 'read');
+  const idleAssets = idleAssetsRaw.map((a) => ({
+    id: a.id,
+    name: canSeeInventory ? a.name : '（低稼働の在庫）',
+    utilizationRate: toNumber(a.utilizationRate),
+    acquisitionCost: toNumber(a.acquisitionCost),
+  }));
+
   const liveFindings = detectProfitLeaks({
     overdueReceivables: overdueRecv.map((r) => {
       const inv = invById.get(r.invoiceId);
@@ -92,6 +108,7 @@ export default async function ProfitLeaksPage() {
       return { id: r.id, amount: toNumber(r.amount), customer: label };
     }),
     unbilledDeals,
+    idleAssets,
   });
 
   const storedViews: LeakView[] = stored.map((f) => ({ key: `stored:${f.id}`, type: f.type, title: f.title, impactJpy: toNumber(f.impactJpy), severity: f.severity, detail: f.detail, recommendation: f.recommendation, live: false }));
@@ -106,7 +123,7 @@ export default async function ProfitLeaksPage() {
 
   return (
     <div>
-      <PageHeader title="利益漏れ検知AI" description="原価率・値引き・請求漏れ・回収遅延・眠り在庫などをAIが検知します（回収遅延・請求漏れは実データからライブ検知）。" />
+      <PageHeader title="利益漏れ検知AI" description="原価率・値引き・請求漏れ・回収遅延・眠り在庫などをAIが検知します（回収遅延・請求漏れ・眠り在庫は実データからライブ検知）。" />
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3">
         <Stat label="検知件数" value={findings.length} sub={liveCount > 0 ? `うち実データ検知 ${liveCount}件` : undefined} />
         <Stat label="推定影響額" value={formatJpy(total)} tone="red" />

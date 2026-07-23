@@ -53,13 +53,14 @@ export function classifyCustomerChurn(input: CustomerChurnInput): CustomerChurnA
   const reasons: string[] = [];
   let score = 0;
 
-  const churn = typeof input.churnRisk === 'number' && Number.isFinite(input.churnRisk) ? clamp0to100(input.churnRisk) : null;
+  // Codex F-CHURN-01: 範囲外(0-100外)・非数値は「無視」する（clamp して危険根拠に化けさせない＝捏造しない）。
+  const churn = normalizeSignal(input.churnRisk);
   if (churn != null) {
     score += churn;
     if (churn >= 60) reasons.push(`離反リスク指標が高い（${churn}）`);
   }
 
-  const sat = typeof input.satisfaction === 'number' && Number.isFinite(input.satisfaction) ? clamp0to100(input.satisfaction) : null;
+  const sat = normalizeSignal(input.satisfaction);
   if (sat != null) {
     if (sat < 40) {
       score += 25;
@@ -100,4 +101,9 @@ export function daysSinceContact(lastContactAt: Date | null | undefined, now: Da
 
 function clamp0to100(n: number): number {
   return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+/** 0-100 の有限数だけ採用（整数化）。範囲外・非数値・null は null＝無視（保存済み不正値を根拠に化けさせない）。 */
+function normalizeSignal(n: number | null): number | null {
+  return typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 100 ? Math.round(n) : null;
 }

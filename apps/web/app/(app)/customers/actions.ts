@@ -97,8 +97,9 @@ export async function updateCustomerAction(formData: FormData) {
       email: String(formData.get('email') ?? '') || null,
       address: String(formData.get('address') ?? '') || null,
       status: String(formData.get('status') ?? existing.status),
-      satisfaction: satisfaction !== null && Number.isFinite(satisfaction) ? satisfaction : existing.satisfaction,
-      churnRisk: churnRisk !== null && Number.isFinite(churnRisk) ? churnRisk : existing.churnRisk,
+      // Codex F-CHURN-01: 0-100 の範囲もサーバ側で強制（HTML min/max は境界ではない）。範囲外は既存値を維持し保存しない。
+      satisfaction: satisfaction !== null && Number.isFinite(satisfaction) && satisfaction >= 0 && satisfaction <= 100 ? satisfaction : existing.satisfaction,
+      churnRisk: churnRisk !== null && Number.isFinite(churnRisk) && churnRisk >= 0 && churnRisk <= 100 ? churnRisk : existing.churnRisk,
       notes: String(formData.get('notes') ?? existing.notes),
     },
   });

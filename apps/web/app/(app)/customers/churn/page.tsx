@@ -28,9 +28,11 @@ export default async function CustomerChurnPage() {
   }
   // 閲覧不可 label の顧客は DB クエリ段階で除外（顧客一覧と同一規約・不可視行は件数も内容も出さない）。
   const visibleLabels = visibleCustomerLabels(user.roles);
-  // 現顧客（active）の離反を対象にする。未対応クレームは子取得時も tenantId を明示（defense-in-depth）。
+  // Codex F-CHURN-02: 取引中(active)＋休眠(dormant)を対象にする。休眠こそ長期未接触の高リスク先で、
+  // active 固定だと離反予兆の主対象を取りこぼす。prospect(見込み)・churned(離反済み)は対象外。
+  // 未対応クレームは子取得時も tenantId を明示（defense-in-depth）。
   const customers = await prisma.customer.findMany({
-    where: { tenantId: user.tenantId, label: { in: visibleLabels }, status: 'active' },
+    where: { tenantId: user.tenantId, label: { in: visibleLabels }, status: { in: ['active', 'dormant'] } },
     select: {
       id: true, name: true, rank: true, satisfaction: true, churnRisk: true, lastContactAt: true, label: true,
       complaints: { where: { tenantId: user.tenantId, status: 'open' }, select: { id: true } },
@@ -60,12 +62,12 @@ export default async function CustomerChurnPage() {
     <div>
       <PageHeader
         title="顧客の離反予兆（AI）"
-        description="離反リスク・満足度・接触の間隔・未対応クレームから、離れそうな顧客を根拠付きで検知します（read-only）。"
+        description="取引中・休眠の顧客について、離反リスク・満足度・接触の間隔・未対応クレームから離れそうな先を根拠付きで検知します（read-only）。"
         breadcrumb={[{ label: '顧客', href: '/customers' }, { label: '離反予兆', href: '/customers/churn' }]}
       />
 
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="要対応の顧客" value={assessed.length} sub={`現顧客 ${customers.length} 件中`} />
+        <Stat label="要対応の顧客" value={assessed.length} sub={`対象 ${customers.length} 件中（取引中・休眠）`} />
         <Stat label="離反 危険" value={countBy('critical')} tone="red" />
         <Stat label="離反 要注意" value={countBy('elevated')} tone="amber" />
         <Stat label="様子見" value={countBy('watch')} tone="slate" />

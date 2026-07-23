@@ -3,8 +3,8 @@ chat: F
 type: audit
 target: 顧客離反予兆ボード / branch claude/customer-churn-watch-v1（PR は本文参照）
 push-to: codex/reaudit-F-tenant-rbac
-status: OPEN
----
+status: DONE
+resolved: Codex F 監査（reaudit-F-tenant-rbac a4ba86a）で tenant/RBAC/PII は PASS、Medium 2件（F-CHURN-01 範囲外clampの捏造 / F-CHURN-02 dormant取りこぼし）を同 PR #127 で反映（純関数で0-100外は無視・updateCustomerActionでも0-100強制・status を active+dormant に）。
 
 # 【独立監査依頼｜F: テナント分離/RBAC】顧客離反予兆（churn watch）ボード
 

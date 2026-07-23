@@ -3,7 +3,8 @@ chat: B
 type: design-review
 target: F-R7-02 / apps/web/lib/domains/finance/cashflow.ts / packages/shared/src/finance.ts / finance-event-identity.ts @ commit 989ab67
 push-to: codex/reaudit-B-cashflow
-status: OPEN
+status: DONE
+resolved: Codex が313行の設計レビュー（codex/reaudit-B-cashflow-f-r7-02-design）を提出し推奨 A' 案を提示。その thin slice（canonical selector + reader統一・schema変更なし）を PR #124 として実装し main マージ済み。producer canonical化・unified/bridge統一・schema は slice2（人間ゲート）。
 ---
 
 # 【独立設計レビュー依頼｜B: 会計/資金繰り】F-R7-02 資金ショート予兆の会計イベント調停

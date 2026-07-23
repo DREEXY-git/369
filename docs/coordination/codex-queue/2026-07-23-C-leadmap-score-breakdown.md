@@ -3,7 +3,8 @@ chat: C
 type: audit
 target: PR #122 / commit d3b7ce5 / branch claude/leadmap-score-breakdown-v1
 push-to: codex/reaudit-C-leadmap
-status: OPEN
+status: DONE
+resolved: Codex監査で C-SCORE-01/02/03/04（Med2/Low2）を検出。全4件を commit 8dff64f で修正し PR #122 で main マージ済み（tenant/PII/決定論は独立 PASS）。再監査 reaudit-C-leadmap は旧 d3b7ce5 を見た stale（Codex 自身が「現head 8dff64f・流用禁止」と明記）。
 ---
 
 # 【独立監査依頼｜C: LeadMap】優先度スコア内訳の表示（PR #122）

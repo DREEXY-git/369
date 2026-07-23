@@ -1,7 +1,7 @@
 ---
 title: Phase 5 Claude Code Single Master Prompt
 prompt_id: 369-PHASE5-CLAUDE-SINGLE
-version: 1.2
+version: 1.3
 status: proposed
 date: 2026-07-23
 engine: claude-code
@@ -184,7 +184,31 @@ authorization:
 
 `human_approval` はTask Packet必須欄に含めない（Packet本文へ書かない）。承認は外部のappend-only Human Approval Eventとして記録し、Packetのimmutable本文と分離する。
 
-Human Approval Eventと対象Packet / headの一致を必須検証する:
+Human Approval Event は承認済み Packet 本文へ書かない。Packet の完全 SHA-256 を計算した後、WIP Issue / Control Root へ append-only の GitHub コメントとして記録する。旧キー `approver` は廃止し `human_approver` に統一する。承認イベントは 04 / 06 / 07 で同一スキーマとする。
+
+```yaml
+event: PHASE5_TASK_PACKET_APPROVED
+approval:
+  packet_id: <PACKET_ID>
+  revision: <REVISION>
+  packet_sha256: <64_HEX>
+  fixed_head_sha: <FULL_40_CHAR_SHA>
+  human_approver: DREEXY-git
+  authorization_scope:
+    edit_local: false
+    run_local_checks: false
+    commit: false
+    push: false
+    open_draft_pr: false
+  approved_at: <ISO-8601>
+  event_id:
+    provider: github
+    repository: DREEXY-git/369
+    comment_id: <GITHUB_COMMENT_ID>
+    comment_url: <GITHUB_COMMENT_URL>
+```
+
+`approval` 配下の必須8項目（この8項目すべてを完全一致で検証する）:
 
 - `packet_id`
 - `revision`
@@ -195,7 +219,19 @@ Human Approval Eventと対象Packet / headの一致を必須検証する:
 - `approved_at`
 - `event_id`
 
-いずれかがmismatch、headがstale、またはAIによる自己承認の場合はfail-closed（編集権限を得ない）。承認者は人間のみで、B/Hを含むCodexは独立確認者であり承認者ではない。
+GitHub author / event の必須検証（1つでも満たさなければ fail-closed＝編集権限を得ない）:
+
+- GitHub comment の `author.login` が `human_approver` と完全一致する。
+- `author.login` が Packet 指定の承認者と完全一致する。
+- `author.type` が `User` であり、Bot / App ではない。
+- `event_id.comment_id` と `event_id.comment_url` が実在コメントと一致する。
+- GitHub comment の `updated_at == created_at` であり、編集済みコメントは無効。
+- `event_id` の重複・再利用は禁止。
+- `packet_id` / `revision` / `packet_sha256` / `fixed_head_sha` が対象 Packet / head と完全一致する。
+- `authorization_scope` が人間承認値と完全一致する。
+- stale・欠落・不一致・AI自己承認・bot投稿はいずれも fail-closed。
+
+承認者は人間のみ。B・H を含む Codex A〜H は独立確認者であり、`PHASE5_TASK_PACKET_APPROVED` を付与しない。Claude Code も自己宣言しない。
 
 規則:
 

@@ -1,9 +1,9 @@
 ---
 title: Phase 5 Codex A-H Unified Audit Master Prompt
 prompt_id: 369-PHASE5-CODEX-A-H
-version: 14.1
-status: proposed
-date: 2026-07-23
+version: 14.2
+status: active
+date: 2026-07-24
 engine: codex
 supersedes_candidate: 369_CODEX_A_TO_G_UNIFIED_MASTER_PROMPT_V13
 tags:

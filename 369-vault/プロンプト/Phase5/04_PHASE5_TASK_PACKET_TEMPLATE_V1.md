@@ -1,9 +1,9 @@
 ---
 title: Phase 5 Task Packet Template
 prompt_id: 369-PHASE5-TASK-PACKET-TEMPLATE
-version: 1.4
-status: proposed
-date: 2026-07-23
+version: 1.5
+status: active
+date: 2026-07-24
 tags:
   - phase5
   - prompt

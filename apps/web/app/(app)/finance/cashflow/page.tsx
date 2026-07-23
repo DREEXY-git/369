@@ -47,7 +47,7 @@ export default async function CashflowPage() {
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2">
             資金ショート予兆（実データ・ライブ予測）
-            {proj.currentlyNegative || proj.result.shortageDate ? <Badge tone="red">要対応</Badge> : proj.truncated ? <Badge tone="amber">一部予定は未反映</Badge> : proj.lineCount > 0 ? <Badge tone="green">予測期間内 ショートなし</Badge> : null}
+            {proj.currentlyNegative || proj.result.shortageDate ? <Badge tone="red">要対応</Badge> : proj.coverageIncomplete ? <Badge tone="amber">一部予定は未反映</Badge> : proj.lineCount > 0 ? <Badge tone="green">予測期間内 ショートなし</Badge> : null}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -67,10 +67,13 @@ export default async function CashflowPage() {
               ⚠️ このままだと <span className="font-bold">{formatDate(proj.result.shortageDate)}</span> ごろに現預金がマイナスになる見込みです（現在の現預金＋今日以降の予定入出金ベース）。入金の前倒し・支払の繰延・短期借入などの手当てを早めに検討してください。
             </div>
           ) : null}
-          {/* Codex B-CF-03: take 上限で後続予定が未反映。「ショートなし」を断定せずカバレッジ不足を明示。 */}
-          {proj.truncated ? (
+          {/* Codex B-CF-03 / F-R7-02: 予定集合が不完全（打切り or 内訳の未確定）なら「ショートなし」を断定せずカバレッジ不足を明示。 */}
+          {proj.coverageIncomplete ? (
             <div className="mb-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-              予定入出金が多く、先頭{SHORTAGE_PROJECTION_LIMIT}件までで試算しています。それ以降の予定は反映していないため、「ショートなし」と断定できません（後続の大きな支払いがある場合は別途ご確認ください）。
+              {proj.truncated
+                ? `予定入出金が多く、先頭${SHORTAGE_PROJECTION_LIMIT}件までで試算しています。それ以降の予定は反映していないため、`
+                : '一部の予定は内訳を確定できず試算から除外したため、'}
+              「ショートなし」と断定できません（後続の大きな支払いがある場合は別途ご確認ください）。
             </div>
           ) : null}
           {proj.lineCount === 0 ? (

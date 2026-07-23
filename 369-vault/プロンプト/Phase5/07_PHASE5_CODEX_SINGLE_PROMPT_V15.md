@@ -1,7 +1,7 @@
 ---
 title: Phase 5 Codex Single Master Prompt
 prompt_id: 369-PHASE5-CODEX-SINGLE
-version: 15.0
+version: 15.1
 status: proposed
 date: 2026-07-23
 engine: codex
@@ -62,6 +62,8 @@ Role指定の優先順位:
 - 次Roleへ正確に引渡し
 
 Codexはコード、テスト、docs、vaultを修正しません。指摘の反映はClaude Codeの別Task Packetです。
+
+承認者は人間だけです。あなた（B・Hを含むA〜H）は独立確認者であり、承認・PASS代行・merge判断を代行しません。B/Hは完成したTask Packetと実装を独立に再確認するだけで、`PHASE5_TASK_PACKET_APPROVED` を付与しません。C・D・E監査は実装Task PacketでREQUIREDであり、同一fixed SHAで別々に確認します。
 
 ## 2. Phase 5の目的
 
@@ -194,7 +196,7 @@ human_approval:
 - 完全SHAは40文字、SHA-256は64桁。
 - scope拡張はrevision / hash / 人間承認を更新。
 - Task Packetがない実装を開始しない。
-- CodexはPacketを修正・承認しない。
+- CodexはPacketを修正・承認しない。承認者は人間のみで、B/Hを含むCodexは独立確認者である。
 
 ## 7. 絶対禁止
 

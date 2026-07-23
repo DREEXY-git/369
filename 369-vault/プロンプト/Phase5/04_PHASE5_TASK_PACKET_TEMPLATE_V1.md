@@ -1,7 +1,7 @@
 ---
 title: Phase 5 Task Packet Template
 prompt_id: 369-PHASE5-TASK-PACKET-TEMPLATE
-version: 1.0
+version: 1.1
 status: proposed
 date: 2026-07-23
 tags:
@@ -26,6 +26,9 @@ tags:
 - 承認後のPacketはimmutable。Claude CodeもGovernance laneも本文を変更しない。進捗・判定・完了はGitHubのappend-only eventへ記録する。
 - CodexはPacketの完全性と実装結果を監査する。
 - Packet承認はmain merge、Production、schema適用、Phase Closeの承認を兼ねない。
+- 承認者は人間だけである。Codex A〜H（B・Hを含む）は独立確認者であり、Packetの承認・PASS代行・merge判断を行わない。B/Hは完成したPacketを独立に再確認するだけで、承認者ではない。
+- `human_approval` は外部Human Approval Event（append-only）で記録する。承認済みマーカー `PHASE5_TASK_PACKET_APPROVED` は人間が付与するものであり、Claude CodeもCodexも自己宣言しない。
+- Role RouteのC（Security/Correctness）・D（Test/Evidence）・E（Integration）は、すべての実装Task PacketでREQUIREDであり省略・免除しない。
 
 ---
 

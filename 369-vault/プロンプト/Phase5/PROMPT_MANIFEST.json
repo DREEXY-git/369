@@ -3,13 +3,13 @@
   "status": "proposed",
   "generated_on": "2026-07-23",
   "hash_algorithm": "sha256",
-  "notes_ja": "各sha256はこのmanifest作成時点のファイル内容。本文変更時はversionとhashを更新する。Task Packetでは、Gitへ反映されたcommit SHAとこのsha256を併記する。",
+  "notes_ja": "各sha256は対象prompt本文のcontent hash（この値のみを管理する）。本文変更時はversionとsha256を更新する。prompt本文をGit追跡したcommit SHAはこのmanifestへ書き込まない（循環参照を作らない）。commit SHAとcontent hashの対応付けは、Task Packetと外部Human Approval Event（append-only）が併記して固定する。00/04/06/07はP5-GOV-000 revision 3のB/H監査finding修正で更新済み。",
   "prompts": [
     {
       "path": "369-vault/プロンプト/Phase5/00_PHASE5_PROMPT_SYSTEM.md",
       "prompt_id": "369-PHASE5-PROMPT-SYSTEM",
-      "version": "1.0",
-      "sha256": "27330d2b9ad72d19d52dba0dbb0348c7bc6f90642879fb4dd4cdc7e2b7c8caa4"
+      "version": "1.1",
+      "sha256": "ee356ea54671c9ce75a0e78fb31dc0936a6b5ba3fa67a1049699d0ecd2ece90d"
     },
     {
       "path": "369-vault/プロンプト/Phase5/01_PHASE5_PROGRAM_CHARTER_V1.md",
@@ -32,8 +32,8 @@
     {
       "path": "369-vault/プロンプト/Phase5/04_PHASE5_TASK_PACKET_TEMPLATE_V1.md",
       "prompt_id": "369-PHASE5-TASK-PACKET-TEMPLATE",
-      "version": "1.0",
-      "sha256": "9e04893f78762581cee6515420ab3086537f398c41a1832a066cd4c2ef55ca7a"
+      "version": "1.1",
+      "sha256": "0298f5391bfee2c3771e24b7b51aedd08580de4d6cc79a73651a3d9c5720d6b1"
     },
     {
       "path": "369-vault/プロンプト/Phase5/05_PHASE5_BUSINESS_CLOSE_PROMPT_V1.md",
@@ -44,14 +44,14 @@
     {
       "path": "369-vault/プロンプト/Phase5/06_PHASE5_CLAUDE_CODE_SINGLE_PROMPT_V1.md",
       "prompt_id": "369-PHASE5-CLAUDE-SINGLE",
-      "version": "1.0",
-      "sha256": "e09ce4f1db2da55569ed5b1260d78822792be3cf4b16c185144a6f18135edd6a"
+      "version": "1.1",
+      "sha256": "79e9f070e4e343b5774f0e4390bc6c95895211ea8abe8a64a14f9b53453c3be4"
     },
     {
       "path": "369-vault/プロンプト/Phase5/07_PHASE5_CODEX_SINGLE_PROMPT_V15.md",
       "prompt_id": "369-PHASE5-CODEX-SINGLE",
-      "version": "15.0",
-      "sha256": "250ca8199e6273128fc95a41380daf57f41f0733290398d0f3f6525bc2efa5b7"
+      "version": "15.1",
+      "sha256": "9810c9c0fe9476880ca8a3f2207b50127a47e56df04b896743c7de064af068e9"
     }
   ]
 }

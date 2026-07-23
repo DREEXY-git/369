@@ -57,6 +57,32 @@ export default async function ProfitLeaksPage() {
   // Codex G-AI-03: 顧客名（機密ラベル対象）は customer:read ＋ ラベル可視の場合のみ実名を出す。
   // 権限外は請求番号にフォールバックし、顧客名・延滞額の対応を露出しない（売掛エイジング画面と同じ規約）。
   const canSeeNames = hasPermission(user, 'customer', 'read');
+
+  // 請求漏れ（unbilled）: 納品済み（DELIVERY/FOLLOW_UP）なのに請求書が無い Deal を検知（detectProfitLeaks の unbilled 枝）。
+  // 「請求書あり」= Invoice.dealId 直接 OR Deal の Quote 経由（Quote.dealId→Invoice.quoteId）のいずれか（誤検知を避ける両経路確認）。
+  const deliveredDeals = await prisma.deal.findMany({
+    where: { tenantId: t, stage: { in: ['DELIVERY', 'FOLLOW_UP'] } },
+    select: { id: true, title: true, amount: true },
+    orderBy: { amount: 'desc' },
+    take: 200,
+  });
+  const dealIds = deliveredDeals.map((d) => d.id);
+  const [directInvoiced, dealQuotes] = await Promise.all([
+    dealIds.length ? prisma.invoice.findMany({ where: { tenantId: t, dealId: { in: dealIds } }, select: { dealId: true } }) : [],
+    dealIds.length ? prisma.quote.findMany({ where: { tenantId: t, dealId: { in: dealIds } }, select: { id: true, dealId: true } }) : [],
+  ]);
+  const billedDealIds = new Set(directInvoiced.map((i) => i.dealId).filter((x): x is string => !!x));
+  const quoteIds = dealQuotes.map((q) => q.id);
+  const invoicedQuoteIds = quoteIds.length
+    ? new Set((await prisma.invoice.findMany({ where: { tenantId: t, quoteId: { in: quoteIds } }, select: { quoteId: true } })).map((i) => i.quoteId).filter((x): x is string => !!x))
+    : new Set<string>();
+  for (const q of dealQuotes) if (q.dealId && invoicedQuoteIds.has(q.id)) billedDealIds.add(q.dealId);
+  // 案件名（deal:read 保有時のみ実名・権限外は汎用文言に redact。G-AI-03 と同じ「識別情報は read 権限保有時のみ」規律）。
+  const canSeeDeals = hasPermission(user, 'deal', 'read');
+  const unbilledDeals = deliveredDeals
+    .filter((d) => !billedDealIds.has(d.id))
+    .map((d) => ({ id: d.id, title: canSeeDeals ? d.title : '（納品済みの案件）', amount: toNumber(d.amount) }));
+
   const liveFindings = detectProfitLeaks({
     overdueReceivables: overdueRecv.map((r) => {
       const inv = invById.get(r.invoiceId);
@@ -65,6 +91,7 @@ export default async function ProfitLeaksPage() {
       const label = (nameVisible ? cust!.name : null) ?? inv?.number ?? r.id;
       return { id: r.id, amount: toNumber(r.amount), customer: label };
     }),
+    unbilledDeals,
   });
 
   const storedViews: LeakView[] = stored.map((f) => ({ key: `stored:${f.id}`, type: f.type, title: f.title, impactJpy: toNumber(f.impactJpy), severity: f.severity, detail: f.detail, recommendation: f.recommendation, live: false }));
@@ -79,7 +106,7 @@ export default async function ProfitLeaksPage() {
 
   return (
     <div>
-      <PageHeader title="利益漏れ検知AI" description="原価率・値引き・未請求・回収遅延・眠り在庫などをAIが検知します（回収遅延は実データからライブ検知）。" />
+      <PageHeader title="利益漏れ検知AI" description="原価率・値引き・請求漏れ・回収遅延・眠り在庫などをAIが検知します（回収遅延・請求漏れは実データからライブ検知）。" />
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3">
         <Stat label="検知件数" value={findings.length} sub={liveCount > 0 ? `うち実データ検知 ${liveCount}件` : undefined} />
         <Stat label="推定影響額" value={formatJpy(total)} tone="red" />

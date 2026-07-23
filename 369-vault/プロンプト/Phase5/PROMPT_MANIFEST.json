@@ -1,0 +1,57 @@
+{
+  "schema": "369-phase5-prompt-manifest-v1",
+  "status": "proposed",
+  "generated_on": "2026-07-23",
+  "hash_algorithm": "sha256",
+  "notes_ja": "各sha256は対象prompt本文のcontent hash（この値のみを管理する）。本文変更時はversionとsha256を更新する。prompt本文をGit追跡したcommit SHAはこのmanifestへ書き込まない（循環参照を作らない）。commit SHAとcontent hashの対応付けは、Task Packetと外部Human Approval Event（append-only）が併記して固定する。P5-GOV-000 revision 3 rework2で、01/02/03/05/06/07のEOFを正規化し、06/07のTask Packet必須欄から human_approval を除去（外部Human Approval Eventへ置換）した。 P5-GOV-000 revision 4で、04/06/07のHuman Approval Eventを単一スキーマ（event: PHASE5_TASK_PACKET_APPROVED / approval 8項目 / authorization_scope / event_id / GitHub author認証規則）へ統一し、旧キー approver を human_approver へ廃止統合、versionとsha256を更新した。 revision 5で、04/06/07のHuman Approval Eventから自己参照（event_id/comment_id/comment_url/payload自身のhash）を除去し、投稿前payload（7項目）と投稿後API envelope（provider/repository/comment_id/comment_url/author/created_at/updated_at/body_sha256）を分離、versionとsha256を更新した。 revision 6で、Packet Authorizationを canonical schema（repository/branch/existing_branch_only/read_only/edit_local/run_local_checks/commit/push/open_draft_pr）へ統一し（旧 normal_commit/normal_push_to_existing_branch 廃止）、authorization_scope を Packet.authorization の厳密複写、fixed_head_sha を対象PRの live head.sha へ照合、旧8項目一致を廃止、02/04/06/07 の version と sha256 を更新した。",
+  "prompts": [
+    {
+      "path": "369-vault/プロンプト/Phase5/00_PHASE5_PROMPT_SYSTEM.md",
+      "prompt_id": "369-PHASE5-PROMPT-SYSTEM",
+      "version": "1.1",
+      "sha256": "ee356ea54671c9ce75a0e78fb31dc0936a6b5ba3fa67a1049699d0ecd2ece90d"
+    },
+    {
+      "path": "369-vault/プロンプト/Phase5/01_PHASE5_PROGRAM_CHARTER_V1.md",
+      "prompt_id": "369-PHASE5-PROGRAM-CHARTER",
+      "version": "1.1",
+      "sha256": "0a2a89a30cb3e9381f92f4e7a7e99a3d4951fdc6acb9681645f7b35882dbad8e"
+    },
+    {
+      "path": "369-vault/プロンプト/Phase5/02_PHASE5_CLAUDE_CODE_MASTER_PROMPT_V1.md",
+      "prompt_id": "369-PHASE5-CLAUDE-IMPLEMENTER",
+      "version": "1.2",
+      "sha256": "558fd6110c287f9f016f1b7656ca4f3d4b98e969b3924497fac04e8d1fc9740e"
+    },
+    {
+      "path": "369-vault/プロンプト/Phase5/03_PHASE5_CODEX_A_TO_H_MASTER_PROMPT_V14.md",
+      "prompt_id": "369-PHASE5-CODEX-A-H",
+      "version": "14.1",
+      "sha256": "03cafb8b2b34ddbe3726ce55bcbef8f7ac9d406baf3224d2f0b8b581f72dd5ba"
+    },
+    {
+      "path": "369-vault/プロンプト/Phase5/04_PHASE5_TASK_PACKET_TEMPLATE_V1.md",
+      "prompt_id": "369-PHASE5-TASK-PACKET-TEMPLATE",
+      "version": "1.4",
+      "sha256": "b6a479576b787d268be49c6ec80caa9de03bae08251aeda7aed63035190b3c52"
+    },
+    {
+      "path": "369-vault/プロンプト/Phase5/05_PHASE5_BUSINESS_CLOSE_PROMPT_V1.md",
+      "prompt_id": "369-PHASE5-BUSINESS-CLOSE",
+      "version": "1.1",
+      "sha256": "65add1032baaaa595cf4eda63d5b7b10805b720cab6766a1940ff5b794338cad"
+    },
+    {
+      "path": "369-vault/プロンプト/Phase5/06_PHASE5_CLAUDE_CODE_SINGLE_PROMPT_V1.md",
+      "prompt_id": "369-PHASE5-CLAUDE-SINGLE",
+      "version": "1.5",
+      "sha256": "dfc620dfb0ad3c81918534a9ead8a55b591f3387ea18bd70eda1c261b093123d"
+    },
+    {
+      "path": "369-vault/プロンプト/Phase5/07_PHASE5_CODEX_SINGLE_PROMPT_V15.md",
+      "prompt_id": "369-PHASE5-CODEX-SINGLE",
+      "version": "15.5",
+      "sha256": "c3a0b25b29efed20787792db5a2d503a69337125f6f236cd2302d5998f433a57"
+    }
+  ]
+}

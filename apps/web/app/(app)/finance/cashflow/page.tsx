@@ -54,7 +54,8 @@ export default async function CashflowPage() {
           <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
             <Stat label="現在の現預金" value={formatJpy(proj.opening)} tone={proj.currentlyNegative ? 'red' : 'slate'} />
             <Stat label="予測 最低残高" value={formatJpy(proj.result.minBalance)} tone={proj.result.minBalance < 0 ? 'red' : proj.result.minBalance < 1_500_000 ? 'amber' : 'emerald'} />
-            <Stat label="資金ショート予測日" value={proj.currentlyNegative ? '現在マイナス' : proj.result.shortageDate ? formatDate(proj.result.shortageDate) : 'なし'} tone={proj.currentlyNegative || proj.result.shortageDate ? 'red' : 'emerald'} />
+            {/* Codex B-S1-02: coverage 不足中は「なし/emerald」と断定せず「判定不能/amber」にする（KPIが直下の警告と矛盾しない）。 */}
+            <Stat label="資金ショート予測日" value={proj.currentlyNegative ? '現在マイナス' : proj.result.shortageDate ? formatDate(proj.result.shortageDate) : proj.coverageIncomplete ? '判定不能' : 'なし'} tone={proj.currentlyNegative || proj.result.shortageDate ? 'red' : proj.coverageIncomplete ? 'amber' : 'emerald'} />
             <Stat label="対象の予定" value={`${proj.lineCount}件`} sub={proj.truncated ? '上限500件で打切り' : '今日以降・確定日'} tone={proj.truncated ? 'amber' : 'slate'} />
           </div>
           {/* Codex B-CF-02: opening が既にマイナス＝現時点で資金ショート中。将来予兆と別に最優先で警告。 */}
@@ -77,7 +78,12 @@ export default async function CashflowPage() {
             </div>
           ) : null}
           {proj.lineCount === 0 ? (
-            <p className="text-sm text-muted-foreground">今日以降の予定入出金（Finance Bridge の入金/支払予定）がまだありません。予定が登録されると、現預金からのライブな資金ショート予測が表示されます。</p>
+            // Codex B-S1-02: 予定が存在しても全行が判定不能で除外された場合は「予定なし」と誤表示しない。
+            proj.coverageIncomplete ? (
+              <p className="text-sm text-amber-800">今日以降の予定入出金はありますが、一部の予定が判定できず予測に反映できていません（内訳の未確定・打切りなど）。「資金ショートなし」とは断定できません。下の予定明細と資金繰りをご確認ください。</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">今日以降の予定入出金（Finance Bridge の入金/支払予定）がまだありません。予定が登録されると、現預金からのライブな資金ショート予測が表示されます。</p>
+            )
           ) : (
             <Table>
               <thead><tr><Th>予定日</Th><Th>入金</Th><Th>支払</Th><Th>残高（予測）</Th></tr></thead>
@@ -134,6 +140,9 @@ export default async function CashflowPage() {
       <Card className="mt-4">
         <CardHeader><CardTitle>現場由来の入金・支払予定（Finance Bridge）</CardTitle></CardHeader>
         <CardContent>
+          {/* Codex B-S1-03: これは生の Bridge イベント合計（同一PO/請求の重複・部分入金の残額未調停）。
+              資金判断の正本は上の「資金ショート予兆（正規化済み）」。ここは参考の生データとして表示する。 */}
+          <p className="mb-2 text-[11px] text-amber-700">※ 生の予定イベントの合計です（同一PO/請求の重複・部分入金の残額調整を含みません）。資金判断は上の「資金ショート予兆」を正本にしてください。</p>
           <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-3">
             <Stat label="今月の入金予定" value={formatJpy(bridge.monthInflow)} tone="emerald" />
             <Stat label="今月の支払予定" value={formatJpy(bridge.monthOutflow)} tone="amber" />
@@ -168,6 +177,8 @@ export default async function CashflowPage() {
           {unified.summary.paymentShortfallWarning ? (
             <div className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">⚠️ 支払予定が入金予定を上回っています。資金繰りに注意してください。</div>
           ) : null}
+          {/* Codex B-S1-03: 予定側は生イベント集計（重複・残額未調停）。正規化済みの資金ショート判定は上のカードが正本（slice2 で統一予定）。 */}
+          <p className="mb-2 text-[11px] text-amber-700">※ 予定側は生イベント集計（同一支払/請求の重複・残額未調停を含みます）。資金ショート判定は上の「資金ショート予兆」を正本にしてください。</p>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
             <Stat label="入金予定" value={formatJpy(unified.summary.inflowExpected)} tone="emerald" />
             <Stat label="支払予定" value={formatJpy(unified.summary.outflowExpected)} tone="amber" />

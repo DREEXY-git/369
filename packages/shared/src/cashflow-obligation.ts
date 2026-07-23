@@ -37,9 +37,10 @@ export interface InvoiceLifecycleInput {
   paidAmount: number;
 }
 
-export interface CandidateInvoiceLink {
-  candidateId: string;
-  invoiceId: string;
+export interface CandidateRow {
+  id: string;
+  /** 正式化済みなら invoice.id、未正式化なら null。tenant 内に実在する candidate のみ渡す。 */
+  invoiceId: string | null;
 }
 
 export interface CanonicalCashflowRow {
@@ -69,7 +70,8 @@ export interface CanonicalCashflowSelection {
 export interface SelectCanonicalCashflowInput {
   events: RawCashflowEvent[];
   invoices: InvoiceLifecycleInput[];
-  candidateInvoiceLinks: CandidateInvoiceLink[];
+  /** tenant 内に実在する InvoiceCandidate（未正式化含む）。ここに無い candidate source は orphan として扱う（B-S1-01）。 */
+  candidates: CandidateRow[];
 }
 
 interface ObligationGroup {
@@ -87,7 +89,7 @@ interface ObligationGroup {
  */
 export function selectCanonicalCashflowObligations(input: SelectCanonicalCashflowInput): CanonicalCashflowSelection {
   const invoiceById = new Map(input.invoices.map((i) => [i.id, i]));
-  const candidateToInvoice = new Map(input.candidateInvoiceLinks.map((l) => [l.candidateId, l.invoiceId]));
+  const candidateById = new Map(input.candidates.map((c) => [c.id, c]));
 
   const groups = new Map<string, ObligationGroup>();
   const conflicts: CashflowIdentityConflict[] = [];
@@ -110,10 +112,19 @@ export function selectCanonicalCashflowObligations(input: SelectCanonicalCashflo
       key = `inv:${sid}`;
       invoiceId = sid;
     } else if (src === 'InvoiceCandidate' && sid) {
-      const linked = candidateToInvoice.get(sid);
-      if (linked) {
-        key = `inv:${linked}`; // 正式化済み candidate は invoice 債務の alias
-        invoiceId = linked;
+      const cand = candidateById.get(sid);
+      if (!cand) {
+        // B-S1-01: tenant 内に candidate が実在しない（削除済み/別tenant source）→ 金額を推定しない。
+        // inflow は false-safe（偽の余裕）を避けて除外、outflow は保守的に個別計上。両者 coverageIncomplete。
+        coverageIncomplete = true;
+        if (e.direction === 'inflow') {
+          unsupportedCount += 1;
+          continue;
+        }
+        key = `evt:${e.id}`;
+      } else if (cand.invoiceId) {
+        key = `inv:${cand.invoiceId}`; // 正式化済み candidate は invoice 債務の alias
+        invoiceId = cand.invoiceId;
       } else {
         key = `cand:${sid}`;
       }
@@ -161,8 +172,10 @@ export function selectCanonicalCashflowObligations(input: SelectCanonicalCashflo
     if (g.invoiceId) {
       const inv = invoiceById.get(g.invoiceId);
       if (!inv) {
-        // 参照先 Invoice の lifecycle が取れない → 残額不明。原額を載せるが「なし」断定はさせない。
+        // B-S1-01: 参照先 Invoice の lifecycle が取れない → 残額・完済状態が不明。
+        // inflow は原額を載せると偽の余裕（false-safe＝危険方向）になるため除外。outflow は保守的に残す。両者 coverageIncomplete。
         coverageIncomplete = true;
+        if (direction === 'inflow') continue;
       } else {
         if (INVOICE_TERMINAL_STATUS.has(inv.status)) continue; // PAID/VOID は予定から除外
         const remaining = Math.max(inv.total - inv.paidAmount, 0);

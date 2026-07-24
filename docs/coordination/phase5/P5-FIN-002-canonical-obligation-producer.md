@@ -133,9 +133,10 @@ FIN-02 は schema・producer dual-write・lifecycle 同期・再実行可能 bac
 
 - `packages/db/prisma/schema.prisma`
 - `packages/db/prisma/migrations/20260724123000_p5_fin002_canonical_obligation/migration.sql`
+- `packages/db/src/canonical-obligation.ts`
 - `packages/db/src/fin02-canonical-obligation-backfill.ts`
+- `packages/db/src/index.ts`
 - `packages/db/src/__tests__/p5_fin02_canonical_obligation_backfill.itest.ts`
-- `apps/web/lib/domains/finance/canonical-obligation-store.ts`
 - `apps/web/lib/domains/finance/finance-bridge.ts`
 - `apps/web/lib/domains/finance/formalize.ts`
 - `apps/web/lib/domains/finance/invoice-send.ts`
@@ -143,6 +144,7 @@ FIN-02 は schema・producer dual-write・lifecycle 同期・再実行可能 bac
 - `apps/web/lib/invoice-void-bridge.ts`
 - `apps/web/app/(app)/approvals/actions.ts`
 - `apps/web/tests/e2e/fin02_canonical_obligation_producer_evidence.spec.ts`
+- `docs/coordination/phase5/evidence/P5-FIN-002-implementation-evidence.md`
 
 承認前の独立監査で、実在 producer の取りこぼしまたはテスト fixture の不足が判明した場合は実装せず停止し、revision を上げて人間承認を取り直す。承認後の ALLOWED_PATHS 自動拡張は禁止する。
 
@@ -232,6 +234,8 @@ human_gates:
 ### 12.1 Selected Architecture
 
 既存 `FinanceEvent` へ canonical key だけを追加する方式ではなく、独立した `CashflowObligation` 正本と `CashflowObligationAlias` を追加する。
+
+canonical persistence service は `packages/db/src/canonical-obligation.ts` に一つだけ置き、`packages/db/src/index.ts` から公開する。web producer と DB backfill は同じ service を使用し、apps 側と packages 側へ upsert / conflict 判定を二重実装しない。
 
 概念モデル:
 
@@ -421,6 +425,7 @@ FinanceEvent
 | Unit | Full unit | `pnpm test` | YES |
 | Typecheck | Workspace | `pnpm typecheck` | YES |
 | Integration | schema / producer / backfill | `pnpm --filter @hokko/db test:integration` | HUMAN_GATE / CI |
+| Backfill dry-run | fixture DB、write 0 | `pnpm --filter @hokko/db exec tsx src/fin02-canonical-obligation-backfill.ts --dry-run` | HUMAN_GATE / CI |
 | E2E | producer convergence | `pnpm --filter @hokko/web exec playwright test tests/e2e/fin02_canonical_obligation_producer_evidence.spec.ts --retries=0` | YES |
 | CI | exact fixed head | stage1 / stage2_integration / stage3_e2e / release_gate | YES |
 

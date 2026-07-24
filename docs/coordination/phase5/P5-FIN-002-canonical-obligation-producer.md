@@ -1,7 +1,7 @@
 ---
 schema: 369-phase5-task-packet-v1
 packet_id: P5-FIN-002
-revision: 1
+revision: 2
 status: PROPOSED
 phase: 5
 workstream: WS-FIN
@@ -27,6 +27,153 @@ packet_sha256: EXTERNAL
 - Packet の `target_pr` と固定 head が確定し、Codex B/C/D/E/H の独立監査を通過し、人間が GitHub Human Approval Event を投稿するまで実装へ進まない。
 - 人間承認後は本 Packet を immutable とし、scope 変更が必要なら新 revision と新しい外部 SHA-256 と新しい人間承認を要求する。
 - 本 Task は Phase 5 内の FIN-02 であり、Phase 5.1 等の追加 Phase を作らない。
+
+## 0.R2 Revision 2 — Final Remediation Contract
+
+本節は Revision 2 でのみ有効な追加契約である。Revision 2 は、Revision 1 実装に対する独立監査で確定した audit findings を閉じ、承認と head の曖昧さを除去するための **一回限りの最終 remediation 実行契約** である。本 Packet 本文は `PROPOSED`。人間承認後は immutable とし、以降の descendant 実装 commit でも本 Packet ファイルを変更しない。
+
+### 0.R2.1 現行 remote head は歴史的入力であり merge-ready ではない
+
+- 現行 remote 実装 head `9673cbfead2f9ba20b2df49c34f459ed47406732`（branch `claude/p5-fin-002-canonical-producer-v1` / PR #133）は **歴史的入力**であり、**merge-ready ではない**。
+- 当該 head は下記 remediation matrix の findings（High 5 件・Medium 2 件）を未解決に含むため、Revision 2 承認・実装の起点候補としてのみ扱い、正本完成物としては扱わない。
+- head が 1 commit でも変われば、当該 head に対する過去の C/D/E/H PASS・exact-head CI 結果はすべて stale として失効する。
+
+### 0.R2.2 Remediation Matrix（固定・網羅）
+
+各 finding は Prompt 07 §22 の finding 規則語彙（`severity` / `file_or_evidence` / `minimum_remediation` / `acceptance_test`）に対応する。affected paths は §7 の実装 ALLOWED_PATHS の範囲内に限る。
+
+| Finding ID | Severity | Affected §7 allowed paths | Minimum fix | Acceptance test |
+|---|---|---|---|---|
+| `D-FIN002-001` | High | `packages/db/src/canonical-obligation.ts`, `packages/db/src/__tests__/p5_fin02_canonical_obligation_backfill.itest.ts` | tenant 不一致 event の link で、event update 件数が正確に 1 でない場合は throw して transaction を rollback し、obligation / alias を作らず event を不変に保つ。update 0 件で `linked=true` を返さない。 | tenant 不一致 fixture で link を試み、event 更新 0 件・obligation 0 件・alias 0 件・呼び出しが fail する itest。 |
+| `D-FIN002-002` / `H-FIN002-002` | High | `packages/db/src/canonical-obligation.ts`, `packages/db/src/fin02-canonical-obligation-backfill.ts`, `packages/db/src/__tests__/p5_fin02_canonical_obligation_backfill.itest.ts` | Candidate/Invoice alias collision を検知したら link せず、安全な場合は関連 obligation を `coverage_incomplete` にし、明示的な conflict result / count を返す。version mismatch を含む必要分類を欠落させない。 | alias collision fixture で link されず conflict count>0・`coverage_incomplete` 遷移を検証する itest。 |
+| `D-FIN002-003` / `H-FIN002-003` | High | `packages/db/src/__tests__/p5_fin02_canonical_obligation_backfill.itest.ts` | 独立 transaction を重なるよう同期させる真の並列 producer retry test を追加する。単なる直列反復を並列と偽装しない。 | 2 つの独立 transaction を意図的に overlap させ、duplicate obligation / alias が 0 件になる concurrent itest。 |
+| `D-FIN002-004` / `H-FIN002-002` | High | `packages/db/src/fin02-canonical-obligation-backfill.ts`, `packages/db/src/__tests__/p5_fin02_canonical_obligation_backfill.itest.ts` | backfill に direction / currency / lifecycle / duplicate alias candidate / version mismatch の 5 conflict 分類の件数と fail-closed 挙動を実装する。dry-run は write 0、execute は推測・上書きせず、未解決 conflict は link しない。 | 5 分類それぞれの conflict fixture で dry-run write 0・execute で当該行が link されず count が正しい itest。 |
+| `D-FIN002-005` | Medium（release-blocking） | `packages/db/prisma/migrations/20260724123000_p5_fin002_canonical_obligation/migration.sql`, `docs/coordination/phase5/evidence/P5-FIN-002-implementation-evidence.md` | migration SQL の EOF 余分な空行を除去する。Evidence は `git diff --check` の実際の結果を正しく記載する。 | `git diff --check` を範囲 `approved_starting_head_sha..candidate_fixed_head_sha` で実行して exit 0。Evidence が実 exit status を記録。 |
+| `H-FIN002-001` | High（governance） | （実装 code path なし。本 §0.R2.3 の承認・descendant 契約と Evidence で閉じる） | 承認起点 head と、その authorized descendant 実装 commit との binding を §0.R2.3 で一意に定義する。 | §0.R2.3 の全条件（ancestry / branch / PR / actor-session / commit-count / path-scope / forbidden-op evidence）を満たすことを Evidence で証明。 |
+| `H-FIN002-004` | Medium（non-blocking） | `docs/coordination/phase5/evidence/P5-FIN-002-implementation-evidence.md` | 停止済み未 push の local-only 並列 Claude commit `2322d3ab7242063589990d9e19dc87332ca6331e` を歴史的実行証拠として透明に記録する。当該 commit を含めず・再利用せず・cherry-pick しない。 | Evidence に incident（停止済み・未 push・remote 完全性に影響なし）を記録し、descendant chain に当該 SHA が祖先として存在しないことを示す。 |
+
+- 上記以外の新規 scope 追加は行わない。matrix 外の findings が判明した場合は実装せず停止し、新 revision と新しい人間承認を取り直す。
+- H-FIN002-004 の commit は remote 完全性に影響を与えなかった。透明性のため記録するのみで、本 remediation の入力にしない。
+
+### 0.R2.3 Human Approval Event と authorized descendant 実行
+
+Revision 2 の承認・実装の起点と権限は次の通り一意に定める。承認契約自体は Prompt 04/06/07 §21 と同一（同じ comment body payload と本文外 envelope、strict verifier）を用いる。
+
+```yaml
+revision_2_execution:
+  approval_event:
+    posted_only_after: THIS_PACKET_REV2_PROPOSAL_COMMIT_PUSHED
+    schema: identical_to_prompt_04_06_07_section_21
+    verify_time_binding:
+      event_fixed_head_sha_must_equal: live_PR_head_at_verification
+      becomes: approved_starting_head_sha
+  authorized_descendant_session:
+    count: exactly_one_named_claude_code_session
+    same_branch: claude/p5-fin-002-canonical-producer-v1
+    same_pr: 133
+    commit_shape: normal_linear_first_parent_descendant_only
+    forbidden_operations:
+      - merge_commit
+      - force_push
+      - amend
+      - rebase
+      - reset
+      - branch_change
+      - pr_body_update
+      - draft_removal
+      - auto_merge
+      - second_writer
+  path_scope:
+    every_changed_byte_in: approved_starting_head_sha..candidate_fixed_head_sha
+    must_be_within: SECTION_7_FOURTEEN_ALLOWED_PATHS
+    packet_file_mutable_after_event: false
+  commit_budget:
+    max_commits_after_approval: 2
+    commit_1: remediation_implementation_commit
+    commit_2: final_remediation_commit_only_if_exact_head_ci_exposes_test_or_evidence_only_defect_within_allowed_paths
+    this_is_final_remediation_round: true
+    further_failure: REPLAN_REQUIRED  # 新 revision / 新承認が必要
+  candidate_head_rules:
+    strict_descendant_of_approved_starting_head: true
+    remote_chain_linear: true
+    all_prior_pass_results_stale_after_head_change: true
+  audit_scope:
+    C_D_E_H_and_exact_head_ci_audit: final_candidate_head_only
+    approval_event_validated_at: session_start_against_approved_starting_head
+    descendant_authorization_verified_by:
+      - ancestry
+      - branch
+      - pr
+      - actor_or_session
+      - commit_count
+      - path_scope
+      - forbidden_operation_evidence
+    do_not_reinterpret_event_fixed_head_as_final_post_write_head: true
+  fail_closed_on:
+    - non_descendant_candidate_head
+    - another_writer
+    - path_expansion
+    - extra_commit
+    - stale_starting_head
+    - unknown_actor_or_session
+    - missing_evidence
+```
+
+補足規則:
+
+- Human Approval Event は、**本 Rev2 proposal commit を push した後**にのみ人間が投稿する。承認前に本プロンプトや本 Packet を根拠に実装権限を得ない。
+- 承認検証時、Event の `fixed_head_sha` は live PR head と一致しなければならず、一致した値が `approved_starting_head_sha` になる。承認起点 head を Packet 本文へ埋め込んで循環参照を作らない。
+- 承認後、**唯一の named Claude Code session** が同一 branch・同一 PR 上で、normal・linear・first-parent の descendant commit のみを作る。merge/force/amend/rebase/reset/branch 変更/PR 本文更新/Draft 解除/auto-merge/second writer は禁止。
+- `approved_starting_head_sha..candidate_fixed_head_sha` の**全変更 byte** は §7 の 14 ALLOWED_PATHS 内に収まらなければならない。Packet ファイルは Event 後 immutable であり descendant 実装 commit で変更しない。
+- 承認後の commit は最大 2 件: (1) remediation 実装 commit、(2) exact-head CI が ALLOWED_PATHS 内の test/evidence-only 欠陥を露呈した場合に限る最終 remediation commit。本 round が最終であり、以降の失敗は `REPLAN_REQUIRED` として新 revision・新承認を要求する。
+- candidate fixed head は approved starting head の strict descendant であり、remote chain は linear。head 変更後は旧 audit PASS がすべて stale。
+- C/D/E/H と exact-head CI は **final candidate head のみ**を監査する。Approval Event は session 開始時に approved starting head に対して検証し、descendant 権限はその後 ancestry + branch + PR + actor/session + commit-count + path-scope + forbidden-operation evidence で検証する。Event.`fixed_head_sha` を最終 post-write head と再解釈しない。
+- non-descendant / another writer / path expansion / extra commit / stale starting head / unknown actor・session / missing evidence はすべて fail-closed。
+
+### 0.R2.4 Exclusive Writer Lease（task-scoped Git/GitHub evidence lease）
+
+永続 lease service は存在しないため、この一回の実行に限る **task-scoped Git/GitHub evidence lease** を定義する。write 開始前に取得し、commit/push 直前に再確認する。workflow / PADN は変更しない。
+
+```yaml
+writer_lease:
+  scope: single_revision_2_remediation_run
+  owner_session_id: RUNTIME_NAMED_CLAUDE_SESSION_ID
+  repository: DREEXY-git/369
+  pr: 133
+  branch: claude/p5-fin-002-canonical-producer-v1
+  approved_starting_head: EQUALS_approved_starting_head_sha
+  acquired_at: RUNTIME_ISO8601
+  expires_at: RUNTIME_ISO8601
+  fencing_token: RUNTIME_MONOTONIC_TOKEN
+  recorded_in: docs/coordination/phase5/evidence/P5-FIN-002-implementation-evidence.md
+  secrets_in_record: NONE
+```
+
+`RUNTIME_*` と `EQUALS_approved_starting_head_sha` は承認後の実装 session が解決し、解決値を上記 `recorded_in` の Evidence へ secrets 抜きで記録する。本 proposal run では解決しない（プレースホルダのままにせず、承認起点確定後に実値を Evidence 側へ書く）。
+
+- lease は実装 Evidence へ secrets 抜きで記録する。
+- write 前取得・commit/push 直前再確認を必須とする。
+- 別の live writer が存在する、または fencing token が不一致なら run を停止する。
+- lease は本 proposal run では取得しない（本 run は Packet のみ編集し product を実装しないため）。lease は承認後の実装 session が使用する。
+
+### 0.R2.5 Required Product Fixes and Tests（承認後の実装で必須）
+
+承認後の descendant 実装 session は次を必須で満たす。すべて §7 の 14 ALLOWED_PATHS 内に収める。
+
+- **tenant mismatch**: event update 件数が正確に 1 であることを要求する。1 でなければ throw して transaction を fail させ、obligation / alias を rollback し、event を不変に保つ。
+- **alias collision**: link しない。安全な場合は該当 obligation を `coverage_incomplete` とする。明示的な conflict result / count を露出する。
+- **backfill 5 conflict 分類**: direction / currency / lifecycle / duplicate alias candidate / version mismatch。dry-run は write 0、execute は推測・上書きせず、未解決 conflict は link しない。
+- **already-linked 行**: 単純に `already_linked` と数えず、tenant / version / canonical identity・alias / direction・currency・lifecycle を検証する。
+- **真の並列 producer retry test**: 独立 transaction を overlap するよう同期させる。可能なら Candidate/Invoice alias collision と producer-vs-backfill collision も現行ファイル内でカバーする。最低でも Packet の concurrent acceptance を証明する。
+- **interrupted/resume test**: 2 回目実行の delta 0、orphan obligation / alias なし。
+- **migration EOF blank line 除去**: `git diff --check` を範囲 `approved_starting_head_sha..candidate_fixed_head_sha` で実行して exit 0。
+- **Evidence**: PR の実 total changed files を実装 delta と**別に**報告する。commands / counts / conflicts / CI、および停止済み未 push の local-only writer incident（H-FIN002-004）を記録する。
+
+### 0.R2.6 この proposal run の権限境界
+
+- 本 proposal run で許可される write path は `docs/coordination/phase5/P5-FIN-002-canonical-obligation-producer.md` のみ。
+- **本 proposal commit での Packet 編集は、承認後の実装 ALLOWED_PATHS（§7 の 14 paths）には含まれない**。§7 は承認後の product 実装専用であり、Packet 自体は §8 の趣旨どおり実装 commit では不変。
+- 本 run では product / schema / migration / test / Evidence / prompt / manifest / CURRENT_STATE / DELIVERY_CONTRACT / vault / workflow / PADN を変更しない。
 
 ## 1. Objective
 
@@ -147,6 +294,8 @@ FIN-02 は schema・producer dual-write・lifecycle 同期・再実行可能 bac
 - `docs/coordination/phase5/evidence/P5-FIN-002-implementation-evidence.md`
 
 承認前の独立監査で、実在 producer の取りこぼしまたはテスト fixture の不足が判明した場合は実装せず停止し、revision を上げて人間承認を取り直す。承認後の ALLOWED_PATHS 自動拡張は禁止する。
+
+本 §7 は Revision 2 でも上記 **14 paths のまま**であり、承認後の product 実装専用の ALLOWED_PATHS である。Revision 2 proposal commit における本 Packet ファイル（`docs/coordination/phase5/P5-FIN-002-canonical-obligation-producer.md`）の編集は、この 14 paths には**含まれない**別権限（§0.R2.6）であり、承認後の descendant 実装 commit では本 Packet ファイルを変更しない。
 
 ## 8. FORBIDDEN_PATHS
 
@@ -519,6 +668,11 @@ route:
 - rollback / forward-fix が成立しない。
 - evidence または exact-head CI を取得できない。
 - 同一原因の rework が 2 回失敗。
+
+## Revision History
+
+- **Revision 1（PROPOSED）** — FIN-02 単一実装契約の初回登録。schema・producer dual-write・lifecycle 同期・再実行可能 backfill を定義。Revision 1 起点の実装が remote head `9673cbfead2f9ba20b2df49c34f459ed47406732` に存在するが、独立監査で下記 findings が確定した: `D-FIN002-001`（tenant 不一致で update 0 件でも obligation/alias 生成・`linked=true`）、`D-FIN002-002` / `H-FIN002-002`（alias collision 無視・link・必須 conflict/version 分類欠落）、`D-FIN002-003` / `H-FIN002-003`（真の並列 retry test 不在）、`D-FIN002-004` / `H-FIN002-002`（backfill の direction/currency/lifecycle/duplicate alias candidate/version mismatch の件数と fail-closed 欠落）、`D-FIN002-005`（migration SQL の EOF 空行・Evidence が `git diff --check` 成功と誤記）、`H-FIN002-001`（承認起点 head と authorized descendant 実装 commit の binding 未定義）、`H-FIN002-004`（停止済み未 push の local-only 並列 Claude commit `2322d3ab7242063589990d9e19dc87332ca6331e`。remote 完全性への影響なし）。
+- **Revision 2（PROPOSED・本 revision）** — Revision 1 を **supersede** する。理由: (1) Revision 1 起点実装は上記 High 5 件・Medium 2 件を未解決に含み merge-ready ではない、(2) Revision 1 は承認起点 head と authorized descendant 実装 commit の binding（`H-FIN002-001`）を定義していなかった。Revision 2 は §0.R2 で、当該 head を歴史的入力に格下げし、remediation matrix・Human Approval Event と descendant 実行契約・writer lease・required product fixes を固定した一回限りの最終 remediation 実行契約を追加する。§7 の 14 実装 ALLOWED_PATHS・§10 の canonical 9-key Authorization は Revision 1 と同一に維持する。scope 変更に伴い新しい外部 SHA-256 と新しい Human Approval Event を要求する。Revision 1 の承認・PASS・exact-head CI 結果は本 revision には引き継がれない。
 
 ## 承認状態（本文外イベントで確定）
 

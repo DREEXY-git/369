@@ -95,6 +95,8 @@ export async function getCashflowShortageProjection(
     : [];
 
   const selection = selectCanonicalCashflowObligations({
+    // FIN-01（P5-FIN-001）: canonical obligation identity の必須構成要素として tenant 境界を明示的に渡す。
+    tenantId,
     events: scanned.map((e) => ({ id: e.id, type: e.type, sourceType: e.sourceType, sourceId: e.sourceId, direction: e.direction, amount: toNumber(e.amount), dueAt: e.dueAt, description: e.description })),
     invoices: invoices.map((i) => ({ id: i.id, status: i.status, total: toNumber(i.total), paidAmount: toNumber(i.paidAmount) })),
     candidates: candidateRows.map((c) => ({ id: c.id, invoiceId: c.invoiceId })),

@@ -269,7 +269,9 @@ describe('P5-FIN-002 backfill', () => {
     expect(report.byClassification.candidate_formalized).toBe(1);
     expect(report.byClassification.candidate_unformalized).toBe(1);
     expect(report.byClassification.unknown_payment_expected).toBe(1);
-    expect(report.byClassification.not_expected_type).toBe(1);
+    // payment_received は expected type 以外なので backfill の query（type in [cashflow_expected, payment_expected]）で
+    // 除外され scan されない（分類も link もされない）。not_expected_type は driver 経由では 0。
+    expect(report.byClassification.not_expected_type).toBe(0);
   });
 
   it('#16/#17 execute は正本化し、再実行で追加 0（idempotent / resumable）', async () => {
@@ -284,6 +286,10 @@ describe('P5-FIN-002 backfill', () => {
     // formalized candidate は inv obligation に cand alias も付与される
     const formalizedAliases = await prisma.cashflowObligationAlias.findMany({ where: { tenantId: T1, sourceId: { in: [`${T1}-cand1`, `${T1}-invF`] } }, orderBy: { namespace: 'asc' } });
     expect(formalizedAliases.map((a) => a.namespace).sort()).toEqual(['cand', 'inv']);
+
+    // 非 expected type（payment_received）は query 段階で除外され、obligation に link されない。
+    const notExpected = await prisma.financeEvent.findFirst({ where: { tenantId: T1, type: 'payment_received' }, select: { cashflowObligationId: true } });
+    expect(notExpected?.cashflowObligationId ?? null).toBeNull();
 
     // 再実行: 追加 0（already_linked に収束）
     const run2 = await runFin02Backfill(prisma, { dryRun: false, tenantId: T1 });

@@ -150,3 +150,13 @@ E2E（`fin02_..._producer_evidence.spec.ts`・CI 実行）: 実 `bridgePurchaseO
 - 外部送信・実 LLM・課金・RBAC/機密ラベル・削除破壊エクスポート: **なし**。
 - 元の user-owned checkout（`/home/user/369` @ `claude/p5-fin-001-canonical-identity-v1`）: **不変・clean**（隔離 worktree で作業）。
 - Codex C/D/E/H の same-head verdict: **handoff 出力後に GitHub live state から取得**（実装は Human Approval 後の Claude lane、承認代行なし。Claude Code は C/D/E/H PASS を自己判定しない）。
+
+## 11. Remediation log（V1 §6 / V2 §11・同一 Packet / ALLOWED_PATHS 内・最大 2 回）
+
+- Round 1: 初回実装 head の exact-head CI で `stage2_integration` が失敗（`stage1` / `stage3_e2e` は success）。
+  原因は **本 itest のアサーション誤り**（製品ロジックではない）: `runFin02Backfill` は query 段階で
+  `type in [cashflow_expected, payment_expected]` に絞るため、`payment_received`（expected 以外）は scan されない。
+  よって `byClassification.not_expected_type` は driver 経由では 0 だが、テストが 1 を期待していた。
+  対処: `p5_fin02_...backfill.itest.ts` のアサーションを 0 へ修正し、
+  「非 expected type は link されない」ことを execute 側でも確認（`payment_received` の `cashflowObligationId` は null）。
+  ALLOWED_PATHS 外変更 0 / scope 拡張なし / 製品コード不変。修正後 head で CI を再実行。

@@ -2,6 +2,7 @@
 // 鉄則: 外部送信は必ず承認後。送信前に prepareExternalPayload でPIIマスク。
 //       AI は送信主体になれない（assertAiToolAllowed で多重防御）。設計: docs/audit/12。
 import { prisma, writeAudit } from '@/lib/db';
+import { upsertObligationForEvent } from '@hokko/db';
 import { recordUsageEvent } from '@/lib/usage-events';
 import { emitGrowthEvent } from '@/lib/growth';
 import { requireApprovalForDangerousAction } from '@/lib/approval';
@@ -141,6 +142,18 @@ export async function executeInvoiceExternalSend(
       // finalize の approved 化で初めて予定へ計上され、途中クラッシュでの前倒し計上を防ぐ。
       data: { tenantId: actor.tenantId, type: 'payment_expected', sourceType: 'Invoice', sourceId: invoiceId, direction: 'inflow', amount: toNumber(inv.total), dueAt: inv.dueDate, status: 'pending_send', description: `入金予定: ${inv.number}` },
       select: { id: true },
+    });
+    // P5-FIN-002: Invoice の payment_expected を canonical obligation（inv/invoiceId）へ upsert & link（同一 tx）。
+    await upsertObligationForEvent(tx, {
+      tenantId: actor.tenantId,
+      eventId: created.id,
+      type: 'payment_expected',
+      sourceType: 'Invoice',
+      sourceId: invoiceId,
+      direction: 'inflow',
+      amount: toNumber(inv.total),
+      dueAt: inv.dueDate,
+      description: `入金予定: ${inv.number}`,
     });
     return { kind: 'claimed', claimId: created.id };
   }, { timeout: 15_000 });

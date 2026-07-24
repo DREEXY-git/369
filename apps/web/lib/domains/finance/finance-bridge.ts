@@ -13,6 +13,7 @@
 //  同一 transaction 内で直接作成する（transactional outbox）。公開の非 tx 版は後方互換の薄い wrapper。
 import { prisma } from '@/lib/db';
 import type { Prisma } from '@hokko/db';
+import { upsertObligationForEvent } from '@hokko/db';
 import { emitGrowthEvent } from '@/lib/growth';
 import { emitDomainEventInTx } from '@/lib/events';
 import { requireApprovalForDangerousAction } from '@/lib/approval';
@@ -168,6 +169,20 @@ async function emitFinanceEventTx(tx: Prisma.TransactionClient, actor: Actor, in
       payload: (input.payload ?? undefined) as Prisma.InputJsonValue | undefined,
       createdById: actor.userId ?? null,
     },
+  });
+  // P5-FIN-002: 予定入出金（cashflow_expected/payment_expected）なら canonical obligation へ upsert & link。
+  // expected 以外の type / 未知 payment_expected は service 側で no-op（既存 FinanceEvent の挙動は不変）。
+  // PO の payment_expected と cashflow_expected は同一 identity（po/poId）へ収束し 1 obligation に束ねられる。
+  await upsertObligationForEvent(tx, {
+    tenantId: actor.tenantId,
+    eventId: fe.id,
+    type: input.type,
+    sourceType: input.sourceType,
+    sourceId: input.sourceId ?? null,
+    direction,
+    amount: input.amount,
+    dueAt: input.dueAt ?? null,
+    description: input.description ?? '',
   });
   if (growthType) {
     await createGrowthTx(tx, {

@@ -2,6 +2,7 @@
 // 実績（Payment / FinanceEvent payment_received posted）と予定（FinanceEvent payment_expected）を分離。
 // 設計: docs/audit/12_maintenance_architecture.md。
 import { prisma } from '@/lib/db';
+import { settleObligationForInvoice } from '@hokko/db';
 import { emitDomainEventInTx } from '@/lib/events';
 import { toNumber } from '@/lib/utils';
 import {
@@ -165,6 +166,8 @@ export async function recordInvoicePayment(
             data: { status: 'posted' },
           });
         }
+        // P5-FIN-002: 入金に合わせて canonical obligation の残額・lifecycle を同期（部分→partially_settled / 全額→settled）。
+        await settleObligationForInvoice(tx, { tenantId: actor.tenantId, invoiceId, total, paidAmount: paidSum });
 
         await tx.auditLog.create({
           data: {

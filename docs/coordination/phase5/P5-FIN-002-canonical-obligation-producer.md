@@ -9,7 +9,7 @@ risk_tier: RT4
 repository: DREEXY-git/369
 base_sha: 061d652264f97633379b5951243dd27776d0b8b7
 branch: claude/p5-fin-002-canonical-producer-v1
-target_pr: null
+target_pr: 133
 created_at: 2026-07-24
 created_by: DREEXY-git
 human_approver_github_login: DREEXY-git

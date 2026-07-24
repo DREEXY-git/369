@@ -2,13 +2,13 @@
 
 > 現在地の「1枚サマリー」。今の真実だけを書きます。長い経緯は `tasks/PROGRESS.md`、詳細監査は `docs/audit/` を参照。
 
-## ✅ 現在の真実（2026-07-24・Phase 5 Entry Gate ACTIVE）
+## ✅ 現在の真実（2026-07-24・Phase 5 ACTIVE／FIN-01 統合済み）
 
-- **現在地**: Phase 5 Entry Gate の承認・統合基準は PR #129／merge commit `25d1195`。main push CI run `30051136057` は stage1／stage2_integration／stage3_e2e／release_gate がすべて success、Vercel status も success。現在の厳密な main は git refs を正とする。最新の人間による代表画面確認済みプロダクト基準は引き続き `0dbea72`。
+- **現在地**: P5-GOV-000 Entry Gate は CLOSED。Phase 5 最初の製品実装 **P5-FIN-001 / FIN-01（tenant-scoped canonical obligation identity）を PR #131／merge commit `177eb5f` で main に統合済み**。main push CI run `30062018058` は stage1／stage2_integration／stage3_e2e／release_gate がすべて success、Vercel Production deployment も success。現在の厳密な main は git refs を正とする。
 - **Phase 3（AI Growth Engine v0）: CLOSED**（完了基準 `9a61f99`・詳細は `tasks/DELIVERY_CONTRACT.md` §7）。
 - **Phase 3.5（広告・SEO/Content・紹介）: CLOSED**（Business Phase Close・人間承認 2026-07-23）。C19 広告 read model＋AI下書き・C21 SEO/Content 承認ブリッジ・C22 紹介の3系統。
 - **Phase 4（AI社員／コントロールプレーン／成果台帳）: CLOSED**（Business Phase Close・人間承認 2026-07-23）。AI社員の証拠由来状態・Agent Control Plane・Work Evidence の3系統。
-- **Phase 5: ACTIVE（製品実装は未着手）**。Prompt System／Task Packet／Claude Code write lane／Codex A〜H read-only監査／GitHub・Obsidian同期契約を P5-GOV-000 で確定。次は承認済みTask Packetを1件ずつ通す。**Phase 4.1／4.5／Phase 5.1は作らない**。
+- **Phase 5: ACTIVE（製品実装開始済み）**。FIN-01 で、予定入出金の identity を tenant を含む versioned tuple へ統一し、同額・同期限でも別の請求書／POを別 obligation として扱える安全な基盤を実装。FIN-02（producer正本化）／FIN-03（reader統一）／schema・migration は未着手で、各々を別の承認済みTask Packetで進める。**Phase 4.1／4.5／Phase 5.1は作らない**。
 - **恒久 Human Gate（自動実行しない・Phase Close 後も不変）**: main merge／Production（Vercel）／schema・migration／secret・env／外部送信／実LLM／課金／RBAC・機密ラベル／破壊的データ操作／Business Phase Close。**外部送信・実LLM・課金は封印のまま**（EXTERNAL_SEND_ENABLED=false・FakeLLM・externalAiAllowed 既定 false）。
 
 ## 状態管理ルール

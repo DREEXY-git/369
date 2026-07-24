@@ -8,12 +8,18 @@
 // 外部送信・課金・実LLM・削除は一切行わない（社内の請求ステータス訂正のみ）。
 // db は注入（実 prisma / テスト mock / 失敗注入 wrapper）。
 
+import type { Prisma } from '@hokko/db';
+import { voidObligationForInvoice } from '@hokko/db';
+
 interface InvoiceVoidTx {
   approvalRequest: { updateMany(args: unknown): Promise<{ count: number }> };
   invoice: { updateMany(args: unknown): Promise<{ count: number }> };
   receivable: { updateMany(args: unknown): Promise<{ count: number }> };
   financeEvent: { updateMany(args: unknown): Promise<{ count: number }> };
   auditLog: { create(args: unknown): Promise<unknown> };
+  // P5-FIN-002: canonical obligation の void 同期に必要な delegate（実 prisma tx が構造的に満たす）。
+  cashflowObligation: Prisma.TransactionClient['cashflowObligation'];
+  cashflowObligationAlias: Prisma.TransactionClient['cashflowObligationAlias'];
 }
 
 export interface InvoiceVoidBridgeDb {
@@ -80,6 +86,8 @@ export async function decideInvoiceVoidCore(
         where: { tenantId: input.tenantId, sourceId: invoiceId, type: { in: ['payment_expected', 'cashflow_expected'] }, status: { not: 'posted' } },
         data: { status: 'ignored' },
       });
+      // P5-FIN-002: 対応する canonical obligation を void に同期（存在しなければ no-op・同一 tx）。
+      await voidObligationForInvoice(tx, { tenantId: input.tenantId, invoiceId });
     }
 
     await tx.auditLog.create({

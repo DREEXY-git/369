@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireUser, hasPermission } from '@/lib/auth/current-user';
 import { prisma, writeAudit } from '@/lib/db';
+import { settleObligationForInvoice } from '@hokko/db';
 import { isHumanUser, invoiceStatusAfterPayment, receivableStatusAfterPayment } from '@hokko/shared';
 import { decideOutreachApprovalCore } from '@/lib/domains/leadmap/outreach-send';
 import { toNumber } from '@/lib/utils';
@@ -292,6 +293,8 @@ export async function decideApprovalAction(formData: FormData) {
           await tx.financeEvent.create({
             data: { tenantId: user.tenantId, type: 'payment_reversal', sourceType: 'Invoice', sourceId: invoiceId, direction: 'outflow', amount: reversed, status: 'posted', occurredAt: new Date(), description: `入金取消: ${inv?.number ?? invoiceId}` },
           });
+          // P5-FIN-002: 入金取消に合わせて canonical obligation を再計算（全額取消→open / 一部→partially_settled で再 OPEN）。
+          await settleObligationForInvoice(tx, { tenantId: user.tenantId, invoiceId, total, paidAmount: paidSum });
           await tx.auditLog.create({
             data: { tenantId: user.tenantId, actorId: user.userId, actorType: 'user', action: 'payment_reversal', entityType: 'Invoice', entityId: invoiceId, summary: `入金 ${reversed.toLocaleString()}円 を取消（残額入金 ${paidSum.toLocaleString()}円）` },
           });

@@ -2,6 +2,7 @@
 // 正式/候補の境界はこのファイルだけ。candidate.status で冪等（posted/sent 済は再実行不可）。
 // 設計ルール: docs/audit/12_maintenance_architecture.md。
 import { prisma } from '@/lib/db';
+import { convergeCandidateToInvoice } from '@hokko/db';
 import { writeConfidentialViewLog } from '@/lib/audit';
 import { emitGrowthEvent } from '@/lib/growth';
 import { toNumber } from '@/lib/utils';
@@ -165,6 +166,9 @@ export async function finalizeInvoiceCandidate(actor: Actor, candidateId: string
           summary: `請求候補を正式化: ${ic.title}（${total}円・${number}）`,
         },
       });
+      // P5-FIN-002: candidate（cand obligation）に inv alias を追加し preferred identity を inv へ収束（同一 tx）。
+      // candidate 由来の cashflow_expected と、後続の Invoice payment_expected が 1 obligation に束ねられる。
+      await convergeCandidateToInvoice(tx, { tenantId: actor.tenantId, candidateId, invoiceId: invoice.id });
       return { invoiceId: invoice.id, receivableId: receivable.id };
     });
   } catch (e) {

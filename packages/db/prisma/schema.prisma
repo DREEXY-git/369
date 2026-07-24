@@ -981,12 +981,70 @@ model FinanceEvent {
   description String    @default("")
   payload     Json?
   createdById String?
+  // P5-FIN-002: 予定入出金の永続正本（CashflowObligation）への任意リンク。null は未リンク（既存挙動）。
+  cashflowObligationId String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  // tenant を含む composite relation。cross-tenant link を DB 制約でも拒否する。
+  // cashflowObligationId が null のとき FK は非強制（Postgres MATCH SIMPLE）＝既存 FinanceEvent の挙動を維持する。
+  cashflowObligation CashflowObligation? @relation(fields: [tenantId, cashflowObligationId], references: [tenantId, id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([tenantId, type])
   @@index([tenantId, status])
   @@index([tenantId, dueAt])
+  @@index([tenantId, cashflowObligationId])
+}
+
+// ===== P5-FIN-002: Canonical Cashflow Obligation（予定入出金の永続正本）=====
+// FIN-01（packages/shared/src/cashflow-obligation.ts）の versioned canonical identity を
+// DB 上の永続正本へ接続する。FinanceEvent は後方互換のため維持し、PurchaseOrder/Invoice/
+// InvoiceCandidate/未知の cashflow_expected を tenant-scoped な 1 obligation へ収束させる。
+// tenant 境界は composite relation（[tenantId, id]）で DB 制約にも含め、cross-tenant link を拒否する。
+model CashflowObligation {
+  id                    String    @id @default(cuid())
+  tenantId              String
+  identityVersion       String    @default("v1") // FIN-01 CASHFLOW_OBLIGATION_IDENTITY_VERSION
+  namespace             String // po | inv | cand | evt（現在の preferred namespace）
+  preferredCanonicalKey String // FIN-01 resolveCanonicalObligationIdentity の JSON tuple（現在の正本 alias）
+  direction             String    @default("neutral") // inflow | outflow | neutral
+  currency              String    @default("JPY")
+  scheduledAmount       Decimal   @default(0) @db.Decimal(16, 2)
+  remainingAmount       Decimal   @default(0) @db.Decimal(16, 2)
+  dueAt                 DateTime?
+  lifecycleStatus       String    @default("open") // open | partially_settled | settled | void | coverage_incomplete
+  description           String    @default("")
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  aliases       CashflowObligationAlias[]
+  financeEvents FinanceEvent[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, preferredCanonicalKey])
+  @@index([tenantId, lifecycleStatus])
+  @@index([tenantId, dueAt])
+}
+
+// CashflowObligationAlias: 1 obligation に対する複数の正本 identity（cand→inv 収束の履歴を保持）。
+// [tenantId, identityVersion, namespace, sourceId] で一意。同一 source の二重 alias を DB で拒否する。
+// canonicalKey も tenant 内一意＝同じ FIN-01 identity は必ず 1 obligation に収束する（並行 barrier）。
+model CashflowObligationAlias {
+  id              String   @id @default(cuid())
+  tenantId        String
+  obligationId    String
+  identityVersion String   @default("v1")
+  namespace       String // po | inv | cand | evt
+  sourceId        String
+  canonicalKey    String // FIN-01 resolveCanonicalObligationIdentity の JSON tuple
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  obligation CashflowObligation @relation(fields: [tenantId, obligationId], references: [tenantId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([tenantId, identityVersion, namespace, sourceId])
+  @@unique([tenantId, canonicalKey])
+  @@index([tenantId, obligationId])
 }
 
 // JournalCandidate: 仕訳候補（正式 JournalEntry とは分離。承認後に posted 化）。

@@ -1,9 +1,9 @@
 ---
 title: Phase 5 Program Charter
 prompt_id: 369-PHASE5-PROGRAM-CHARTER
-version: 1.1
-status: proposed
-date: 2026-07-23
+version: 1.2
+status: active
+date: 2026-07-24
 tags:
   - phase5
   - governance

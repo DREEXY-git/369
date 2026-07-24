@@ -1,9 +1,9 @@
 ---
 title: Phase 5 Codex Single Master Prompt
 prompt_id: 369-PHASE5-CODEX-SINGLE
-version: 15.5
-status: proposed
-date: 2026-07-23
+version: 15.6
+status: active
+date: 2026-07-24
 engine: codex
 supersedes_candidate: 369-PHASE5-CODEX-A-H-V14
 tags:

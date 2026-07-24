@@ -1,9 +1,9 @@
 ---
 title: Phase 5 Claude Code Single Master Prompt
 prompt_id: 369-PHASE5-CLAUDE-SINGLE
-version: 1.5
-status: proposed
-date: 2026-07-23
+version: 1.6
+status: active
+date: 2026-07-24
 engine: claude-code
 tags:
   - phase5

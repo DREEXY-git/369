@@ -159,6 +159,7 @@
 - [[PADNL2イベント駆動オーケストレータ設計]] — チャット手動だった PADN 役割ジョブ（実装・監査・監督）を GitHub イベントで自動起動する L2 オーケストレータの Draft PR 提案：merge しても default-off（人間が変数を設定するまで完全停止）・Lease/fencing/prompt hash/fixed SHA の L1 規律を継承・Human Gate はツール権限レベルで越境不能・自動化レベル L0-L7 とは別軸で AI 権限は不変（369-PADN-L2-AUTONOMY-V11・未採用・採用は人間 Gate）。
 
 - [[Phase3.5と4のBusinessPhaseClose]] — Phase 3.5（広告・SEO/Content・紹介）と Phase 4（AI社員・コントロールプレーン・成果台帳）の Business Phase Close：人間が Vercel Production で main `0dbea72` を確認し正式クローズ・#93〜#127を統合要約・Phase 4.1/4.5は作らない・残件は Phase 5 候補・外部送信/実LLM/課金/本番deployは個別人間承認のまま（Business Phase Close・GO）。
+- [[プロンプト/Phase5/00_PHASE5_PROMPT_SYSTEM|Phase 5 Prompt System（ACTIVE）]] — Claude Code write lane・Codex A〜H read-only監査・Task Packet・GitHub/Obsidian同期・Human Gateを統合したPhase 5の運用入口。P5-GOV-000／PR #129を人間merge後にactive化し、製品実装は承認済みTask Packetを1件ずつ進める。
 
 ## 🔗 コード側の正（source of truth）
 

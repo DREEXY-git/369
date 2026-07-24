@@ -22,8 +22,8 @@ packet_sha256: EXTERNAL
 
 ## 0. Registration State
 
-- 本 revision 1 は、FIN-02 の単一実装契約を Git 正本候補として登録する。
-- 本 Packet の登録だけでは schema・migration・製品コードの変更を許可しない。
+- 本 Packet の現行 revision は Revision 2（PROPOSED）であり、FIN-02 の単一実装契約を確定する **最終 remediation 契約**として Git 正本候補に登録する。
+- Revision 2 の新しい Human Approval Event が投稿されるまで、schema・migration・製品コードの実装は禁止する。本 Packet の登録だけでは何の実装権限も生じない。
 - Packet の `target_pr` と固定 head が確定し、Codex B/C/D/E/H の独立監査を通過し、人間が GitHub Human Approval Event を投稿するまで実装へ進まない。
 - 人間承認後は本 Packet を immutable とし、scope 変更が必要なら新 revision と新しい外部 SHA-256 と新しい人間承認を要求する。
 - 本 Task は Phase 5 内の FIN-02 であり、Phase 5.1 等の追加 Phase を作らない。
@@ -31,6 +31,12 @@ packet_sha256: EXTERNAL
 ## 0.R2 Revision 2 — Final Remediation Contract
 
 本節は Revision 2 でのみ有効な追加契約である。Revision 2 は、Revision 1 実装に対する独立監査で確定した audit findings を閉じ、承認と head の曖昧さを除去するための **一回限りの最終 remediation 実行契約** である。本 Packet 本文は `PROPOSED`。人間承認後は immutable とし、以降の descendant 実装 commit でも本 Packet ファイルを変更しない。
+
+### 0.R2.0 Revision 間の優先規則（precedence）
+
+- **Revision 2 §0.R2 は、それに矛盾する Revision 1 由来の継承文言をすべて override する。** 承認・head binding・writer lease・stop condition に関しては §0.R2 が唯一の権威ある解釈である。
+- §0.R2 と矛盾しない継承セクション（§1〜§19 の Objective / 設計 / Acceptance / Test Plan / Rollback 等）は、そのまま有効に残る。
+- 継承文言と §0.R2 が衝突した場合は常に §0.R2 を優先し、両立し得る二重解釈（ambiguous dual interpretation）を残さない。曖昧が生じた箇所は §0.R2 の文言で読む。
 
 ### 0.R2.1 現行 remote head は歴史的入力であり merge-ready ではない
 
@@ -132,29 +138,30 @@ revision_2_execution:
 
 ### 0.R2.4 Exclusive Writer Lease（task-scoped Git/GitHub evidence lease）
 
-永続 lease service は存在しないため、この一回の実行に限る **task-scoped Git/GitHub evidence lease** を定義する。write 開始前に取得し、commit/push 直前に再確認する。workflow / PADN は変更しない。
+永続 lease service は存在しないため、この一回の実行に限る **task-scoped Git/GitHub evidence lease** を定義する。この lease は **evidence（証拠記録）であって、外部 writer を技術的に排他できる persistent lock ではない**。write 開始前に取得し、commit/push 直前に再確認する。workflow / PADN は変更しない。
 
-```yaml
-writer_lease:
-  scope: single_revision_2_remediation_run
-  owner_session_id: RUNTIME_NAMED_CLAUDE_SESSION_ID
-  repository: DREEXY-git/369
-  pr: 133
-  branch: claude/p5-fin-002-canonical-producer-v1
-  approved_starting_head: EQUALS_approved_starting_head_sha
-  acquired_at: RUNTIME_ISO8601
-  expires_at: RUNTIME_ISO8601
-  fencing_token: RUNTIME_MONOTONIC_TOKEN
-  recorded_in: docs/coordination/phase5/evidence/P5-FIN-002-implementation-evidence.md
-  secrets_in_record: NONE
-```
+lease は固定値と、承認後の実装 session が実行時に解決する runtime 値からなる。本 Packet 本文にはプレースホルダ値を残さない。各フィールドは次の field contract（型 / source / validation）で定義し、解決値は本文ではなく `recorded_in` の Evidence へ secrets 抜きで記録する。
 
-`RUNTIME_*` と `EQUALS_approved_starting_head_sha` は承認後の実装 session が解決し、解決値を上記 `recorded_in` の Evidence へ secrets 抜きで記録する。本 proposal run では解決しない（プレースホルダのままにせず、承認起点確定後に実値を Evidence 側へ書く）。
+| Field | 型 / source | Validation |
+|---|---|---|
+| `scope` | 固定文字列 `single_revision_2_remediation_run` | 常にこの値。 |
+| `repository` | 固定 `DREEXY-git/369` | Packet header と一致。 |
+| `pr` | 固定 `133` | `target_pr` と一致。 |
+| `branch` | 固定 `claude/p5-fin-002-canonical-producer-v1` | Packet `branch` と一致。 |
+| `owner_session_id` | 唯一の Claude 実行が emit する非空 identifier | 非空。当該実装 session が emit した値であること。secrets を含めない。 |
+| `approved_starting_head` | 検証時に捕捉した Human Approval Event の exact fixed head（= `approved_starting_head_sha`） | 40 桁 hex。§0.R2.3 の verify-time binding で確定した値と exact 一致。 |
+| `acquired_at` | lease 取得時刻（RFC3339 タイムスタンプ） | RFC3339。`acquired_at < expires_at`。 |
+| `expires_at` | lease 失効時刻（RFC3339 タイムスタンプ） | RFC3339。commit/push を含む実行全体をカバーする（push 時点で未失効）。 |
+| `fencing_token` | 実行開始時に一度だけ生成する非 secret の random/monotonic run token | 非空・非 secret。commit/push 直前に同値の再確認（recheck）を通ること。 |
+| `recorded_in` | 固定 `docs/coordination/phase5/evidence/P5-FIN-002-implementation-evidence.md` | 実装 Evidence path と一致。 |
+| `secrets_in_record` | 固定 `NONE` | Evidence に secrets を一切含めない。 |
 
-- lease は実装 Evidence へ secrets 抜きで記録する。
-- write 前取得・commit/push 直前再確認を必須とする。
-- 別の live writer が存在する、または fencing token が不一致なら run を停止する。
-- lease は本 proposal run では取得しない（本 run は Packet のみ編集し product を実装しないため）。lease は承認後の実装 session が使用する。
+- runtime 値（`owner_session_id` / `approved_starting_head` / `acquired_at` / `expires_at` / `fencing_token`）は承認後の実装 session が上表の validation を満たすよう解決し、解決値を `recorded_in` の Evidence へ secrets 抜きで記録する。**本 proposal run では解決せず、本文にプレースホルダを残さない**（本 run は Packet のみ編集し product を実装しないため）。
+- この lease は evidence であり、外部 writer を技術的に阻止できない。したがって edit・commit・push の**各直前に remote head を再取得**し、期待する approved descendant と一致することを確認する。
+- いずれかの checkpoint で remote head が期待 approved descendant と相違した場合は fail-closed で停止する。
+- 実行前に、本 branch に対して別の Claude / Codex の write process・worktree が active でないことを確認する。
+- 別の live writer が存在する、fencing token の recheck が不一致、または上表 validation を満たせない場合は run を停止する。
+- 上記のチェック結果と、lease が persistent lock ではないという limitation を実装 Evidence に記録する。lease は本 proposal run では取得しない。承認後の実装 session が使用する。
 
 ### 0.R2.5 Required Product Fixes and Tests（承認後の実装で必須）
 
@@ -244,7 +251,7 @@ FIN-02 は schema・producer dual-write・lifecycle 同期・再実行可能 bac
 - Production データに存在する sourceType / lifecycle conflict の件数。
 - orphan `InvoiceCandidate`、sourceId 欠落、未知 `payment_expected` の実件数。
 - backfill が分類する conflict 件数と、手動解決が必要な行数。
-- 本 Packet rev1 の確定 SHA-256。本文確定後に外部証拠として計算し、本文へ埋め込まない。
+- 本 Packet Revision 2 の確定 SHA-256。本文確定後に外部証拠として計算し、本文へ埋め込まない。
 
 ## 6. Scope
 
@@ -654,7 +661,8 @@ route:
 
 - `origin/main` / Packet base / PR base mismatch。
 - Packet / prompt / manifest hash mismatch。
-- PR live head と Human Approval Event の fixed head mismatch。
+- **Stage 1 — 承認前 / session 開始時の head binding**: live PR head が Human Approval Event の `fixed_head_sha` と exact に一致しない場合は停止する。一致した場合、その値が `approved_starting_head_sha` になる。
+- **Stage 2 — 承認後の authorized descendant / final audit**: candidate head が `approved_starting_head` の strict linear（first-parent）descendant でない場合、または branch / PR / owner session / commit-budget / path-scope / forbidden-operation の検証に失敗した場合は停止する。この stage では final candidate head が Event の `fixed_head_sha` と一致することを**要求しない**（一致を要求すると承認済み descendant commit がすべて無効化されるため、この post-write 一致条件は課さない）。
 - ALLOWED_PATHS 外の変更が必要。
 - semantic resource collision。
 - user-owned dirty checkout と衝突。
@@ -673,6 +681,7 @@ route:
 
 - **Revision 1（PROPOSED）** — FIN-02 単一実装契約の初回登録。schema・producer dual-write・lifecycle 同期・再実行可能 backfill を定義。Revision 1 起点の実装が remote head `9673cbfead2f9ba20b2df49c34f459ed47406732` に存在するが、独立監査で下記 findings が確定した: `D-FIN002-001`（tenant 不一致で update 0 件でも obligation/alias 生成・`linked=true`）、`D-FIN002-002` / `H-FIN002-002`（alias collision 無視・link・必須 conflict/version 分類欠落）、`D-FIN002-003` / `H-FIN002-003`（真の並列 retry test 不在）、`D-FIN002-004` / `H-FIN002-002`（backfill の direction/currency/lifecycle/duplicate alias candidate/version mismatch の件数と fail-closed 欠落）、`D-FIN002-005`（migration SQL の EOF 空行・Evidence が `git diff --check` 成功と誤記）、`H-FIN002-001`（承認起点 head と authorized descendant 実装 commit の binding 未定義）、`H-FIN002-004`（停止済み未 push の local-only 並列 Claude commit `2322d3ab7242063589990d9e19dc87332ca6331e`。remote 完全性への影響なし）。
 - **Revision 2（PROPOSED・本 revision）** — Revision 1 を **supersede** する。理由: (1) Revision 1 起点実装は上記 High 5 件・Medium 2 件を未解決に含み merge-ready ではない、(2) Revision 1 は承認起点 head と authorized descendant 実装 commit の binding（`H-FIN002-001`）を定義していなかった。Revision 2 は §0.R2 で、当該 head を歴史的入力に格下げし、remediation matrix・Human Approval Event と descendant 実行契約・writer lease・required product fixes を固定した一回限りの最終 remediation 実行契約を追加する。§7 の 14 実装 ALLOWED_PATHS・§10 の canonical 9-key Authorization は Revision 1 と同一に維持する。scope 変更に伴い新しい外部 SHA-256 と新しい Human Approval Event を要求する。Revision 1 の承認・PASS・exact-head CI 結果は本 revision には引き継がれない。
+  - **Revision 2 pre-approval correction（本文外 Human Approval Event 投稿前の訂正・revision 据え置き）** — Revision 2 の Human Approval Event 投稿前に、承認 binding の曖昧さを除去する目的で本 Packet 本文のみを訂正した。訂正内容: (a) §0 Registration State と §5 UNKNOWN の stale な `本 revision 1` / `本 Packet rev1` 文言を Revision 2 語彙へ更新、(b) §0.R2.0 に Revision 間の precedence 規則を明示（§0.R2 が矛盾する Revision 1 継承文言を override し、二重解釈を残さない）、(c) §20 Stop Conditions を stage 1（承認前 head exact 一致 → `approved_starting_head_sha`）と stage 2（承認後の strict linear descendant + branch/PR/session/commit-budget/path-scope/forbidden-operation 監査、final head と Event fixed head の一致は非要求）の二段構成へ訂正し、authorized descendant commit を無効化していた無条件 head mismatch 規則を除去、(d) §0.R2.4 writer lease のプレースホルダ値（`RUNTIME_*` / `EQUALS_approved_starting_head_sha`）を型 / source / validation の field contract に置換し、lease が persistent lock ではなく evidence である旨と re-fetch / fail-closed / 他 writer 確認を強化。Revision 番号は **2 のまま据え置き**、status は `PROPOSED` を維持、`packet_sha256: EXTERNAL` を維持し、新 Revision 3 は作らない。base / branch / target PR / §7 の 14 ALLOWED_PATHS / §10 canonical 9-key Authorization / finding matrix / commit budget / safety prohibitions は不変。本訂正後に新しい外部 SHA-256 を再計算し、その head に対して新しい Human Approval Event を取り直す。
 
 ## 承認状態（本文外イベントで確定）
 
